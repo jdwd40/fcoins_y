@@ -7,10 +7,11 @@ interface MarketStatusProps {
 }
 
 function formatTime(seconds: number): string {
-  if (seconds <= 0) return '0:00';
+  if (seconds <= 0) return '0 secs';
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = Math.floor(seconds % 60);
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  if (minutes === 0) return `${remainingSeconds} secs`;
+  return `${minutes} mins ${remainingSeconds} secs`;
 }
 
 export function MarketStatus({ status }: MarketStatusProps) {

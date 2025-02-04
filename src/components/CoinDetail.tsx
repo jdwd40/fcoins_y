@@ -108,12 +108,12 @@ export function CoinDetail({ coin, events = [] }: CoinDetailProps) {
 
   return (
     <div className="w-full">
-      <div className="flex items-center justify-between mb-6">
-        <div>
+      <div className="relative mb-6">
+        <div className="absolute left-0">
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{coin.name}</h1>
           <p className="text-gray-500 dark:text-gray-400">{coin.symbol}</p>
         </div>
-        <div className="text-right">
+        <div className="text-center">
           <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
             £{price.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>

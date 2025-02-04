@@ -102,23 +102,25 @@ export function CoinsList({ coins, onSelectCoin, selectedCoinId, events }: Coins
                 onClick={() => onSelectCoin(coin.coin_id)}
                 className="w-full p-4 text-left focus:outline-none"
               >
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="font-medium text-gray-900 dark:text-white">{coin.name}</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{coin.symbol}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-medium text-gray-900 dark:text-white">
-                      £{price.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
-                    <p
-                      className={`text-sm ${
-                        priceChange >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}
-                    >
-                      {priceChange >= 0 ? '↑' : '↓'}{' '}
-                      {Math.abs(priceChange).toFixed(2)}%
-                    </p>
+                <div className="flex flex-col items-center">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="font-medium text-gray-900 dark:text-white">{coin.name}</h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{coin.symbol}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium text-gray-900 dark:text-white">
+                        £{price.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p
+                        className={`text-sm ${
+                          priceChange >= 0 ? 'text-green-600' : 'text-red-600'
+                        }`}
+                      >
+                        {priceChange >= 0 ? '↑' : '↓'}{' '}
+                        {Math.abs(priceChange).toFixed(2)}%
+                      </p>
+                    </div>
                   </div>
                 </div>
               </button>
