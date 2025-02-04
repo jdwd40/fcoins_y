@@ -1,5 +1,6 @@
 name: Deploy to VPS
 
+# Deployment workflow for automatic updates
 on:
   push:
     branches:
