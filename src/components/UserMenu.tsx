@@ -16,13 +16,18 @@ export function UserMenu({ onAuthClick, isDark, onThemeToggle }: UserMenuProps) 
 
   if (!user) {
     return (
-      <button
-        onClick={onAuthClick}
-        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-      >
-        <UserIcon className="w-4 h-4" />
-        Sign In
-      </button>
+      <div className="flex items-center gap-4">
+        {isDark !== undefined && onThemeToggle && (
+          <ThemeToggle isDark={isDark} onToggle={onThemeToggle} />
+        )}
+        <button
+          onClick={onAuthClick}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        >
+          <UserIcon className="w-4 h-4" />
+          Sign In
+        </button>
+      </div>
     );
   }
 
