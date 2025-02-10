@@ -6,7 +6,7 @@ interface FetchState<T> {
   error: string | null;
 }
 
-export function useFetch<T>(url: string, pollInterval = 5000) { // Poll every 5 seconds by default
+export function useFetch<T>(url: string, pollInterval = 5000) {
   const [state, setState] = useState<FetchState<T>>({
     data: null,
     loading: true,
@@ -14,11 +14,19 @@ export function useFetch<T>(url: string, pollInterval = 5000) { // Poll every 5 
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const lastFetchTimeRef = useRef<number>(0);
 
   useEffect(() => {
     if (!url) return;
 
     const fetchData = async () => {
+      // Throttle requests to prevent too frequent updates
+      const now = Date.now();
+      if (now - lastFetchTimeRef.current < 500) { // Minimum 500ms between requests
+        return;
+      }
+      lastFetchTimeRef.current = now;
+
       try {
         // Cancel any ongoing requests
         if (abortControllerRef.current) {
@@ -43,17 +51,11 @@ export function useFetch<T>(url: string, pollInterval = 5000) { // Poll every 5 
         });
 
         if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(errorText || 'Network response was not ok');
+          throw new Error('Network response was not ok');
         }
+
         const json = await response.json();
-        setState(prev => {
-          // Only update if data has changed
-          if (JSON.stringify(prev.data) !== JSON.stringify(json)) {
-            return { data: json, loading: false, error: null };
-          }
-          return prev;
-        });
+        setState({ data: json, loading: false, error: null });
       } catch (error) {
         // Ignore abort errors
         if (error instanceof Error && error.name === 'AbortError') return;
@@ -70,8 +72,8 @@ export function useFetch<T>(url: string, pollInterval = 5000) { // Poll every 5 
     // Initial fetch
     fetchData();
 
-    // Set up polling
-    const intervalId = setInterval(fetchData, pollInterval);
+    // Set up polling with a minimum interval
+    const intervalId = setInterval(fetchData, Math.max(1000, pollInterval));
 
     // Cleanup function
     return () => {

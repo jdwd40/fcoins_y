@@ -29,6 +29,7 @@ function Market() {
     'https://jdwd40.com/api-2/api/market/status',
     2000
   );
+
   const { data: coinDetail, loading: coinLoading } = useFetch<{ coin: Coin }>(
     selectedCoinId ? `https://jdwd40.com/api-2/api/coins/${selectedCoinId}` : ''
   );
@@ -159,8 +160,7 @@ function App() {
             <Route path="/" element={<Market />} />
             <Route 
               path="/profile" 
-              element={<Profile />} 
-              state={{ from: location.pathname }}
+              element={<Profile />}
             />
           </Routes>
         </div>

@@ -1,34 +1,12 @@
-import React, { useEffect, useState } from 'react';
-import { Timer, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
-import { MarketStatus as MarketStatusType, MarketEvent } from '../types';
+import React from 'react';
+import { Timer, TrendingUp, TrendingDown } from 'lucide-react';
+import type { MarketStatus as MarketStatusType } from '../types';
 
 interface MarketStatusProps {
   status: MarketStatusType;
 }
 
-function formatTime(seconds: number): string {
-  if (seconds <= 0) return '0 secs';
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  if (minutes === 0) return `${remainingSeconds} secs`;
-  return `${minutes} mins ${remainingSeconds} secs`;
-}
-
 export function MarketStatus({ status }: MarketStatusProps) {
-  const [timeRemaining, setTimeRemaining] = useState(status?.currentCycle?.timeRemaining ?? 0);
-
-  useEffect(() => {
-    if (!status?.currentCycle?.timeRemaining) return;
-    
-    setTimeRemaining(status.currentCycle.timeRemaining);
-    
-    const timer = setInterval(() => {
-      setTimeRemaining((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [status]);
-
   const getCycleIcon = () => {
     return status?.currentCycle?.type === 'BOOM' ? (
       <TrendingUp className="w-5 h-5 text-green-500" />
@@ -44,7 +22,7 @@ export function MarketStatus({ status }: MarketStatusProps) {
         <div className="flex items-center gap-2">
           <Timer className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
           <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
-            {formatTime(timeRemaining)}
+            {status?.currentCycle?.timeRemaining || '00:00:00'}
           </span>
         </div>
       </div>

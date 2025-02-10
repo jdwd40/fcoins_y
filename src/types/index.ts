@@ -24,7 +24,7 @@ export interface MarketData {
 export interface MarketEvent {
   coinId: number;
   type: 'PARTNERSHIP' | 'ADOPTION' | 'RUMOR' | 'REGULATION' | 'SCANDAL';
-  timeRemaining: number;
+  timeRemaining: string;
   effect: 'POSITIVE' | 'NEGATIVE';
 }
 
@@ -32,7 +32,7 @@ export interface MarketStatus {
   status: 'RUNNING' | 'PAUSED';
   currentCycle: {
     type: 'BOOM' | 'BUST';
-    timeRemaining: number;
+    timeRemaining: string;
   };
   events: MarketEvent[];
 }
