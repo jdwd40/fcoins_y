@@ -8,11 +8,29 @@ interface MarketStatusProps {
 
 export function MarketStatus({ status }: MarketStatusProps) {
   const getCycleIcon = () => {
-    return status?.currentCycle?.type === 'BOOM' ? (
+    const type = status?.currentCycle?.type || '';
+    return type.includes('BOOM') ? (
       <TrendingUp className="w-5 h-5 text-green-500" />
     ) : (
       <TrendingDown className="w-5 h-5 text-red-500" />
     );
+  };
+
+  const formatCycleType = (type: string) => {
+    switch (type) {
+      case 'STRONG_BOOM':
+        return 'STRONG BULL';
+      case 'MILD_BOOM':
+        return 'MILD BULL';
+      case 'STRONG_BUST':
+        return 'STRONG BEAR';
+      case 'MILD_BUST':
+        return 'MILD BEAR';
+      case 'STABLE':
+        return 'STABLE';
+      default:
+        return type;
+    }
   };
 
   return (
@@ -34,7 +52,7 @@ export function MarketStatus({ status }: MarketStatusProps) {
             <>
               <p className="text-sm text-gray-500 dark:text-gray-400">Current Cycle</p>
               <p className="font-semibold text-gray-900 dark:text-white">
-                {String(status.currentCycle.type)} CYCLE
+                {formatCycleType(status.currentCycle.type)}
               </p>
             </>
           )}
@@ -42,9 +60,9 @@ export function MarketStatus({ status }: MarketStatusProps) {
       </div>
 
       <div className="space-y-2">
-        {status?.currentCycle?.type && (
+        {status?.currentCycle?.baseEffect && (
           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {String(status.currentCycle.type) === 'BOOM' ? 'Bull Market' : 'Bear Market'}
+            Market Effect: {(status.currentCycle.baseEffect * 100).toFixed(2)}%
           </p>
         )}
       </div>

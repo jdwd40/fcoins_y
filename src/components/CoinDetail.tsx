@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import type { Coin, MarketEvent } from '../types';
+import { PriceChart } from './PriceChart';
 
 interface CoinDetailProps {
   coin: Coin;
@@ -28,6 +29,41 @@ function EventItem({ event }: { event: MarketEvent }) {
 }
 
 export function CoinDetail({ coin, events = [] }: CoinDetailProps) {
+  const [priceHistory, setPriceHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    const fetchInitialPriceHistory = async () => {
+      try {
+        console.log('Fetching initial price history for coin:', coin.coin_id);
+        // Remove 'range=' parameter as it's not needed for default 30M data
+        const response = await fetch(`https://jdwd40.com/api-2/api/coins/${coin.coin_id}/price-history`);
+        const data = await response.json();
+        console.log('Received initial price history data:', data);
+        
+        // Handle both array and object responses
+        const historyData = Array.isArray(data) ? data : data.price_history;
+        
+        if (!historyData || !Array.isArray(historyData)) {
+          console.error('Invalid initial price history data:', data);
+          setPriceHistory([]);
+          return;
+        }
+        
+        setPriceHistory(historyData);
+      } catch (error) {
+        console.error('Error fetching initial price history:', error);
+        setPriceHistory([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchInitialPriceHistory();
+  }, [coin.coin_id]);
+
+  console.log('Current price history in CoinDetail:', priceHistory);
+
   const activeEvents = events.filter(event => event.coinId === coin.coin_id);
   const priceChange = typeof coin.price_change_24h === 'string' 
     ? parseFloat(coin.price_change_24h) 
@@ -60,7 +96,7 @@ export function CoinDetail({ coin, events = [] }: CoinDetailProps) {
             {coin.name}
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Current Price: ${currentPrice.toFixed(2)}
+            Current Price: £{currentPrice.toFixed(2)}
           </p>
         </div>
         <div className={`flex items-center gap-1 ${priceChangeClass}`}>
@@ -87,7 +123,7 @@ export function CoinDetail({ coin, events = [] }: CoinDetailProps) {
             <div className="flex justify-between">
               <span className="text-sm text-gray-500 dark:text-gray-400">Current Price</span>
               <span className="text-sm font-medium text-gray-900 dark:text-white">
-                ${currentPrice.toFixed(2)}
+                £{currentPrice.toFixed(2)}
               </span>
             </div>
           </div>
@@ -101,31 +137,35 @@ export function CoinDetail({ coin, events = [] }: CoinDetailProps) {
             <div className="flex justify-between">
               <span className="text-sm text-gray-500 dark:text-gray-400">Volume</span>
               <span className="text-sm font-medium text-gray-900 dark:text-white">
-                ${volume.toLocaleString()}
+                £{volume.toLocaleString()}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-sm text-gray-500 dark:text-gray-400">Market Cap</span>
               <span className="text-sm font-medium text-gray-900 dark:text-white">
-                ${marketCap.toLocaleString()}
+                £{marketCap.toLocaleString()}
               </span>
             </div>
           </div>
         </div>
       </div>
 
-      {activeEvents.length > 0 && (
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Active Events
-          </h3>
-          <div className="space-y-2">
-            {activeEvents.map((event, index) => (
-              <EventItem key={index} event={event} />
-            ))}
-          </div>
+      <div className="grid grid-cols-1 gap-4">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <PriceChart coinId={coin.coin_id.toString()} priceHistory={priceHistory} />
         </div>
-      )}
+        
+        {activeEvents.length > 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h3 className="text-lg font-semibold mb-4 dark:text-white">Active Events</h3>
+            <div className="space-y-2">
+              {activeEvents.map((event, index) => (
+                <EventItem key={index} event={event} />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

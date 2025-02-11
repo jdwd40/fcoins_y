@@ -29,7 +29,7 @@ export interface MarketEvent {
 }
 
 export interface MarketStatus {
-  status: 'RUNNING' | 'PAUSED';
+  status: 'RUNNING' | 'STOPPED';
   currentCycle: {
     type: 'BOOM' | 'BUST';
     timeRemaining: string;

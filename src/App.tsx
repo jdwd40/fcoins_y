@@ -13,6 +13,7 @@ import { AuthProvider } from './context/AuthContext';
 import { UserMenu } from './components/UserMenu';
 import { AuthForms } from './components/AuthForms';
 import { Profile } from './components/Profile';
+import { MarketValueChart } from './components/MarketValueChart';
 import type { MarketData, Coin, PriceHistory, MarketStatus as MarketStatusType } from './types';
 
 function Market() {
@@ -36,9 +37,8 @@ function Market() {
 
   const { data: priceHistoryData } = useFetch<PriceHistory>(
     selectedCoinId
-      ? `https://jdwd40.com/api-2/api/coins/${selectedCoinId}/price-history`
-      : '',
-    2000
+      ? `https://jdwd40.com/api-2/api/coins/${selectedCoinId}/price-history?range=30M`
+      : ''
   );
 
   useEffect(() => {
@@ -49,7 +49,7 @@ function Market() {
     }
   }, [isDark]);
 
-  if (marketStatus?.status === 'PAUSED') {
+  if (marketStatus?.status === 'STOPPED') {
     return (
       <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex items-center justify-center">
         <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-8 max-w-md w-full text-center">
@@ -60,7 +60,7 @@ function Market() {
             Simulation Stopped
           </h2>
           <p className="text-gray-600 dark:text-gray-400">
-            The market simulation is currently paused. Please try again later.
+            The market simulation is currently stopped. Please try again later.
           </p>
         </div>
       </div>
@@ -114,14 +114,21 @@ function Market() {
         {marketStatus && <MarketStatus status={marketStatus} />}
         {marketData?.market_stats && <MarketStats stats={marketData.market_stats} />}
         
-        {marketData?.coins && (
-          <CoinsList
-            coins={marketData.coins}
-            onSelectCoin={setSelectedCoinId}
-            selectedCoinId={selectedCoinId}
-            events={marketStatus?.events || []}
-          />
-        )}
+        <div className="container mx-auto px-4 py-8">
+          <div className="mb-8">
+            <MarketValueChart className="w-full" />
+          </div>
+          <div className="flex justify-between items-center mb-6">
+            {marketData?.coins && (
+              <CoinsList
+                coins={marketData.coins}
+                onSelectCoin={setSelectedCoinId}
+                selectedCoinId={selectedCoinId}
+                events={marketStatus?.events || []}
+              />
+            )}
+          </div>
+        </div>
 
         <Modal isOpen={selectedCoinId !== null} onClose={() => setSelectedCoinId(null)}>
           {coinLoading ? (
@@ -137,7 +144,10 @@ function Market() {
                 />
               )}
               {priceHistoryData?.price_history && (
-                <PriceChart priceHistory={priceHistoryData.price_history} />
+                <PriceChart 
+                  coinId={selectedCoinId.toString()}
+                  priceHistory={priceHistoryData.price_history}
+                />
               )}
             </>
           )}

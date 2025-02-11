@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Clock } from 'lucide-react';
-import { PriceHistory } from '../types';
 
 type TimeRange = '10M' | '30M' | '1H' | '24H';
 
-interface PriceChartProps {
-  coinId: string;
-  priceHistory: Array<{ price: string; created_at: string }>;
+interface MarketValueChartProps {
+  className?: string;
 }
 
 const TIME_RANGES = [
@@ -16,86 +14,67 @@ const TIME_RANGES = [
   { value: '24H', label: '24h' }
 ] as const;
 
-export function PriceChart({ coinId, priceHistory: initialPriceHistory }: PriceChartProps) {
+export function MarketValueChart({ className = '' }: MarketValueChartProps) {
   const [timeRange, setTimeRange] = useState<TimeRange>('30M');
-  const [priceHistory, setPriceHistory] = useState(initialPriceHistory);
+  const [priceHistory, setPriceHistory] = useState<Array<{ value: number; created_at: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [hoveredPoint, setHoveredPoint] = useState<{
-    price: string;
+    value: number;
     time: string;
     x: number;
     y: number;
   } | null>(null);
 
   useEffect(() => {
-    const fetchPriceHistory = async () => {
+    const fetchMarketHistory = async () => {
       try {
         setLoading(true);
         // Add interval=5m parameter to get 5-minute increments
-        const url = `https://jdwd40.com/api-2/api/coins/${coinId}/price-history${timeRange === '30M' ? '?interval=5m' : `?timeRange=${timeRange}&interval=5m`}`;
-
-        console.log('Fetching from URL:', url);
+        const url = `https://jdwd40.com/api-2/api/market/history${timeRange === '30M' ? '?interval=5m' : `?timeRange=${timeRange}&interval=5m`}`;
+        
+        console.log('Fetching market history from:', url);
         const response = await fetch(url);
         const data = await response.json();
-        console.log('Received price history data:', data);
-        
+        console.log('Received market history data:', data);
+
         // Handle both array and object responses
-        const historyData = Array.isArray(data) ? data : data.price_history;
-        
+        const historyData = Array.isArray(data) ? data : data.history;
+
         if (!historyData || !Array.isArray(historyData)) {
-          console.error('Invalid data structure received:', data);
+          console.error('Invalid market history data:', data);
           setPriceHistory([]);
           return;
         }
 
-        setPriceHistory(historyData);
+        // Filter to 5-minute increments if needed
+        const FIVE_MINUTES = 5 * 60 * 1000;
+        let lastTimestamp = 0;
+        
+        const filteredData = historyData.filter(point => {
+          const timestamp = new Date(point.timestamp).getTime();
+          if (timestamp - lastTimestamp >= FIVE_MINUTES) {
+            lastTimestamp = timestamp;
+            return true;
+          }
+          return false;
+        });
+
+        setPriceHistory(filteredData);
       } catch (error) {
-        console.error('Error fetching price history:', error);
+        console.error('Error fetching market history:', error);
         setPriceHistory([]);
       } finally {
         setLoading(false);
       }
     };
 
-    console.log('Initial price history:', initialPriceHistory);
-    if (timeRange !== '30M' || !initialPriceHistory.length) {
-      fetchPriceHistory();
-    } else {
-      // Filter initial price history to 5-minute increments if needed
-      const FIVE_MINUTES = 5 * 60 * 1000;
-      let lastTimestamp = 0;
-      
-      const filteredInitial = initialPriceHistory.filter(point => {
-        const timestamp = new Date(point.timestamp || point.created_at).getTime();
-        if (timestamp - lastTimestamp >= FIVE_MINUTES) {
-          lastTimestamp = timestamp;
-          return true;
-        }
-        return false;
-      });
+    fetchMarketHistory();
+  }, [timeRange]);
 
-      setPriceHistory(filteredInitial);
-    }
-  }, [coinId, timeRange, initialPriceHistory]);
-
-  // Filter price history to 5-minute increments
-  const filteredPriceHistory = useMemo(() => {
-    if (!priceHistory.length) return [];
-
-    const FIVE_MINUTES = 5 * 60 * 1000; // 5 minutes in milliseconds
-    let lastTimestamp = 0;
-    
-    return priceHistory.filter(point => {
-      const timestamp = new Date(point.timestamp || point.created_at).getTime();
-      if (timestamp - lastTimestamp >= FIVE_MINUTES) {
-        lastTimestamp = timestamp;
-        return true;
-      }
-      return false;
-    });
-  }, [priceHistory]);
-
-  console.log('Filtered price points:', filteredPriceHistory.length);
+  console.log('Current market history state:', priceHistory);
+  if (priceHistory.length > 0) {
+    console.log('Sample history point:', priceHistory[0]);
+  }
 
   if (loading) {
     return (
@@ -105,10 +84,10 @@ export function PriceChart({ coinId, priceHistory: initialPriceHistory }: PriceC
     );
   }
 
-  if (!filteredPriceHistory.length) {
+  if (!priceHistory.length) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-500">
-        No price history available
+        No market data available
       </div>
     );
   }
@@ -129,49 +108,48 @@ export function PriceChart({ coinId, priceHistory: initialPriceHistory }: PriceC
     };
   };
 
-  const prices = filteredPriceHistory.map(p => {
-    const price = p.price || p.latest_price;
-    return typeof price === 'number' ? price : parseFloat(String(price));
-  }).filter(p => !isNaN(p));
+  const values = priceHistory.map(p => {
+    const value = p.total_market_value;
+    return typeof value === 'number' ? value : parseFloat(String(value));
+  }).filter(v => !isNaN(v));
 
-  const rawMinPrice = Math.min(...prices);
-  const rawMaxPrice = Math.max(...prices);
-  const { min: minPrice, max: maxPrice } = calculateDynamicRange(rawMinPrice, rawMaxPrice);
-  const priceRange = maxPrice - minPrice;
+  const rawMinValue = Math.min(...values);
+  const rawMaxValue = Math.max(...values);
+  const { min: minValue, max: maxValue } = calculateDynamicRange(rawMinValue, rawMaxValue);
+  const valueRange = maxValue - minValue;
 
   // Calculate percentage change
-  const firstPrice = prices[0];
-  const lastPrice = prices[prices.length - 1];
-  const priceChange = lastPrice - firstPrice;
-  const percentageChange = ((priceChange / firstPrice) * 100).toFixed(2);
-  const isPositive = priceChange >= 0;
+  const firstValue = values[0];
+  const lastValue = values[values.length - 1];
+  const valueChange = lastValue - firstValue;
+  const percentageChange = ((valueChange / firstValue) * 100).toFixed(2);
+  const isPositive = valueChange >= 0;
 
-  // Format price with appropriate precision
-  const formatPrice = (price: number) => {
-    if (price >= 1000000) {
-      return `£${(price / 1000000).toFixed(2)}M`;
-    } else if (price >= 1000) {
-      return `£${(price / 1000).toFixed(2)}K`;
-    } else if (price >= 1) {
-      return `£${price.toFixed(2)}`;
+  // Format value with appropriate scale
+  const formatValue = (value: number) => {
+    if (value >= 1000000000) {
+      return `$${(value / 1000000000).toFixed(2)}B`;
+    } else if (value >= 1000000) {
+      return `$${(value / 1000000).toFixed(2)}M`;
+    } else if (value >= 1000) {
+      return `$${(value / 1000).toFixed(2)}K`;
     } else {
-      // For very small values, use more decimal places
-      return `£${price.toFixed(6)}`;
+      return `$${value.toFixed(2)}`;
     }
   };
 
-  // Calculate price labels with dynamic steps
+  // Calculate value labels with dynamic steps
   const numLabels = 5;
-  const priceLabels = Array.from({ length: numLabels }, (_, i) => {
-    const price = maxPrice - (i * (priceRange / (numLabels - 1)));
-    return formatPrice(price);
+  const valueLabels = Array.from({ length: numLabels }, (_, i) => {
+    const value = maxValue - (i * (valueRange / (numLabels - 1)));
+    return formatValue(value);
   });
 
-  const points = filteredPriceHistory.map((point, index) => {
-    const price = point.price || point.latest_price;
-    const validPrice = typeof price === 'number' ? price : parseFloat(String(price));
-    const x = (index / (filteredPriceHistory.length - 1)) * 100;
-    const y = 100 - ((validPrice - minPrice) / priceRange) * 100;
+  const points = priceHistory.map((point, index) => {
+    const value = point.total_market_value;
+    const validValue = typeof value === 'number' ? value : parseFloat(String(value));
+    const x = (index / (priceHistory.length - 1)) * 100;
+    const y = 100 - ((validValue - minValue) / valueRange) * 100;
     return `${x},${y}`;
   }).join(' ');
 
@@ -179,18 +157,18 @@ export function PriceChart({ coinId, priceHistory: initialPriceHistory }: PriceC
     const svgRect = e.currentTarget.getBoundingClientRect();
     const x = (e.clientX - svgRect.left) / svgRect.width;
     const index = Math.min(
-      Math.floor(x * filteredPriceHistory.length),
-      filteredPriceHistory.length - 1
+      Math.floor(x * priceHistory.length),
+      priceHistory.length - 1
     );
-    const point = filteredPriceHistory[index];
-    const price = point.price || point.latest_price;
-    const validPrice = typeof price === 'number' ? price : parseFloat(String(price));
-    const pointX = (index / (filteredPriceHistory.length - 1)) * 100;
-    const pointY = 100 - ((validPrice - minPrice) / priceRange) * 100;
+    const point = priceHistory[index];
+    const value = point.total_market_value;
+    const validValue = typeof value === 'number' ? value : parseFloat(String(value));
+    const pointX = (index / (priceHistory.length - 1)) * 100;
+    const pointY = 100 - ((validValue - minValue) / valueRange) * 100;
 
     setHoveredPoint({
-      price: validPrice.toString(),
-      time: point.timestamp || point.created_at,
+      value: validValue,
+      time: point.timestamp,
       x: pointX,
       y: pointY,
     });
@@ -205,15 +183,10 @@ export function PriceChart({ coinId, priceHistory: initialPriceHistory }: PriceC
     });
   };
 
-  // Calculate time labels based on filtered data
-  const numTimeLabels = window.innerWidth < 640 ? 3 : 5;
-  const timeLabels = Array.from({ length: numTimeLabels }, (_, i) => {
-    const index = Math.floor((i * (filteredPriceHistory.length - 1)) / (numTimeLabels - 1));
-    const point = filteredPriceHistory[index];
-    return {
-      time: formatTime(point.timestamp || point.created_at),
-      index
-    };
+  // Get 5 evenly spaced timestamps for x-axis
+  const timeLabels = Array.from({ length: 5 }, (_, i) => {
+    const index = Math.floor((i * (priceHistory.length - 1)) / 4);
+    return formatTime(priceHistory[index].timestamp);
   });
 
   return (
@@ -237,20 +210,20 @@ export function PriceChart({ coinId, priceHistory: initialPriceHistory }: PriceC
 
       {/* Simple chart container */}
       <div className="relative w-full h-64 border border-gray-200 rounded">
-        {/* Y-axis (prices) */}
-        <div className="absolute left-0 top-0 bottom-20 w-16 flex flex-col justify-between text-xs text-gray-500 border-r border-gray-200 bg-white">
+        {/* Y-axis (values) */}
+        <div className="absolute left-0 top-0 bottom-20 w-20 flex flex-col justify-between text-xs text-gray-500 border-r border-gray-200 bg-white">
           {Array.from({ length: 6 }, (_, i) => {
-            const price = (maxPrice * (5 - i) / 5);
+            const value = (maxValue * (5 - i) / 5);
             return (
               <div key={i} className="px-2 text-right">
-                {formatPrice(price)}
+                {formatValue(value)}
               </div>
             );
           })}
         </div>
 
         {/* Chart area */}
-        <div className="absolute left-16 right-0 top-0 bottom-20">
+        <div className="absolute left-20 right-0 top-0 bottom-20">
           <svg
             className="w-full h-full"
             viewBox="0 0 100 100"
@@ -269,7 +242,7 @@ export function PriceChart({ coinId, priceHistory: initialPriceHistory }: PriceC
               />
             ))}
 
-            {/* Price line */}
+            {/* Value line */}
             <path
               d={`M ${points}`}
               fill="none"
@@ -277,7 +250,7 @@ export function PriceChart({ coinId, priceHistory: initialPriceHistory }: PriceC
               strokeWidth="2"
             />
 
-            {/* Current price indicator */}
+            {/* Current value indicator */}
             {hoveredPoint ? (
               <g>
                 <line
@@ -311,7 +284,7 @@ export function PriceChart({ coinId, priceHistory: initialPriceHistory }: PriceC
                   className="text-xs"
                   fill="#1e293b"
                 >
-                  {formatPrice(parseFloat(hoveredPoint.price))}
+                  {formatValue(hoveredPoint.value)}
                 </text>
               </g>
             ) : null}
@@ -319,9 +292,9 @@ export function PriceChart({ coinId, priceHistory: initialPriceHistory }: PriceC
         </div>
 
         {/* X-axis (time) */}
-        <div className="absolute left-16 right-0 bottom-0 h-20 border-t border-gray-200">
+        <div className="absolute left-20 right-0 bottom-0 h-20 border-t border-gray-200">
           <div className="flex justify-between px-4 pt-2 text-xs text-gray-500">
-            {timeLabels.map(({ time }, i) => (
+            {timeLabels.map((time, i) => (
               <div key={i} className="text-center">
                 {time}
               </div>
@@ -329,10 +302,10 @@ export function PriceChart({ coinId, priceHistory: initialPriceHistory }: PriceC
           </div>
         </div>
 
-        {/* Current price display */}
+        {/* Current value display */}
         <div className="absolute top-2 right-2 bg-white px-3 py-1 rounded-full shadow-sm border border-gray-200">
           <span className="text-sm font-medium text-gray-700">
-            Current: {formatPrice(lastPrice)}
+            Current: {formatValue(lastValue)}
           </span>
         </div>
       </div>
