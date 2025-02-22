@@ -23,8 +23,19 @@ function Market() {
     window.matchMedia('(prefers-color-scheme: dark)').matches
   );
 
-  const { data: marketData, loading: marketLoading, error: marketError } =
-    useFetch<MarketData>('https://jdwd40.com/api-2/api/market/stats', 2000);
+  const { data: coinsData, loading: coinsLoading, error: coinsError } =
+    useFetch<{ coins: Coin[] }>('https://jdwd40.com/api-2/api/coins', 2000);
+
+  const { data: marketStats, loading: marketStatsLoading, error: marketStatsError } =
+    useFetch<MarketStats>('https://jdwd40.com/api-2/api/market/stats', 2000);
+
+  const marketData = coinsData && marketStats ? {
+    coins: coinsData.coins,
+    market_stats: marketStats
+  } : undefined;
+
+  const loading = coinsLoading || marketStatsLoading;
+  const error = coinsError || marketStatsError;
 
   const { data: marketStatus } = useFetch<MarketStatusType>(
     'https://jdwd40.com/api-2/api/market/status',
@@ -67,7 +78,7 @@ function Market() {
     );
   }
 
-  if (marketError) {
+  if (error) {
     return (
       <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex items-center justify-center">
         <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-8 max-w-md w-full text-center">
@@ -78,14 +89,14 @@ function Market() {
             Error
           </h2>
           <p className="text-red-600 dark:text-red-400">
-            {marketError}
+            {error}
           </p>
         </div>
       </div>
     );
   }
 
-  if (marketLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex items-center justify-center">
         <p className="text-gray-600 dark:text-gray-400">Loading...</p>

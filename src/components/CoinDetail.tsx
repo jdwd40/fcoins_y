@@ -76,15 +76,27 @@ export function CoinDetail({ coin, events = [] }: CoinDetailProps) {
     <TrendingDown className="w-5 h-5" />
   );
 
-  const currentPrice = typeof coin.current_price === 'string' 
-    ? parseFloat(coin.current_price) 
-    : coin.current_price;
+  const formatPrice = (price: string | number) => {
+    if (typeof price === 'string') {
+      // Remove any existing currency symbols and spaces
+      const cleanPrice = price.replace(/[£\s]/g, '');
+      return parseFloat(cleanPrice);
+    }
+    return price;
+  };
 
+  const formatCurrency = (value: number) => {
+    return value.toLocaleString('en-GB', {
+      style: 'currency',
+      currency: 'GBP',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  };
+
+  const currentPrice = formatPrice(coin.current_price);
+  const marketCap = formatPrice(coin.market_cap);
   const volume = typeof coin.market_cap === 'string'
-    ? parseFloat(coin.market_cap)
-    : coin.market_cap;
-
-  const marketCap = typeof coin.market_cap === 'string'
     ? parseFloat(coin.market_cap)
     : coin.market_cap;
 
@@ -93,10 +105,13 @@ export function CoinDetail({ coin, events = [] }: CoinDetailProps) {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-            {coin.name}
+            {coin.name} <span className="text-lg font-normal text-gray-500">({coin.symbol})</span>
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Current Price: £{currentPrice.toFixed(2)}
+            Current Price: {formatCurrency(currentPrice)}
+          </p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+            Founded by {coin.founder}
           </p>
         </div>
         <div className={`flex items-center gap-1 ${priceChangeClass}`}>
@@ -123,7 +138,13 @@ export function CoinDetail({ coin, events = [] }: CoinDetailProps) {
             <div className="flex justify-between">
               <span className="text-sm text-gray-500 dark:text-gray-400">Current Price</span>
               <span className="text-sm font-medium text-gray-900 dark:text-white">
-                £{currentPrice.toFixed(2)}
+                {formatCurrency(currentPrice)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-500 dark:text-gray-400">Circulating Supply</span>
+              <span className="text-sm font-medium text-gray-900 dark:text-white">
+                {coin.circulating_supply.toLocaleString()} {coin.symbol}
               </span>
             </div>
           </div>
@@ -143,7 +164,7 @@ export function CoinDetail({ coin, events = [] }: CoinDetailProps) {
             <div className="flex justify-between">
               <span className="text-sm text-gray-500 dark:text-gray-400">Market Cap</span>
               <span className="text-sm font-medium text-gray-900 dark:text-white">
-                £{marketCap.toLocaleString()}
+                {formatCurrency(marketCap)}
               </span>
             </div>
           </div>
