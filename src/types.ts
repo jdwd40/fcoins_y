@@ -14,17 +14,22 @@ export interface MarketData {
   market_stats?: MarketStats;
 }
 
-export interface PriceHistory {
-  history: {
-    price: string;  // Formatted as GBP
-    timestamp: string;  // ISO date string
-    price_change_percentage: number;
-  }[];
+export interface PriceHistoryItem {
+  price_history_id: number;
+  coin_id: number;
+  price: number;
+  timestamp: string;
+  name: string;
+  symbol: string;
+}
+
+export interface PriceHistoryResponse {
+  data: PriceHistoryItem[];
   pagination: {
     currentPage: number;
     totalPages: number;
     totalItems: number;
-    itemsPerPage: number;
+    hasMore: boolean;
   };
 }
 
