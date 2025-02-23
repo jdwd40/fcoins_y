@@ -18,7 +18,7 @@ export interface PriceHistoryItem {
   price_history_id: number;
   coin_id: number;
   price: number;
-  timestamp: string;
+  created_at: string;
   name: string;
   symbol: string;
 }

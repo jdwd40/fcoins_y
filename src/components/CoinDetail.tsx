@@ -8,6 +8,16 @@ interface CoinDetailProps {
   events: MarketEvent[];
 }
 
+interface PriceHistoryResponse {
+  data: { timestamp: string; price: number }[];
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalItems: number;
+    hasMore: boolean;
+  };
+}
+
 function EventItem({ event }: { event: MarketEvent }) {
   return (
     <div className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded">
@@ -30,15 +40,30 @@ function EventItem({ event }: { event: MarketEvent }) {
 
 export function CoinDetail({ coin, events = [] }: CoinDetailProps) {
   const [loading, setLoading] = useState(true);
-  const [priceHistory, setPriceHistory] = useState([]);
+  const [priceHistory, setPriceHistory] = useState<PriceHistoryResponse>({
+    data: [],
+    pagination: {
+      currentPage: 1,
+      totalPages: 1,
+      totalItems: 0,
+      hasMore: false,
+    },
+  });
 
   useEffect(() => {
     const fetchInitialPriceHistory = async () => {
       try {
         console.log('Fetching initial price history for coin:', coin.coin_id);
-        const response = await fetch(`https://jdwd40.com/api-2/api/coins/${coin.coin_id}/price-history`);
+        const response = await fetch(`https://jdwd40.com/api-2/api/coins/${coin.coin_id}/price-history?range=30M`);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
         const data = await response.json();
         console.log('Received initial price history data:', data);
+        if (!data.data || !Array.isArray(data.data)) {
+          console.error('Invalid price history data format:', data);
+          return;
+        }
         setPriceHistory(data);
       } catch (error) {
         console.error('Error fetching initial price history:', error);
@@ -47,14 +72,17 @@ export function CoinDetail({ coin, events = [] }: CoinDetailProps) {
       }
     };
 
-    fetchInitialPriceHistory();
+    if (coin.coin_id) {
+      setLoading(true);
+      fetchInitialPriceHistory();
+    }
   }, [coin.coin_id]);
 
-  const activeEvents = events.filter(event => event.coinId === coin.coin_id);
-  const priceChange = typeof coin.price_change_24h === 'string' 
-    ? parseFloat(coin.price_change_24h) 
+  const activeEvents = events.filter((event) => event.coinId === coin.coin_id);
+  const priceChange = typeof coin.price_change_24h === 'string'
+    ? parseFloat(coin.price_change_24h)
     : coin.price_change_24h || 0;
-  
+
   const priceChangeClass = priceChange >= 0 ? 'text-green-500' : 'text-red-500';
   const priceChangeIcon = priceChange >= 0 ? (
     <TrendingUp className="w-5 h-5" />
@@ -76,7 +104,7 @@ export function CoinDetail({ coin, events = [] }: CoinDetailProps) {
       style: 'currency',
       currency: 'GBP',
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      maximumFractionDigits: 2,
     });
   };
 

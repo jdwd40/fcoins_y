@@ -9,9 +9,11 @@ import {
   Tooltip,
   Legend,
   TimeScale,
+  Filler,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
+import { enGB } from 'date-fns/locale';
 import { PriceHistoryResponse } from '../types';
 
 ChartJS.register(
@@ -22,7 +24,8 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  TimeScale
+  TimeScale,
+  Filler
 );
 
 type TimeRange = '5M' | '10M' | '30M' | '1H' | '24H';
@@ -49,7 +52,11 @@ export function PriceChart({ coinId, priceHistory }: PriceChartProps) {
     try {
       setLoading(true);
       const response = await fetch(`https://jdwd40.com/api-2/api/coins/${coinId}/price-history?range=${range}`);
-      const data: PriceHistoryResponse = await response.json();
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      console.log('Fetched price history:', data);
       setChartData(data);
     } catch (error) {
       console.error('Error fetching price history:', error);
@@ -68,10 +75,10 @@ export function PriceChart({ coinId, priceHistory }: PriceChartProps) {
     datasets: [
       {
         label: 'Price',
-        data: chartData.data.map((item) => ({
-          x: new Date(item.timestamp),
-          y: item.price,
-        })),
+        data: chartData.data.map((item: any) => ({
+          x: new Date(item.created_at).getTime(),
+          y: typeof item.price === 'string' ? parseFloat(item.price) : item.price,
+        })).sort((a, b) => a.x - b.x),
         borderColor: '#10B981',
         backgroundColor: 'rgba(16, 185, 129, 0.1)',
         borderWidth: 2,
@@ -84,6 +91,9 @@ export function PriceChart({ coinId, priceHistory }: PriceChartProps) {
       },
     ],
   };
+
+  const timeUnit = selectedRange === '24H' ? 'hour' : 'minute';
+  const stepSize = selectedRange === '24H' ? 2 : selectedRange === '1H' ? 10 : 5;
 
   const options = {
     responsive: true,
@@ -108,21 +118,33 @@ export function PriceChart({ coinId, priceHistory }: PriceChartProps) {
           },
           title: (tooltipItems: any) => {
             const date = new Date(tooltipItems[0].raw.x);
-            return date.toLocaleTimeString([], { 
+            return date.toLocaleString('en-GB', { 
               hour: '2-digit',
               minute: '2-digit',
+              ...(selectedRange === '24H' && { day: '2-digit', month: 'short' })
             });
           },
         },
       },
+      filler: {
+        propagate: false,
+      },
     },
     scales: {
       x: {
-        type: 'time' as const,
+        type: 'time',
         time: {
-          unit: 'minute' as const,
+          unit: timeUnit,
+          stepSize: stepSize,
           displayFormats: {
             minute: 'HH:mm',
+            hour: 'HH:mm',
+          },
+          tooltipFormat: 'PPp',
+        },
+        adapters: {
+          date: {
+            locale: enGB,
           },
         },
         grid: {
@@ -131,15 +153,23 @@ export function PriceChart({ coinId, priceHistory }: PriceChartProps) {
         ticks: {
           maxRotation: 0,
           color: '#6B7280',
+          maxTicksLimit: 8,
+          font: {
+            size: 11,
+          },
         },
       },
       y: {
+        beginAtZero: false,
         grid: {
           color: 'rgba(107, 114, 128, 0.1)',
         },
         ticks: {
           color: '#6B7280',
           callback: (value: number) => `£${value.toFixed(2)}`,
+          font: {
+            size: 11,
+          },
         },
       },
     },
