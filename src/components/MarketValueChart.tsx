@@ -42,7 +42,7 @@ const TIME_RANGES = [
   { value: 'ALL', label: 'All' }
 ] as const;
 
-export function MarketValueChart({ className = '' }: MarketValueChartProps) {
+export function MarketValueChart({ className = '', refreshTrigger }: MarketValueChartProps & { refreshTrigger: number }) {
   const [timeRange, setTimeRange] = useState<TimeRange>('30M');
   const [priceHistory, setPriceHistory] = useState<Array<{ value: number; created_at: string; trend: string }>>([]);
   const [loading, setLoading] = useState(false);
@@ -64,7 +64,6 @@ export function MarketValueChart({ className = '' }: MarketValueChartProps) {
           return;
         }
 
-        // Transform the data to match our component's expected format
         const transformedData = data.history.map(item => ({
           value: parseFloat(item.total_value),
           created_at: item.created_at,
@@ -81,7 +80,7 @@ export function MarketValueChart({ className = '' }: MarketValueChartProps) {
     };
 
     fetchMarketHistory();
-  }, [timeRange]);
+  }, [timeRange, refreshTrigger]);
 
   const chartData = {
     datasets: [

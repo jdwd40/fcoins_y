@@ -16,7 +16,9 @@ import { Profile } from './components/Profile';
 import { MarketValueChart } from './components/MarketValueChart';
 import type { MarketData, Coin, PriceHistory, MarketStatus as MarketStatusType } from './types';
 
-function Market() {
+const AUTO_REFRESH_INTERVAL = 30000; // 30 seconds in milliseconds
+
+function Market({ refreshTrigger }: { refreshTrigger: number }) {
   const [selectedCoinId, setSelectedCoinId] = useState<number | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isDark, setIsDark] = useState(() => 
@@ -127,7 +129,7 @@ function Market() {
         
         <div className="container mx-auto px-4 py-8">
           <div className="mb-8">
-            <MarketValueChart className="w-full" />
+            <MarketValueChart refreshTrigger={refreshTrigger} className="w-full" />
           </div>
           <div className="flex justify-between items-center mb-6">
             {marketData?.coins && (
@@ -152,12 +154,14 @@ function Market() {
                 <CoinDetail 
                   coin={coinDetail.coin}
                   events={marketStatus?.events || []}
+                  refreshTrigger={refreshTrigger}
                 />
               )}
               {priceHistoryData?.price_history && (
                 <PriceChart 
                   coinId={selectedCoinId.toString()}
                   priceHistory={priceHistoryData.price_history}
+                  refreshTrigger={refreshTrigger}
                 />
               )}
             </>
@@ -173,17 +177,29 @@ function Market() {
 }
 
 function App() {
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setRefreshTrigger(prev => prev + 1);
+    }, AUTO_REFRESH_INTERVAL);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
   return (
     <AuthProvider>
       <Router>
-        <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
-          <Routes>
-            <Route path="/" element={<Market />} />
-            <Route 
-              path="/profile" 
-              element={<Profile />}
-            />
-          </Routes>
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+          <main className="container mx-auto px-4 py-8">
+            <Routes>
+              <Route path="/" element={<Market refreshTrigger={refreshTrigger} />} />
+              <Route 
+                path="/profile" 
+                element={<Profile />}
+              />
+            </Routes>
+          </main>
         </div>
       </Router>
     </AuthProvider>

@@ -6,6 +6,7 @@ import { PriceChart } from './PriceChart';
 interface CoinDetailProps {
   coin: Coin;
   events: MarketEvent[];
+  refreshTrigger: number;
 }
 
 interface PriceHistoryResponse {
@@ -38,47 +39,8 @@ function EventItem({ event }: { event: MarketEvent }) {
   );
 }
 
-export function CoinDetail({ coin, events = [] }: CoinDetailProps) {
-  const [loading, setLoading] = useState(true);
-  const [priceHistory, setPriceHistory] = useState<PriceHistoryResponse>({
-    data: [],
-    pagination: {
-      currentPage: 1,
-      totalPages: 1,
-      totalItems: 0,
-      hasMore: false,
-    },
-  });
-
-  useEffect(() => {
-    const fetchInitialPriceHistory = async () => {
-      try {
-        console.log('Fetching initial price history for coin:', coin.coin_id);
-        const response = await fetch(`https://jdwd40.com/api-2/api/coins/${coin.coin_id}/price-history?range=30M`);
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        console.log('Received initial price history data:', data);
-        if (!data.data || !Array.isArray(data.data)) {
-          console.error('Invalid price history data format:', data);
-          return;
-        }
-        setPriceHistory(data);
-      } catch (error) {
-        console.error('Error fetching initial price history:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (coin.coin_id) {
-      setLoading(true);
-      fetchInitialPriceHistory();
-    }
-  }, [coin.coin_id]);
-
-  const activeEvents = events.filter((event) => event.coinId === coin.coin_id);
+export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProps) {
+  const [loading, setLoading] = useState(false);
   const priceChange = typeof coin.price_change_24h === 'string'
     ? parseFloat(coin.price_change_24h)
     : coin.price_change_24h || 0;
@@ -113,6 +75,8 @@ export function CoinDetail({ coin, events = [] }: CoinDetailProps) {
   const volume = typeof coin.market_cap === 'string'
     ? parseFloat(coin.market_cap)
     : coin.market_cap;
+
+  const activeEvents = events.filter((event) => event.coinId === coin.coin_id);
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -162,15 +126,12 @@ export function CoinDetail({ coin, events = [] }: CoinDetailProps) {
         <div className="w-full md:w-2/3">
           <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
             <h3 className="text-lg font-semibold mb-4">Price History</h3>
-            {loading ? (
-              <div className="h-[400px] flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-white"></div>
-              </div>
-            ) : (
-              <div className="h-[400px]">
-                <PriceChart coinId={coin.coin_id} priceHistory={priceHistory} />
-              </div>
-            )}
+            <div className="h-[400px]">
+              <PriceChart 
+                coinId={coin.coin_id} 
+                refreshTrigger={refreshTrigger}
+              />
+            </div>
           </div>
         </div>
       </div>
