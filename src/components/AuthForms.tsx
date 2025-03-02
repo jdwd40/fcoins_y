@@ -8,7 +8,7 @@ interface AuthFormsProps {
 
 export function AuthForms({ onClose }: AuthFormsProps) {
   const [isLogin, setIsLogin] = useState(true);
-  const { login, register, error, loading } = useAuth();
+  const { login, register, error, loading, clearError } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -19,12 +19,18 @@ export function AuthForms({ onClose }: AuthFormsProps) {
     e.preventDefault();
     
     try {
+      let success = false;
+      
       if (isLogin) {
-        await login({ email: formData.email, password: formData.password });
+        success = await login({ email: formData.email, password: formData.password });
       } else {
-        await register(formData);
+        success = await register(formData);
       }
-      onClose();
+      
+      // Only close the form if login/register was successful
+      if (success) {
+        onClose();
+      }
     } catch (err) {
       // Error is handled by the auth context
     }
@@ -44,8 +50,16 @@ export function AuthForms({ onClose }: AuthFormsProps) {
       </h2>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-          {error}
+        <div className="mb-6 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-md shadow-sm">
+          <div className="flex items-center">
+            <svg className="h-5 w-5 mr-2 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <span className="font-medium">
+              {isLogin ? 'Login Failed: ' : 'Registration Failed: '}
+            </span>
+          </div>
+          <p className="mt-1 ml-7">{error}</p>
         </div>
       )}
 
@@ -117,7 +131,11 @@ export function AuthForms({ onClose }: AuthFormsProps) {
 
       <div className="mt-4 text-center">
         <button
-          onClick={() => setIsLogin(!isLogin)}
+          onClick={() => {
+            setIsLogin(!isLogin);
+            // Clear any existing error messages when switching forms
+            clearError();
+          }}
           className="text-sm text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
         >
           {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}

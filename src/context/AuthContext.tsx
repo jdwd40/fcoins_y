@@ -3,9 +3,10 @@ import type { User, AuthResponse, LoginCredentials, RegisterCredentials } from '
 
 interface AuthContextType {
   user: User | null;
-  login: (credentials: LoginCredentials) => Promise<void>;
-  register: (credentials: RegisterCredentials) => Promise<void>;
+  login: (credentials: LoginCredentials) => Promise<boolean>;
+  register: (credentials: RegisterCredentials) => Promise<boolean>;
   logout: () => void;
+  clearError: () => void;
   loading: boolean;
   error: string | null;
 }
@@ -39,6 +40,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
   };
 
+  const clearError = () => {
+    setError(null);
+  };
+
   const login = async (credentials: LoginCredentials) => {
     try {
       setLoading(true);
@@ -51,14 +56,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error || 'Login failed');
+        const errorText = await response.text();
+        let errorMessage = 'Login failed';
+        
+        try {
+          // Try to parse the error as JSON
+          const errorJson = JSON.parse(errorText);
+          if (errorJson && errorJson.msg) {
+            errorMessage = errorJson.msg;
+          }
+        } catch {
+          // If parsing fails, use the raw error text
+          errorMessage = errorText;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const data: AuthResponse = await response.json();
       handleAuthResponse(data);
+      return true; // Login successful
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
+      return false; // Login failed
     } finally {
       setLoading(false);
     }
@@ -76,14 +96,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error || 'Registration failed');
+        const errorText = await response.text();
+        let errorMessage = 'Registration failed';
+        
+        try {
+          // Try to parse the error as JSON
+          const errorJson = JSON.parse(errorText);
+          if (errorJson && errorJson.msg) {
+            errorMessage = errorJson.msg;
+          }
+        } catch {
+          // If parsing fails, use the raw error text
+          errorMessage = errorText;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const data: AuthResponse = await response.json();
       handleAuthResponse(data);
+      return true; // Registration successful
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
+      return false; // Registration failed
     } finally {
       setLoading(false);
     }
@@ -96,7 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, loading, error }}>
+    <AuthContext.Provider value={{ user, login, register, logout, clearError, loading, error }}>
       {children}
     </AuthContext.Provider>
   );

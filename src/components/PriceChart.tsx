@@ -94,8 +94,14 @@ export function PriceChart({ coinId, refreshTrigger }: PriceChartProps) {
         pagination: result.pagination
       });
 
-      // If there are more pages and we're not at the limit, fetch next page
-      if (result.pagination.hasMore && page < result.pagination.totalPages && page < 5) {
+      // For longer time ranges (1H, 2H, 24H), fetch more pages to get complete data
+      const maxPages = range === '24H' ? 10 : 
+                      range === '2H' ? 5 : 
+                      range === '1H' ? 3 : 
+                      range === '30M' ? 2 : 1;
+      
+      if (result.pagination.hasMore && page < result.pagination.totalPages && page < maxPages) {
+        await new Promise(resolve => setTimeout(resolve, 100)); // Add small delay between requests
         await fetchPriceHistory(range, page + 1, newData);
       }
 
@@ -143,17 +149,47 @@ export function PriceChart({ coinId, refreshTrigger }: PriceChartProps) {
   const getTimeConfig = (range: TimeRange) => {
     switch (range) {
       case '10M':
-        return { unit: 'minute' as const, stepSize: 2, maxTicks: 5 };
+        return { 
+          unit: 'minute' as const, 
+          stepSize: 2, 
+          maxTicks: 5,
+          displayFormat: 'HH:mm'
+        };
       case '30M':
-        return { unit: 'minute' as const, stepSize: 5, maxTicks: 6 };
+        return { 
+          unit: 'minute' as const, 
+          stepSize: 5, 
+          maxTicks: 6,
+          displayFormat: 'HH:mm'
+        };
       case '1H':
-        return { unit: 'minute' as const, stepSize: 10, maxTicks: 6 };
+        return { 
+          unit: 'minute' as const, 
+          stepSize: 10, 
+          maxTicks: 6,
+          displayFormat: 'HH:mm'
+        };
       case '2H':
-        return { unit: 'minute' as const, stepSize: 20, maxTicks: 6 };
+        return { 
+          unit: 'minute' as const, 
+          stepSize: 20, 
+          maxTicks: 6,
+          displayFormat: 'HH:mm'
+        };
       case '24H':
-        return { unit: 'hour' as const, stepSize: 4, maxTicks: 6 };
+        return { 
+          unit: 'hour' as const, 
+          stepSize: 4, 
+          maxTicks: 6,
+          displayFormat: 'dd MMM HH:mm'
+        };
       default:
-        return { unit: 'minute' as const, stepSize: 5, maxTicks: 6 };
+        return { 
+          unit: 'minute' as const, 
+          stepSize: 5, 
+          maxTicks: 6,
+          displayFormat: 'HH:mm'
+        };
     }
   };
 
@@ -212,9 +248,10 @@ export function PriceChart({ coinId, refreshTrigger }: PriceChartProps) {
         callbacks: {
           title: (tooltipItems: any) => {
             const date = new Date(tooltipItems[0].parsed.x);
-            return date.toLocaleTimeString('en-GB', {
+            return date.toLocaleString('en-GB', {
               hour: '2-digit',
               minute: '2-digit',
+              ...(selectedRange === '24H' && { day: '2-digit', month: 'short' })
             });
           },
           label: (context: any) => {
@@ -230,8 +267,8 @@ export function PriceChart({ coinId, refreshTrigger }: PriceChartProps) {
           unit: timeConfig.unit,
           stepSize: timeConfig.stepSize,
           displayFormats: {
-            minute: 'HH:mm',
-            hour: 'HH:mm',
+            minute: timeConfig.displayFormat,
+            hour: timeConfig.displayFormat
           },
         },
         adapters: {

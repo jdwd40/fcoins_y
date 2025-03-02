@@ -166,3 +166,4 @@ try {
 - Price history is limited to the last 24 hours
 - Base volatility is assigned per coin and remains relatively stable
 - Event durations vary by event type (7-45 seconds)
+
