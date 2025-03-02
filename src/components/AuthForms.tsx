@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { Mail, Lock, User } from 'lucide-react';
 
 interface AuthFormsProps {
@@ -9,6 +10,7 @@ interface AuthFormsProps {
 export function AuthForms({ onClose }: AuthFormsProps) {
   const [isLogin, setIsLogin] = useState(true);
   const { login, register, error, loading, clearError } = useAuth();
+  const { showToast } = useToast();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -23,13 +25,16 @@ export function AuthForms({ onClose }: AuthFormsProps) {
       
       if (isLogin) {
         success = await login({ email: formData.email, password: formData.password });
+        if (success) {
+          showToast('Successfully logged in!', 'success');
+          onClose();
+        }
       } else {
         success = await register(formData);
-      }
-      
-      // Only close the form if login/register was successful
-      if (success) {
-        onClose();
+        if (success) {
+          showToast('Account created successfully!', 'success');
+          onClose();
+        }
       }
     } catch (err) {
       // Error is handled by the auth context

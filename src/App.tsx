@@ -10,6 +10,7 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { useFetch } from './hooks/useFetch';
 import { Modal } from './components/Modal';
 import { AuthProvider } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
 import { UserMenu } from './components/UserMenu';
 import { AuthForms } from './components/AuthForms';
 import { Profile } from './components/Profile';
@@ -189,19 +190,21 @@ function App() {
 
   return (
     <AuthProvider>
-      <Router>
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-          <main className="container mx-auto px-4 py-8">
-            <Routes>
-              <Route path="/" element={<Market refreshTrigger={refreshTrigger} />} />
-              <Route 
-                path="/profile" 
-                element={<Profile />}
-              />
-            </Routes>
-          </main>
-        </div>
-      </Router>
+      <ToastProvider>
+        <Router>
+          <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+            <main className="container mx-auto px-4 py-8">
+              <Routes>
+                <Route path="/" element={<Market refreshTrigger={refreshTrigger} />} />
+                <Route 
+                  path="/profile" 
+                  element={<Profile />}
+                />
+              </Routes>
+            </main>
+          </div>
+        </Router>
+      </ToastProvider>
     </AuthProvider>
   );
 }
