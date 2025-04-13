@@ -9,27 +9,28 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
-          
+
       - name: Install Dependencies
         run: npm install
-        
+
       - name: Build
         run: npm run build
-        
+
       - name: Install SSH Key
         uses: shimataro/ssh-key-action@v2
         with:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
-          
+
       - name: Deploy to VPS
         run: |
-          rsync -avz -e "ssh -p 4020" --delete ./dist/ jd@213.165.91.221:/var/www/jdwd40.com/html/
-          ssh jd@213.165.91.221 -p 4020 'cd /var/www/jdwd40.com/html && sudo systemctl restart nginx'
+          rsync -avz -e "ssh -p 4020" --delete ./dist/ jd@213.165.91.221:/var/www/jdwd40.com/html/coins/
+          ssh -p 4020 jd@213.165.91.221 'sudo systemctl reload nginx'
