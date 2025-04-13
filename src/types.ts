@@ -37,6 +37,9 @@ export interface MarketEvent {
   type: string;
   timestamp: string;
   data: any;
+  effect?: 'POSITIVE' | 'NEGATIVE';
+  timeRemaining?: string;
+  coinId?: number;
 }
 
 export interface MarketStatus {

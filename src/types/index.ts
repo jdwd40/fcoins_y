@@ -67,3 +67,32 @@ export interface LoginCredentials {
 export interface RegisterCredentials extends LoginCredentials {
   username: string;
 }
+
+export interface Transaction {
+  transaction_id: number;
+  user_id: number;
+  coin_id: number;
+  type: 'BUY' | 'SELL';
+  quantity: number;
+  price: number;
+  total_amount: number;
+  created_at: string;
+}
+
+export interface TransactionResponse {
+  status: string;
+  message: string;
+  data: Transaction;
+}
+
+export interface PortfolioItem {
+  coin_id: number;
+  quantity: number;
+  average_price: number;
+  coin_name?: string;
+  coin_symbol?: string;
+}
+
+export interface Portfolio {
+  portfolio: PortfolioItem[];
+}

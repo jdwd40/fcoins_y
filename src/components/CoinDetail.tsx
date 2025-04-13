@@ -1,22 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown } from 'lucide-react';
 import type { Coin, MarketEvent } from '../types';
-import { PriceChart } from './PriceChart';
+import { TradingViewChart } from './TradingViewChart';
+import { BuyForm } from './BuyForm';
+import { DebugUserInfo } from './DebugUserInfo';
+import { formatCurrency, parsePrice } from '../services/transactionService';
 
 interface CoinDetailProps {
   coin: Coin;
   events: MarketEvent[];
   refreshTrigger: number;
-}
-
-interface PriceHistoryResponse {
-  data: { timestamp: string; price: number }[];
-  pagination: {
-    currentPage: number;
-    totalPages: number;
-    totalItems: number;
-    hasMore: boolean;
-  };
 }
 
 function EventItem({ event }: { event: MarketEvent }) {
@@ -40,41 +31,14 @@ function EventItem({ event }: { event: MarketEvent }) {
 }
 
 export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProps) {
-  const [loading, setLoading] = useState(false);
   const priceChange = typeof coin.price_change_24h === 'string'
     ? parseFloat(coin.price_change_24h)
     : coin.price_change_24h || 0;
 
   const priceChangeClass = priceChange >= 0 ? 'text-green-500' : 'text-red-500';
-  const priceChangeIcon = priceChange >= 0 ? (
-    <TrendingUp className="w-5 h-5" />
-  ) : (
-    <TrendingDown className="w-5 h-5" />
-  );
 
-  const formatPrice = (price: string | number) => {
-    if (typeof price === 'string') {
-      // Remove any existing currency symbols and spaces
-      const cleanPrice = price.replace(/[£\s]/g, '');
-      return parseFloat(cleanPrice);
-    }
-    return price;
-  };
-
-  const formatCurrency = (value: number) => {
-    return value.toLocaleString('en-GB', {
-      style: 'currency',
-      currency: 'GBP',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  };
-
-  const currentPrice = formatPrice(coin.current_price);
-  const marketCap = formatPrice(coin.market_cap);
-  const volume = typeof coin.market_cap === 'string'
-    ? parseFloat(coin.market_cap)
-    : coin.market_cap;
+  const currentPrice = parsePrice(coin.current_price);
+  const marketCap = parsePrice(coin.market_cap);
 
   const activeEvents = events.filter((event) => event.coinId === coin.coin_id);
 
@@ -108,6 +72,15 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
               </div>
             </div>
 
+            {/* Transaction Forms */}
+            <div className="grid grid-cols-1 gap-4">
+              <BuyForm 
+                coin={coin} 
+              />
+              {/* Debug Component - Only visible in development */}
+              {process.env.NODE_ENV !== 'production' && <DebugUserInfo />}
+            </div>
+
             {/* Events Section */}
             {activeEvents.length > 0 && (
               <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
@@ -126,9 +99,9 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
         <div className="w-full md:w-2/3">
           <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
             <h3 className="text-lg font-semibold mb-4">Price History</h3>
-            <div className="h-[400px]">
-              <PriceChart 
-                coinId={coin.coin_id} 
+            <div className="h-[400px]"> 
+              <TradingViewChart
+                coinId={coin.coin_id.toString()}
                 refreshTrigger={refreshTrigger}
               />
             </div>
