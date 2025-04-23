@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart, IChartApi, ISeriesApi, UTCTimestamp, CandlestickData, HistogramData, ColorType } from 'lightweight-charts';
+// Removed static import of lightweight-charts. Will use dynamic import in useEffect.
 import { calculateMA, calculateVolatility } from '../services/indicatorCalculations.js'; // We'll create this helper
 
 interface TradingViewChartProps {
@@ -24,8 +24,6 @@ export function TradingViewChart({ coinId, timePeriod = '7D', refreshTrigger }: 
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const maSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const volatilitySeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null); // Optional Volume Series
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,8 +34,12 @@ export function TradingViewChart({ coinId, timePeriod = '7D', refreshTrigger }: 
     setLoading(true);
     setError(null);
 
-    // --- Fetch Historical Data ---
+    // --- Dynamic Import of lightweight-charts and Fetch Historical Data ---
     const fetchData = async () => {
+      const chartsMod = await import('lightweight-charts');
+      const createChart = chartsMod.createChart;
+      const ColorType = chartsMod.ColorType;
+
       try {
         // *** IMPORTANT: Replace with your actual API endpoint - updated 23/4/2025 ***
         const response = await fetch(`/api-2/api/coins/${coinId}/price-history?period=${timePeriod}`);
