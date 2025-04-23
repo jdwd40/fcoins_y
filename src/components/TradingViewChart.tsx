@@ -21,9 +21,12 @@ interface OHLVCData {
 
 export function TradingViewChart({ coinId, timePeriod = '7D', refreshTrigger }: TradingViewChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const maSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  // Use any to avoid missing type errors since types are not statically imported
+  const chartRef = useRef<any>(null);
+  const candlestickSeriesRef = useRef<any>(null);
+  const maSeriesRef = useRef<any>(null);
+  const volatilitySeriesRef = useRef<any>(null);
+  const volumeSeriesRef = useRef<any>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
