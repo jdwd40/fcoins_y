@@ -23,6 +23,7 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
   const [selectedCoinId, setSelectedCoinId] = useState<number | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isDark, setIsDark] = useState(() => 
+    typeof window !== 'undefined' &&
     window.matchMedia('(prefers-color-scheme: dark)').matches
   );
 
@@ -191,15 +192,12 @@ function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <Router>
+        <Router basename="/coins">
           <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
             <main className="container mx-auto px-4 py-8">
               <Routes>
                 <Route path="/" element={<Market refreshTrigger={refreshTrigger} />} />
-                <Route 
-                  path="/profile" 
-                  element={<Profile />}
-                />
+                <Route path="/profile" element={<Profile />} />
               </Routes>
             </main>
           </div>
