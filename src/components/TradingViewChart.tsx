@@ -48,6 +48,7 @@ export function TradingViewChart({ coinId, timePeriod = '7D', refreshTrigger }: 
 
         if (!Array.isArray(rawData) || rawData.length === 0) {
              console.warn("Received empty or invalid data for chart");
+             console.log(rawData);
              setLoading(false);
              setError("No historical data available.");
              // Clear existing series if chart exists
