@@ -40,7 +40,7 @@ export function TradingViewChart({ coinId, timePeriod = '7D', refreshTrigger }: 
     const fetchData = async () => {
       try {
         // *** IMPORTANT: Replace with your actual API endpoint - updated 23/4/2025 ***
-        const response = await fetch(`/api/${coinId}/price-history?period=${timePeriod}`);
+        const response = await fetch(`/api-2/api/${coinId}/price-history?period=${timePeriod}`);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
