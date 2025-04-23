@@ -44,7 +44,8 @@ export function TradingViewChart({ coinId, timePeriod = '7D', refreshTrigger }: 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        const rawData: OHLVCData[] = await response.json();
+        const apiResponse = await response.json();
+        const rawData: OHLVCData[] = Array.isArray(apiResponse) ? apiResponse : apiResponse.data;
 
         if (!Array.isArray(rawData) || rawData.length === 0) {
              console.warn("Received empty or invalid data for chart");
