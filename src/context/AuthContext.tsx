@@ -11,6 +11,9 @@ interface AuthContextType {
   error: string | null;
   getAuthToken: () => string | null;
   getUserIdFromToken: (token: string) => number | null;
+  isTokenExpired: (token: string) => boolean;
+  refreshUser: () => void;
+  handleSessionExpired: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -25,6 +28,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const storedUser = localStorage.getItem('user');
     
     if (token && storedUser) {
+      // Check if token is expired before loading user
+      try {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1]));
+          if (payload.exp && Date.now() >= payload.exp * 1000) {
+            console.log('Token expired on app load, clearing stored data');
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('Error checking token expiration on load:', error);
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        setLoading(false);
+        return;
+      }
+      
       try {
         const parsedUser = JSON.parse(storedUser);
         console.log('Loaded user from localStorage:', parsedUser);
@@ -40,6 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (isNaN(parsedUser.id)) {
             console.error('Invalid user ID in localStorage:', parsedUser.id);
             // Don't set the user if the ID is invalid
+            setLoading(false);
             return;
           }
         }
@@ -274,20 +299,81 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   };
 
+  // Check if a JWT token is expired
+  const isTokenExpired = (token: string): boolean => {
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) {
+        console.warn('Token does not appear to be in valid JWT format');
+        return true;
+      }
+      
+      const payload = JSON.parse(atob(parts[1]));
+      
+      // If no expiration claim, assume token is valid
+      if (!payload.exp) {
+        console.log('Token has no expiration claim');
+        return false;
+      }
+      
+      // exp is in seconds, Date.now() is in milliseconds
+      const isExpired = Date.now() >= payload.exp * 1000;
+      
+      if (isExpired) {
+        console.log('Token is expired. Expiration:', new Date(payload.exp * 1000).toISOString());
+      }
+      
+      return isExpired;
+    } catch (error) {
+      console.error('Error checking token expiration:', error);
+      return true; // Assume expired if we can't parse
+    }
+  };
+
+  // Handle session expired - logout and show message
+  const handleSessionExpired = () => {
+    console.log('Session expired, logging out user');
+    logout();
+    setError('Your session has expired. Please log in again.');
+  };
+
+  // Refresh user data from localStorage
+  const refreshUser = () => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        console.log('Refreshed user data from localStorage:', parsedUser);
+        setUser(parsedUser);
+      } catch (error) {
+        console.error('Error refreshing user from localStorage:', error);
+      }
+    }
+  };
+
   const getAuthToken = () => {
     const token = localStorage.getItem('token');
     console.log('Auth token retrieved:', token ? `${token.substring(0, 10)}...` : 'No token found');
     
-    // Check if token is in the correct format (JWT tokens have 3 parts separated by dots)
-    if (token) {
-      const parts = token.split('.');
-      if (parts.length !== 3) {
-        console.warn('Token does not appear to be in valid JWT format');
-      } else {
-        console.log('Token appears to be in valid JWT format');
-      }
+    if (!token) {
+      return null;
     }
     
+    // Check if token is in the correct format (JWT tokens have 3 parts separated by dots)
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      console.warn('Token does not appear to be in valid JWT format');
+      return null;
+    }
+    
+    // Check if token is expired
+    if (isTokenExpired(token)) {
+      console.log('Token is expired, triggering session expired handling');
+      handleSessionExpired();
+      return null;
+    }
+    
+    console.log('Token is valid and not expired');
     return token;
   };
 
@@ -333,7 +419,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       error, 
       clearError,
       getAuthToken,
-      getUserIdFromToken
+      getUserIdFromToken,
+      isTokenExpired,
+      refreshUser,
+      handleSessionExpired
     }}>
       {children}
     </AuthContext.Provider>

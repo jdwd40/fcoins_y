@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import type { Coin } from '../types';
-import { buyCoins, formatCurrency, parsePrice } from '../services/transactionService';
+import { buyCoins, formatCurrency, parsePrice, SessionExpiredError } from '../services/transactionService';
 import { X, Check, AlertCircle } from 'lucide-react';
 
 const API_BASE_URL = 'https://jdwd40.com/api-2/api';
@@ -13,7 +13,7 @@ interface BuyFormProps {
 }
 
 export function BuyForm({ coin, onSuccess }: BuyFormProps) {
-  const { user, getAuthToken, getUserIdFromToken } = useAuth();
+  const { user, getAuthToken, getUserIdFromToken, handleSessionExpired, refreshUser } = useAuth();
   const { showToast } = useToast();
   const [amount, setAmount] = useState<string>('');
   const [totalCost, setTotalCost] = useState<number>(0);
@@ -156,14 +156,18 @@ export function BuyForm({ coin, onSuccess }: BuyFormProps) {
         hasToken: !!token
       });
 
-      await buyCoins(userId, coinId, amountValue, token);
+      const result = await buyCoins(userId, coinId, amountValue, token);
 
-      // Update local user data with new funds balance
+      // Update local user data with new funds balance from response or calculated
+      const newBalance = result.data?.new_balance ?? (freshUser.funds - totalCost);
       const updatedUser = {
         ...freshUser,
-        funds: freshUser.funds - totalCost
+        funds: newBalance
       };
       localStorage.setItem('user', JSON.stringify(updatedUser));
+      
+      // Refresh user in context to sync state
+      refreshUser();
 
       // Show success message
       showToast(`Successfully purchased ${amountValue} ${coin.symbol}!`, 'success');
@@ -178,6 +182,16 @@ export function BuyForm({ coin, onSuccess }: BuyFormProps) {
       }
     } catch (err) {
       console.error('Buy form error:', err);
+      
+      // Handle session expired error
+      if (err instanceof SessionExpiredError) {
+        handleSessionExpired();
+        showToast('Your session has expired. Please log in again.', 'error');
+        setShowConfirmation(false);
+        setLoading(false);
+        return;
+      }
+      
       const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
       setError(errorMessage);
       showToast(errorMessage, 'error');
