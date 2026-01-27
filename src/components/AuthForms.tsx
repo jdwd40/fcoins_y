@@ -32,7 +32,7 @@ export function AuthForms({ onClose }: AuthFormsProps) {
       } else {
         success = await register(formData);
         if (success) {
-          showToast('Account created successfully!', 'success');
+          showToast('Account created successfully! You are now logged in.', 'success');
           onClose();
         }
       }

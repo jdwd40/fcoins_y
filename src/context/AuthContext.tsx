@@ -259,17 +259,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(errorMessage);
       }
 
-      // Check if the response has the expected structure
-      if (!data || !data.token) {
-        console.error('Register response missing token:', data);
-        throw new Error('Register response missing authentication token');
+      // Registration successful - now automatically log in the user
+      // The registration API doesn't return a token, so we need to call login
+      console.log('Registration successful, now logging in automatically...');
+      
+      const loginResponse = await fetch('https://jdwd40.com/api-2/api/users/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: credentials.email, password: credentials.password }),
+      });
+
+      console.log('Auto-login response status:', loginResponse.status, loginResponse.statusText);
+      
+      const loginResponseText = await loginResponse.text();
+      console.log('Raw auto-login response:', loginResponseText);
+      
+      let loginData;
+      try {
+        loginData = JSON.parse(loginResponseText);
+        console.log('Parsed auto-login response data:', loginData);
+      } catch (error) {
+        console.error('Error parsing auto-login response as JSON:', error);
+        throw new Error('Auto-login failed: Server returned invalid JSON response');
+      }
+
+      if (!loginResponse.ok) {
+        let errorMessage = 'Auto-login failed after registration';
+        if (loginData && loginData.msg) {
+          errorMessage = loginData.msg;
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Check if the login response has the expected structure
+      if (!loginData || !loginData.token) {
+        console.error('Auto-login response missing token:', loginData);
+        throw new Error('Auto-login response missing authentication token');
       }
       
       // Create a default user object if user data is missing
-      if (!data.user) {
-        console.warn('Register response missing user data, creating default user');
-        data.user = {
-          id: 1, // Default user ID
+      if (!loginData.user) {
+        console.warn('Auto-login response missing user data, creating default user');
+        loginData.user = {
+          id: 1,
           email: credentials.email,
           username: credentials.username,
           funds: 1000.00
@@ -277,13 +309,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       
       // Ensure user has an ID
-      if (!data.user.id) {
+      if (!loginData.user.id) {
         console.warn('User data missing ID, setting default ID');
-        data.user.id = 1; // Default user ID
+        loginData.user.id = 1;
       }
       
-      handleAuthResponse(data);
-      return true; // Registration successful
+      handleAuthResponse(loginData);
+      return true; // Registration and auto-login successful
     } catch (err) {
       console.error('Registration error:', err);
       setError(err instanceof Error ? err.message : 'Registration failed');
