@@ -129,7 +129,7 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
         {marketStatus && <MarketStatus status={marketStatus} />}
         {marketData?.market_stats && <MarketStats stats={marketData.market_stats} />}
         
-        <div className="container mx-auto px-4 py-8">
+        <div className="py-6">
           <div className="mb-8">
             <MarketValueChart refreshTrigger={refreshTrigger} className="w-full" />
           </div>

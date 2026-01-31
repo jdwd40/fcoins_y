@@ -83,14 +83,14 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
     <div className="p-2 sm:p-6 max-w-4xl mx-auto">
       <div className="flex flex-col md:flex-row justify-between items-start gap-6">
         {/* Coin Info */}
-        <div className="w-full md:w-1/3">
+        <div className="w-full md:w-1/3 min-w-0">
           <h2 className="text-xl sm:text-2xl font-bold mb-4">{coin.name}</h2>
           <div className="space-y-4">
             <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-gray-500 dark:text-gray-400">Current Price</p>
-                  <p className="text-lg font-semibold">{formatCurrency(currentPrice)}</p>
+                  <p className="text-lg font-semibold truncate">{formatCurrency(currentPrice)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500 dark:text-gray-400">24h Change</p>
@@ -100,11 +100,11 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
                 </div>
                 <div>
                   <p className="text-sm text-gray-500 dark:text-gray-400">Market Cap</p>
-                  <p className="text-lg font-semibold">{formatCurrency(marketCap)}</p>
+                  <p className="text-lg font-semibold truncate">{formatCurrency(marketCap)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500 dark:text-gray-400">Supply</p>
-                  <p className="text-lg font-semibold">{coin.circulating_supply.toLocaleString()}</p>
+                  <p className="text-lg font-semibold truncate">{coin.circulating_supply.toLocaleString()}</p>
                 </div>
               </div>
             </div>
@@ -131,7 +131,7 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
         </div>
 
         {/* Price Chart */}
-        <div className="w-full md:w-2/3">
+        <div className="w-full md:w-2/3 min-w-0">
           <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
             <h3 className="text-lg font-semibold mb-4">Price History</h3>
             <PriceChart
