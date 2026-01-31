@@ -50,7 +50,7 @@ export function AuthForms({ onClose }: AuthFormsProps) {
 
   return (
     <div className="w-full max-w-md mx-auto">
-      <h2 className="text-2xl font-bold text-center text-gray-900 dark:text-white mb-8">
+      <h2 className="text-2xl font-bold text-center text-gray-900 dark:text-white mb-4 sm:mb-8">
         {isLogin ? 'Welcome Back' : 'Create Account'}
       </h2>
 

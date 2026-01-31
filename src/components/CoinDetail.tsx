@@ -80,11 +80,11 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
   const activeEvents = events.filter((event) => event.coinId === coin.coin_id);
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-2 sm:p-6 max-w-4xl mx-auto">
       <div className="flex flex-col md:flex-row justify-between items-start gap-6">
         {/* Coin Info */}
         <div className="w-full md:w-1/3">
-          <h2 className="text-2xl font-bold mb-4">{coin.name}</h2>
+          <h2 className="text-xl sm:text-2xl font-bold mb-4">{coin.name}</h2>
           <div className="space-y-4">
             <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
               <div className="grid grid-cols-2 gap-4">
