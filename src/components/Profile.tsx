@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { User, Mail, Wallet, History, X, TrendingUp, TrendingDown, Coins, RefreshCw } from 'lucide-react';
+import { X, RefreshCw } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { 
-  getUserPortfolio, 
-  getUserTransactions, 
+import {
+  getUserPortfolio,
+  getUserTransactions,
   formatCurrency,
   SessionExpiredError,
   type PortfolioItem,
-  type TransactionHistoryItem
+  type TransactionHistoryItem,
 } from '../services/transactionService';
 import { SellForm } from './SellForm';
 import { Modal } from './Modal';
@@ -19,7 +19,7 @@ export function Profile() {
   const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
   const [transactions, setTransactions] = useState<TransactionHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,42 +32,32 @@ export function Profile() {
       setLoading(false);
       return;
     }
-    
     const token = getAuthToken();
     if (!token) {
       setError('Please log in to view your portfolio');
       setLoading(false);
       return;
     }
-
     try {
       setLoading(true);
       setError(null);
-      
-      // Fetch portfolio and transactions in parallel
       const [portfolioData, transactionsData] = await Promise.all([
         getUserPortfolio(user.id, token),
-        getUserTransactions(user.id, token)
+        getUserTransactions(user.id, token),
       ]);
-      
       setPortfolio(portfolioData.portfolio || []);
       setTransactions(transactionsData.transactions || []);
-      
-      // Update user funds if different
       if (portfolioData.user_funds !== undefined && portfolioData.user_funds !== user.funds) {
         const updatedUser = { ...user, funds: portfolioData.user_funds };
         localStorage.setItem('user', JSON.stringify(updatedUser));
         refreshUser();
       }
     } catch (err) {
-      console.error('Error fetching profile data:', err);
-      
       if (err instanceof SessionExpiredError) {
         handleSessionExpired();
         showToast('Your session has expired. Please log in again.', 'error');
         return;
       }
-      
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
@@ -78,24 +68,21 @@ export function Profile() {
     fetchData();
   }, [user]);
 
-  // Check if user is properly logged in with required fields
   if (!user || !user.id) {
     return (
-      <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-600 dark:text-gray-400 mb-4">Please log in to view your profile</p>
-          <button
-            onClick={() => navigate('/')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            Go to Home
+      <div className="min-h-screen bg-paper text-ink flex items-center justify-center px-4">
+        <div className="paper-card max-w-md w-full p-10 text-center">
+          <div className="ornament mb-4"><span className="label-ink">Access</span></div>
+          <h2 className="font-display text-4xl italic text-ink mb-4">Credentials Required</h2>
+          <p className="label mb-6">Present your papers at the floor</p>
+          <button onClick={() => navigate('/')} className="btn-gold">
+            Return Home
           </button>
         </div>
       </div>
     );
   }
 
-  // Get display name safely
   const displayName = user.username || user.email || 'User';
   const displayInitial = displayName.charAt(0).toUpperCase();
 
@@ -111,7 +98,6 @@ export function Profile() {
   const handleSellSuccess = () => {
     setShowSellModal(false);
     setSelectedCoin(null);
-    // Refresh portfolio data after successful sale
     fetchData();
   };
 
@@ -119,240 +105,219 @@ export function Profile() {
   const totalProfitLoss = portfolio.reduce((sum, item) => sum + (Number(item.profit_loss) || 0), 0);
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-          <button
-            onClick={handleClose}
-            className="absolute right-4 top-4 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
-            aria-label="Close profile"
-          >
-            <X className="w-5 h-5" />
-          </button>
-          
-          <div className="p-6 sm:p-8">
-            {/* User Info Header */}
-            <div className="flex items-center gap-6 mb-8">
-              <div className="w-20 h-20 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center">
-                <span className="text-3xl font-medium text-indigo-600 dark:text-indigo-400">
-                  {displayInitial}
-                </span>
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                  {displayName}
-                </h1>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                    <Mail className="w-4 h-4" />
-                    <span>{user.email || 'No email provided'}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                    <Wallet className="w-4 h-4" />
-                    <span>{formatCurrency(Number(user.funds) || 0)}</span>
-                  </div>
-                </div>
+    <div className="min-h-screen bg-paper text-ink">
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-8 py-8 sm:py-12">
+        <button
+          onClick={handleClose}
+          className="mb-8 label hover:text-gold transition-colors inline-flex items-center gap-2"
+        >
+          <X className="w-3 h-3" /> Return to Floor
+        </button>
+
+        {/* Portfolio masthead */}
+        <div className="paper-card p-6 sm:p-10 mb-10 animate-reveal">
+          <div className="flex items-start gap-6 mb-8">
+            <div className="w-24 h-24 shrink-0 border border-rule flex items-center justify-center bg-paper-alt">
+              <span className="font-display italic text-5xl text-gold"
+                    style={{ fontVariationSettings: "'opsz' 144" }}>
+                {displayInitial}
+              </span>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="label mb-1">Account Holder</div>
+              <h1 className="font-display text-4xl sm:text-5xl italic text-ink leading-none truncate"
+                  style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 50" }}>
+                {displayName}
+              </h1>
+              <div className="mt-3 font-mono text-xs text-ink-mute tracking-caps uppercase">
+                {user.email || '—'}
               </div>
             </div>
+          </div>
 
-            {/* Portfolio Summary */}
-            {!loading && !error && portfolio.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
-                  <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-1">
-                    <Coins className="w-4 h-4" />
-                    <span className="text-sm font-medium">Portfolio Value</span>
-                  </div>
-                  <p className="text-xl font-bold text-gray-900 dark:text-white">
-                    {formatCurrency(totalPortfolioValue)}
-                  </p>
-                </div>
-                <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
-                  <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-1">
-                    <Wallet className="w-4 h-4" />
-                    <span className="text-sm font-medium">Available Funds</span>
-                  </div>
-                  <p className="text-xl font-bold text-gray-900 dark:text-white">
-                    {formatCurrency(Number(user.funds) || 0)}
-                  </p>
-                </div>
-                <div className={`rounded-lg p-4 ${totalProfitLoss >= 0 ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}>
-                  <div className={`flex items-center gap-2 mb-1 ${totalProfitLoss >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                    {totalProfitLoss >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                    <span className="text-sm font-medium">Total P/L</span>
-                  </div>
-                  <p className={`text-xl font-bold ${totalProfitLoss >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                    {totalProfitLoss >= 0 ? '+' : ''}{formatCurrency(totalProfitLoss)}
-                  </p>
-                </div>
-              </div>
-            )}
+          <div className="rule-thin mb-6"></div>
 
-            {/* Loading State */}
-            {loading && (
-              <div className="flex items-center justify-center py-12">
-                <RefreshCw className="w-8 h-8 animate-spin text-blue-500" />
-                <span className="ml-3 text-gray-600 dark:text-gray-400">Loading your portfolio...</span>
+          {/* Portfolio summary stats */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <div>
+              <div className="label mb-2">Portfolio Value</div>
+              <div className="numeral text-ink text-4xl" style={{ fontVariationSettings: "'opsz' 144" }}>
+                {formatCurrency(totalPortfolioValue)}
               </div>
-            )}
-
-            {/* Error State */}
-            {error && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
-                <p className="text-red-600 dark:text-red-400">{error}</p>
-                <button
-                  onClick={fetchData}
-                  className="mt-2 text-sm text-red-600 dark:text-red-400 hover:underline"
-                >
-                  Try again
-                </button>
+            </div>
+            <div className="sm:border-l sm:border-rule sm:pl-6">
+              <div className="label mb-2">Cash at Bank</div>
+              <div className="numeral text-ink text-4xl" style={{ fontVariationSettings: "'opsz' 144" }}>
+                {formatCurrency(Number(user.funds) || 0)}
               </div>
-            )}
-
-            {/* Portfolio Holdings */}
-            {!loading && !error && (
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-6 mb-8">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                    <Coins className="w-5 h-5" />
-                    Your Holdings
-                  </h2>
-                  <button
-                    onClick={fetchData}
-                    className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                    title="Refresh"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                  </button>
-                </div>
-                
-                {portfolio.length === 0 ? (
-                  <div className="text-center py-8 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                    <Coins className="w-12 h-12 mx-auto text-gray-400 mb-3" />
-                    <p className="text-gray-500 dark:text-gray-400">You don't own any coins yet.</p>
-                    <button
-                      onClick={() => navigate('/')}
-                      className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                    >
-                      Browse Coins
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {portfolio.map((item) => (
-                      <div
-                        key={item.portfolio_id}
-                        className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
-                              {(item.coin_symbol || '?').charAt(0)}
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-900 dark:text-white">
-                                {item.coin_name} ({item.coin_symbol})
-                              </p>
-                              <p className="text-sm text-gray-500 dark:text-gray-400">
-                                {Number(item.quantity || 0).toFixed(4)} coins @ {formatCurrency(Number(item.average_purchase_price) || 0)} avg
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right mr-4">
-                          <p className="font-medium text-gray-900 dark:text-white">
-                            {formatCurrency(Number(item.total_value) || 0)}
-                          </p>
-                          <p className={`text-sm ${Number(item.profit_loss) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                            {Number(item.profit_loss) >= 0 ? '+' : ''}{formatCurrency(Number(item.profit_loss) || 0)} ({Number(item.profit_loss_percentage || 0).toFixed(2)}%)
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => handleSellClick(item)}
-                          className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
-                        >
-                          Sell
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+            </div>
+            <div className="sm:border-l sm:border-rule sm:pl-6">
+              <div className="label mb-2">Unrealised P/L</div>
+              <div className={`numeral text-4xl ${totalProfitLoss >= 0 ? 'text-verdigris' : 'text-oxblood'}`}
+                   style={{ fontVariationSettings: "'opsz' 144" }}>
+                {totalProfitLoss >= 0 ? '+' : ''}{formatCurrency(totalProfitLoss)}
               </div>
-            )}
-
-            {/* Transaction History */}
-            {!loading && !error && (
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <History className="w-5 h-5" />
-                  Transaction History
-                </h2>
-                
-                {transactions.length === 0 ? (
-                  <div className="text-center py-8 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                    <History className="w-12 h-12 mx-auto text-gray-400 mb-3" />
-                    <p className="text-gray-500 dark:text-gray-400">No transactions yet.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {transactions.slice(0, 10).map((transaction) => (
-                      <div
-                        key={transaction.transaction_id}
-                        className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div
-                            className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                              transaction.type === 'BUY'
-                                ? 'bg-green-100 dark:bg-green-900'
-                                : 'bg-red-100 dark:bg-red-900'
-                            }`}
-                          >
-                            {transaction.type === 'BUY' ? (
-                              <TrendingUp className={`w-5 h-5 text-green-600 dark:text-green-400`} />
-                            ) : (
-                              <TrendingDown className={`w-5 h-5 text-red-600 dark:text-red-400`} />
-                            )}
-                          </div>
-                          <div>
-                            <p className="font-medium text-gray-900 dark:text-white">
-                              {transaction.type} {transaction.coin_name}
-                            </p>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                              {new Date(transaction.created_at).toLocaleDateString('en-GB', {
-                                day: 'numeric',
-                                month: 'short',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-medium text-gray-900 dark:text-white">
-                            {Number(transaction.quantity || 0).toFixed(4)} {transaction.coin_symbol}
-                          </p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            {formatCurrency(Number(transaction.total_amount) || 0)}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                    {transactions.length > 10 && (
-                      <p className="text-center text-sm text-gray-500 dark:text-gray-400">
-                        Showing 10 of {transactions.length} transactions
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+            </div>
           </div>
         </div>
+
+        {loading && (
+          <div className="text-center py-16 label animate-flicker">Balancing the books…</div>
+        )}
+
+        {error && (
+          <div className="border-l-2 border-oxblood bg-card p-5 mb-10">
+            <div className="label text-oxblood mb-1">Error</div>
+            <p className="font-mono text-xs text-ink-dim mb-3">{error}</p>
+            <button onClick={fetchData} className="btn-ink">Retry</button>
+          </div>
+        )}
+
+        {/* Holdings */}
+        {!loading && !error && (
+          <section className="mb-16 animate-reveal delay-150">
+            <div className="flex items-end justify-between mb-6 pb-4 border-b border-rule">
+              <div>
+                <div className="label mb-1">Section I</div>
+                <h2 className="font-display text-3xl sm:text-4xl italic text-ink"
+                    style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 40" }}>
+                  Holdings
+                </h2>
+              </div>
+              <button onClick={fetchData} className="label hover:text-gold inline-flex items-center gap-2">
+                <RefreshCw className="w-3 h-3" /> Refresh
+              </button>
+            </div>
+
+            {portfolio.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="ornament mb-4"><span className="label-ink">Empty Ledger</span></div>
+                <p className="font-display italic text-ink-dim text-xl mb-4">
+                  You hold no positions at present
+                </p>
+                <button onClick={() => navigate('/')} className="btn-gold">
+                  Browse the Issues
+                </button>
+              </div>
+            ) : (
+              <div className="divide-rule border border-rule">
+                {portfolio.map((item) => {
+                  const pl = Number(item.profit_loss) || 0;
+                  const plPct = Number(item.profit_loss_percentage || 0);
+                  const up = pl >= 0;
+                  return (
+                    <div
+                      key={item.portfolio_id}
+                      className="flex items-center gap-4 p-5 bg-card hover:bg-paper-alt transition-colors"
+                    >
+                      <div className="w-12 h-12 shrink-0 border border-rule flex items-center justify-center bg-paper-alt">
+                        <span className="font-display italic text-xl text-gold">
+                          {(item.coin_symbol || '?').charAt(0)}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-display italic text-xl text-ink truncate">
+                          {item.coin_name}
+                        </div>
+                        <div className="font-mono text-[0.7rem] text-ink-mute tracking-caps uppercase tnum">
+                          {Number(item.quantity || 0).toFixed(4)} {item.coin_symbol} · avg {formatCurrency(Number(item.average_purchase_price) || 0)}
+                        </div>
+                      </div>
+                      <div className="text-right hidden sm:block">
+                        <div className="font-mono text-sm text-ink tnum">
+                          {formatCurrency(Number(item.total_value) || 0)}
+                        </div>
+                        <div className={`font-mono text-xs tnum ${up ? 'text-verdigris' : 'text-oxblood'}`}>
+                          {up ? '+' : ''}{formatCurrency(pl)} ({plPct.toFixed(2)}%)
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleSellClick(item)}
+                        className="btn-oxblood shrink-0"
+                      >
+                        Sell
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Transaction history */}
+        {!loading && !error && (
+          <section className="animate-reveal delay-300">
+            <div className="mb-6 pb-4 border-b border-rule">
+              <div className="label mb-1">Section II</div>
+              <h2 className="font-display text-3xl sm:text-4xl italic text-ink"
+                  style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 40" }}>
+                The Journal
+              </h2>
+            </div>
+
+            {transactions.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="font-display italic text-ink-dim">No entries yet</p>
+              </div>
+            ) : (
+              <div className="border border-rule">
+                {/* Table header */}
+                <div className="hidden sm:grid grid-cols-12 gap-4 px-5 py-3 border-b border-rule bg-paper-alt">
+                  <div className="label col-span-1">Type</div>
+                  <div className="label col-span-4">Instrument</div>
+                  <div className="label col-span-3">Date</div>
+                  <div className="label col-span-2 text-right">Quantity</div>
+                  <div className="label col-span-2 text-right">Value</div>
+                </div>
+                <div className="divide-rule">
+                  {transactions.slice(0, 20).map((transaction) => {
+                    const isBuy = transaction.type === 'BUY';
+                    return (
+                      <div
+                        key={transaction.transaction_id}
+                        className="grid grid-cols-1 sm:grid-cols-12 gap-4 px-5 py-4 bg-card hover:bg-paper-alt transition-colors"
+                      >
+                        <div className="sm:col-span-1">
+                          <span className={`font-mono text-[0.65rem] tracking-caps uppercase font-bold ${
+                            isBuy ? 'text-verdigris' : 'text-oxblood'
+                          }`}>
+                            {isBuy ? '▲ Buy' : '▼ Sell'}
+                          </span>
+                        </div>
+                        <div className="sm:col-span-4 font-display italic text-lg text-ink truncate">
+                          {transaction.coin_name}
+                        </div>
+                        <div className="sm:col-span-3 font-mono text-[0.7rem] text-ink-mute tracking-caps">
+                          {new Date(transaction.created_at).toLocaleDateString('en-GB', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </div>
+                        <div className="sm:col-span-2 font-mono text-sm text-ink-dim tnum sm:text-right">
+                          {Number(transaction.quantity || 0).toFixed(4)} {transaction.coin_symbol}
+                        </div>
+                        <div className="sm:col-span-2 font-mono text-sm text-ink tnum sm:text-right">
+                          {formatCurrency(Number(transaction.total_amount) || 0)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {transactions.length > 20 && (
+                  <div className="px-5 py-3 border-t border-rule text-center label bg-paper-alt">
+                    Showing 20 of {transactions.length} entries
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        )}
       </div>
 
-      {/* Sell Modal */}
       {showSellModal && selectedCoin && (
         <Modal
           isOpen={showSellModal}
@@ -371,7 +336,7 @@ export function Profile() {
               circulating_supply: 0,
               price_change_24h: 0,
               date_added: '',
-              latest_price: selectedCoin.current_price
+              latest_price: selectedCoin.current_price,
             }}
             onSuccess={handleSellSuccess}
           />

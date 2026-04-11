@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { Mail, Lock, User } from 'lucide-react';
 
 interface AuthFormsProps {
   onClose: () => void;
@@ -19,131 +18,111 @@ export function AuthForms({ onClose }: AuthFormsProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     try {
       let success = false;
-      
       if (isLogin) {
         success = await login({ email: formData.email, password: formData.password });
         if (success) {
-          showToast('Successfully logged in!', 'success');
+          showToast('Welcome back to the exchange', 'success');
           onClose();
         }
       } else {
         success = await register(formData);
         if (success) {
-          showToast('Account created successfully! You are now logged in.', 'success');
+          showToast('Account opened. Books balanced.', 'success');
           onClose();
         }
       }
     } catch (err) {
-      // Error is handled by the auth context
+      // handled by context
     }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value
+      [e.target.name]: e.target.value,
     }));
   };
 
   return (
-    <div className="w-full max-w-md mx-auto">
-      <h2 className="text-2xl font-bold text-center text-gray-900 dark:text-white mb-4 sm:mb-8">
-        {isLogin ? 'Welcome Back' : 'Create Account'}
-      </h2>
+    <div className="w-full max-w-md mx-auto py-4">
+      <div className="text-center mb-8">
+        <div className="label mb-3">{isLogin ? 'Ledger Access' : 'Open an Account'}</div>
+        <h2 className="font-display text-5xl italic text-ink leading-none"
+            style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 50" }}>
+          {isLogin ? 'Welcome\u00a0Back' : 'Join\u00a0the\u00a0Floor'}
+        </h2>
+        <div className="ornament mt-5">
+          <span className="text-gold">❦</span>
+        </div>
+      </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-md shadow-sm">
-          <div className="flex items-center">
-            <svg className="h-5 w-5 mr-2 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            <span className="font-medium">
-              {isLogin ? 'Login Failed: ' : 'Registration Failed: '}
-            </span>
+        <div className="mb-6 border-l-2 border-oxblood px-4 py-3 bg-card">
+          <div className="label text-oxblood mb-1">
+            {isLogin ? 'Access Denied' : 'Registration Failed'}
           </div>
-          <p className="mt-1 ml-7">{error}</p>
+          <p className="font-mono text-xs text-ink-dim">{error}</p>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-6">
         {!isLogin && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Username
-            </label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                name="username"
-                value={formData.username}
-                onChange={handleChange}
-                className="w-full pl-10 pr-4 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
-                placeholder="Enter your username"
-                required={!isLogin}
-              />
-            </div>
+            <label className="label block mb-2">Username</label>
+            <input
+              type="text"
+              name="username"
+              value={formData.username}
+              onChange={handleChange}
+              className="input-ink"
+              placeholder="e.g. j_dupont"
+              required={!isLogin}
+            />
           </div>
         )}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Email
-          </label>
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              className="w-full pl-10 pr-4 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
-              placeholder="Enter your email"
-              required
-            />
-          </div>
+          <label className="label block mb-2">Electronic Post</label>
+          <input
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            className="input-ink"
+            placeholder="you@elsewhere.co"
+            required
+          />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Password
-          </label>
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              className="w-full pl-10 pr-4 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
-              placeholder="Enter your password"
-              required
-            />
-          </div>
+          <label className="label block mb-2">Passphrase</label>
+          <input
+            type="password"
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
+            className="input-ink"
+            placeholder="••••••••"
+            required
+          />
         </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading ? 'Please wait...' : (isLogin ? 'Sign In' : 'Create Account')}
+        <button type="submit" disabled={loading} className="btn-gold w-full">
+          {loading ? 'Consulting the ledger…' : isLogin ? 'Enter Exchange' : 'Open Account'}
         </button>
       </form>
 
-      <div className="mt-4 text-center">
+      <div className="mt-8 pt-6 border-t border-rule text-center">
         <button
           onClick={() => {
             setIsLogin(!isLogin);
-            // Clear any existing error messages when switching forms
             clearError();
           }}
-          className="text-sm text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+          className="label hover:text-gold transition-colors"
         >
-          {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+          {isLogin ? '→ Register a New Account' : '← Return to Sign In'}
         </button>
       </div>
     </div>

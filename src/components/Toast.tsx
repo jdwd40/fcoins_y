@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+import { useEffect } from 'react';
+import { X } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'info';
 
@@ -11,44 +11,54 @@ interface ToastProps {
   duration?: number;
 }
 
-export function Toast({ 
-  message, 
-  type, 
-  isVisible, 
-  onClose, 
-  duration = 3000 
+export function Toast({
+  message,
+  type,
+  isVisible,
+  onClose,
+  duration = 3000,
 }: ToastProps) {
   useEffect(() => {
     if (isVisible) {
       const timer = setTimeout(() => {
         onClose();
       }, duration);
-      
       return () => clearTimeout(timer);
     }
   }, [isVisible, duration, onClose]);
 
   if (!isVisible) return null;
 
-  const bgColor = {
-    success: 'bg-green-100 border-green-500 text-green-700',
-    error: 'bg-red-100 border-red-500 text-red-700',
-    info: 'bg-blue-100 border-blue-500 text-blue-700'
+  const accentVar = {
+    success: 'var(--verdigris)',
+    error: 'var(--oxblood)',
+    info: 'var(--gold)',
   }[type];
 
-  const Icon = {
-    success: CheckCircle,
-    error: AlertCircle,
-    info: AlertCircle
+  const label = {
+    success: 'Filed',
+    error: 'Rejected',
+    info: 'Notice',
+  }[type];
+
+  const labelClass = {
+    success: 'text-verdigris',
+    error: 'text-oxblood',
+    info: 'text-gold',
   }[type];
 
   return (
-    <div className="fixed top-4 right-4 z-50 animate-fade-in-down">
-      <div className={`p-4 rounded-md shadow-md border-l-4 ${bgColor} flex items-center max-w-md`}>
-        <Icon className="w-5 h-5 mr-3" />
-        <div className="flex-1">{message}</div>
-        <button onClick={onClose} className="ml-3 text-gray-500 hover:text-gray-700">
-          <XCircle className="w-5 h-5" />
+    <div className="fixed top-6 right-6 z-[100] animate-fade-in-down">
+      <div
+        className="bg-card border border-rule min-w-[320px] max-w-md flex items-start gap-3 p-4 shadow-card-dark"
+        style={{ borderLeft: `2px solid ${accentVar}` }}
+      >
+        <div className="flex-1">
+          <div className={`label ${labelClass} mb-1`}>{label}</div>
+          <div className="font-display italic text-ink text-base leading-snug">{message}</div>
+        </div>
+        <button onClick={onClose} className="text-ink-mute hover:text-ink transition-colors shrink-0">
+          <X className="w-4 h-4" />
         </button>
       </div>
     </div>

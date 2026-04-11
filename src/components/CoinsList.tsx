@@ -1,5 +1,3 @@
-import React from 'react';
-import { Coins } from 'lucide-react';
 import { Coin, MarketEvent } from '../types';
 
 interface CoinsListProps {
@@ -21,50 +19,56 @@ export function CoinsList({ coins, onSelectCoin, selectedCoinId }: CoinsListProp
   const sortedCoins = sortCoinsByPrice(coins);
 
   return (
-    <div className="w-full bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden mb-6">
-      <div className="p-4 bg-indigo-600 text-white flex items-center gap-2">
-        <Coins className="w-5 h-5" />
-        <h2 className="font-semibold">Coins by Value</h2>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 p-3 sm:p-4">
-        {sortedCoins.map((coin) => {
-          const price = parseFloat(coin?.current_price?.toString() ?? '0');
-          const priceChange = parseFloat(coin?.price_change_24h?.toString() ?? '0');
-          return (
-            <div 
-              key={coin.coin_id} 
-              className={`bg-gray-50 dark:bg-gray-700 rounded-lg hover:shadow-md transition-all ${
-                selectedCoinId === coin.coin_id ? 'ring-2 ring-indigo-500' : ''
-              }`}
-            >
-              <button
-                onClick={() => onSelectCoin(coin.coin_id)}
-                className="w-full p-4 text-left focus:outline-none"
-              >
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="font-medium text-gray-900 dark:text-white">{coin.name}</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{coin.symbol}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-medium text-gray-900 dark:text-white">
-                      £{price.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
-                    <p
-                      className={`text-sm ${
-                        priceChange >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}
-                    >
-                      {priceChange >= 0 ? '↑' : '↓'}{' '}
-                      {Math.abs(priceChange).toFixed(2)}%
-                    </p>
-                  </div>
-                </div>
-              </button>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-px bg-rule">
+      {sortedCoins.map((coin, i) => {
+        const price = parseFloat(coin?.current_price?.toString() ?? '0');
+        const priceChange = parseFloat(coin?.price_change_24h?.toString() ?? '0');
+        const up = priceChange >= 0;
+        const selected = selectedCoinId === coin.coin_id;
+        return (
+          <button
+            key={coin.coin_id}
+            onClick={() => onSelectCoin(coin.coin_id)}
+            className={`group relative text-left bg-card p-6 transition-all duration-300 hover:bg-paper-alt animate-reveal-fast ${
+              selected ? 'ring-1 ring-gold' : ''
+            }`}
+            style={{ animationDelay: `${Math.min(i * 40, 600)}ms` }}
+          >
+            {/* Top row: label + trend arrow */}
+            <div className="flex items-start justify-between mb-4">
+              <div className="min-w-0 flex-1">
+                <div className="label mb-1 truncate">№ {String(coin.coin_id).padStart(3, '0')}</div>
+                <h3 className="font-display text-2xl italic text-ink leading-tight truncate"
+                    style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 30" }}>
+                  {coin.name}
+                </h3>
+              </div>
+              <div className={`font-mono text-xs font-bold tracking-caps shrink-0 ml-3 ${up ? 'text-verdigris' : 'text-oxblood'}`}>
+                {up ? '▲' : '▼'}
+              </div>
             </div>
-          );
-        })}
-      </div>
+
+            <div className="rule-thin mb-4"></div>
+
+            {/* Price row */}
+            <div className="flex items-end justify-between">
+              <div>
+                <div className="label mb-1">{coin.symbol}</div>
+                <div className="numeral text-ink text-3xl"
+                     style={{ fontVariationSettings: "'opsz' 144" }}>
+                  £{price.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+              </div>
+              <div className={`font-mono text-xs tnum ${up ? 'text-verdigris' : 'text-oxblood'}`}>
+                {up ? '+' : ''}{priceChange.toFixed(2)}%
+              </div>
+            </div>
+
+            {/* Hover indicator line */}
+            <div className="absolute bottom-0 left-0 right-0 h-px bg-gold origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500"></div>
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import type { Coin } from '../types';
 import { sellCoins, getUserPortfolio, formatCurrency, parsePrice, SessionExpiredError } from '../services/transactionService';
-import { X, Check, AlertCircle } from 'lucide-react';
+import { X, Check } from 'lucide-react';
 
 interface SellFormProps {
   coin: Coin;
@@ -30,40 +30,31 @@ export function SellForm({ coin, onSuccess }: SellFormProps) {
 
   const currentPrice = parsePrice(coin.current_price);
 
-  // Fetch user's portfolio
   useEffect(() => {
     const fetchPortfolio = async () => {
       if (!user) {
         setLoadingPortfolio(false);
         return;
       }
-
       try {
         setLoadingPortfolio(true);
         const token = getAuthToken();
-        
         if (!token) {
           setLoadingPortfolio(false);
           return;
         }
-
         const data = await getUserPortfolio(user.id, token);
         const portfolioData: Portfolio = {};
-
-        // Convert portfolio data to the format we need
         if (data.portfolio) {
           data.portfolio.forEach((item: any) => {
             portfolioData[item.coin_id] = {
               quantity: parseFloat(item.quantity),
-              averagePrice: parseFloat(item.average_purchase_price || item.average_price)
+              averagePrice: parseFloat(item.average_purchase_price || item.average_price),
             };
           });
         }
-
         setPortfolio(portfolioData);
       } catch (err) {
-        console.error('Error fetching portfolio:', err);
-        
         if (err instanceof SessionExpiredError) {
           handleSessionExpired();
           showToast('Your session has expired. Please log in again.', 'error');
@@ -72,11 +63,9 @@ export function SellForm({ coin, onSuccess }: SellFormProps) {
         setLoadingPortfolio(false);
       }
     };
-
     fetchPortfolio();
   }, [user]);
 
-  // Calculate total value whenever amount changes
   useEffect(() => {
     const amountValue = parseFloat(amount) || 0;
     setTotalValue(amountValue * currentPrice);
@@ -84,7 +73,6 @@ export function SellForm({ coin, onSuccess }: SellFormProps) {
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    // Allow only numbers and decimals
     if (value === '' || /^\d*\.?\d*$/.test(value)) {
       setAmount(value);
       setError(null);
@@ -93,81 +81,49 @@ export function SellForm({ coin, onSuccess }: SellFormProps) {
 
   const handleSellClick = (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!user) {
       showToast('Please log in to sell coins', 'error');
       return;
     }
-
     const amountValue = parseFloat(amount);
-    
     if (!amountValue || amountValue <= 0) {
       setError('Please enter a valid amount greater than 0');
       return;
     }
-
     const availableAmount = portfolio[coin.coin_id]?.quantity || 0;
-    
     if (amountValue > availableAmount) {
-      setError(`Insufficient coins in portfolio. You have ${availableAmount.toFixed(4)} coins available to sell.`);
+      setError(`Insufficient holdings. You have ${availableAmount.toFixed(4)} available.`);
       return;
     }
-
-    // Show confirmation dialog
     setShowConfirmation(true);
   };
 
   const handleConfirmSell = async () => {
     if (!user) return;
-    
     const amountValue = parseFloat(amount);
-
     try {
       setLoading(true);
       setError(null);
-      
       const token = getAuthToken();
-      if (!token) {
-        throw new Error('Authentication token not found');
-      }
-
+      if (!token) throw new Error('Authentication token not found');
       const result = await sellCoins(user.id, coin.coin_id, amountValue, token);
-
-      // Update local user data with new funds balance from response or calculated
       const newBalance = result.data?.new_balance ?? (user.funds + totalValue);
-      const updatedUser = {
-        ...user,
-        funds: newBalance
-      };
+      const updatedUser = { ...user, funds: newBalance };
       localStorage.setItem('user', JSON.stringify(updatedUser));
-      
-      // Refresh user in context to sync state
       refreshUser();
 
-      // Show success message
-      showToast(`Successfully sold ${amountValue} ${coin.symbol}!`, 'success');
-      
-      // Reset form
+      showToast(`Sold ${amountValue} ${coin.symbol}`, 'success');
       setAmount('');
       setShowConfirmation(false);
-      
-      // Update local portfolio state
-      setPortfolio(prev => ({
+      setPortfolio((prev) => ({
         ...prev,
         [coin.coin_id]: {
           ...prev[coin.coin_id],
-          quantity: prev[coin.coin_id].quantity - amountValue
-        }
+          quantity: prev[coin.coin_id].quantity - amountValue,
+        },
       }));
-      
-      // Call onSuccess callback if provided
-      if (onSuccess) {
-        onSuccess();
-      }
+      if (onSuccess) onSuccess();
     } catch (err) {
-      console.error('Sell form error:', err);
-      
-      // Handle session expired error
       if (err instanceof SessionExpiredError) {
         handleSessionExpired();
         showToast('Your session has expired. Please log in again.', 'error');
@@ -175,7 +131,6 @@ export function SellForm({ coin, onSuccess }: SellFormProps) {
         setLoading(false);
         return;
       }
-      
       const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
       setError(errorMessage);
       showToast(errorMessage, 'error');
@@ -185,73 +140,56 @@ export function SellForm({ coin, onSuccess }: SellFormProps) {
     }
   };
 
-  const handleCancelSell = () => {
-    setShowConfirmation(false);
-  };
+  const handleCancelSell = () => setShowConfirmation(false);
 
   const availableAmount = portfolio[coin.coin_id]?.quantity || 0;
   const insufficientCoins = parseFloat(amount) > availableAmount;
   const amountValue = parseFloat(amount) || 0;
 
-  // Confirmation Dialog
   if (showConfirmation) {
     return (
-      <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">Confirm Sale</h3>
-          <button 
-            onClick={handleCancelSell}
-            className="text-gray-500 hover:text-gray-700"
-            disabled={loading}
-          >
-            <X className="w-5 h-5" />
+      <div className="border border-rule p-5 bg-paper-alt">
+        <div className="flex justify-between items-center mb-4 pb-3 border-b border-rule">
+          <div>
+            <div className="label text-oxblood">Confirm Sale</div>
+            <h3 className="font-display italic text-2xl text-ink">Final Review</h3>
+          </div>
+          <button onClick={handleCancelSell} disabled={loading} className="text-ink-mute hover:text-ink">
+            <X className="w-4 h-4" />
           </button>
         </div>
-        
-        <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-md mb-4">
-          <div className="flex items-center mb-2">
-            <AlertCircle className="w-5 h-5 text-red-500 mr-2" />
-            <span className="font-medium">Transaction Details</span>
+
+        <dl className="space-y-2 mb-5 font-mono text-sm">
+          <div className="flex justify-between">
+            <dt className="text-ink-mute">Quantity</dt>
+            <dd className="text-ink tnum">{amountValue} {coin.symbol}</dd>
           </div>
-          <div className="space-y-2 pl-7">
-            <p>You are about to sell:</p>
-            <p className="font-medium">{amountValue} {coin.symbol} ({coin.name})</p>
-            <p>at {formatCurrency(currentPrice)} per coin</p>
-            <p className="font-medium">Total value: {formatCurrency(totalValue)}</p>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Your balance after sale: {formatCurrency((user?.funds || 0) + totalValue)}
-            </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Remaining holdings: {(availableAmount - amountValue).toFixed(4)} {coin.symbol}
-            </p>
+          <div className="flex justify-between">
+            <dt className="text-ink-mute">Unit Price</dt>
+            <dd className="text-ink tnum">{formatCurrency(currentPrice)}</dd>
           </div>
-        </div>
-        
-        <div className="flex space-x-3">
-          <button
-            onClick={handleCancelSell}
-            className="flex-1 py-2 px-4 border border-gray-300 rounded-md font-medium text-gray-700 dark:text-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-            disabled={loading}
-          >
-            Cancel
+          <div className="flex justify-between border-t border-rule pt-2 mt-2">
+            <dt className="text-ink font-bold">Proceeds</dt>
+            <dd className="text-verdigris tnum font-bold">+{formatCurrency(totalValue)}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-ink-mute">After Sale</dt>
+            <dd className="text-ink-dim tnum">{formatCurrency((user?.funds || 0) + totalValue)}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-ink-mute">Remaining Holdings</dt>
+            <dd className="text-ink-dim tnum">{(availableAmount - amountValue).toFixed(4)} {coin.symbol}</dd>
+          </div>
+        </dl>
+
+        <div className="flex gap-3">
+          <button onClick={handleCancelSell} disabled={loading} className="btn-ink flex-1">
+            Withdraw
           </button>
-          <button
-            onClick={handleConfirmSell}
-            className="flex-1 py-2 px-4 rounded-md font-medium text-white bg-red-600 hover:bg-red-700 flex justify-center items-center"
-            disabled={loading}
-          >
-            {loading ? (
-              <span className="flex items-center">
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Processing...
-              </span>
-            ) : (
-              <span className="flex items-center">
-                <Check className="w-4 h-4 mr-2" />
-                Confirm Sale
+          <button onClick={handleConfirmSell} disabled={loading} className="btn-oxblood flex-1">
+            {loading ? 'Filing…' : (
+              <span className="inline-flex items-center gap-2 justify-center">
+                <Check className="w-3 h-3" /> Execute
               </span>
             )}
           </button>
@@ -260,95 +198,76 @@ export function SellForm({ coin, onSuccess }: SellFormProps) {
     );
   }
 
-  // Sell Form
   return (
-    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
-      <h3 className="text-lg font-semibold mb-3">Sell {coin.symbol}</h3>
-      
+    <div className="border border-rule p-5">
+      <div className="mb-4 pb-3 border-b border-rule">
+        <div className="label">Order · Sell</div>
+        <h3 className="font-display italic text-2xl text-ink">Divest {coin.symbol}</h3>
+      </div>
+
       {loadingPortfolio ? (
-        <div className="text-center py-4">
-          <p className="text-gray-500">Loading portfolio...</p>
-        </div>
+        <div className="py-6 text-center label animate-flicker">Reading the books…</div>
       ) : !user ? (
-        <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-md text-center">
-          <p className="text-gray-700 dark:text-gray-300 mb-3">
-            Please log in to sell {coin.symbol}
-          </p>
-          <button
-            onClick={() => showToast('Please log in to continue', 'info')}
-            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-          >
-            Log In
+        <div className="text-center py-6">
+          <p className="font-display italic text-ink-dim mb-3">Sign in to file an order</p>
+          <button onClick={() => showToast('Please log in to continue', 'info')} className="btn-gold">
+            Sign In
           </button>
         </div>
       ) : availableAmount <= 0 ? (
-        <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-md text-center">
-          <p className="text-gray-500 dark:text-gray-400">
-            You don't own any {coin.symbol} to sell
-          </p>
+        <div className="py-6 text-center">
+          <p className="font-display italic text-ink-dim">No {coin.symbol} in holdings</p>
         </div>
       ) : (
-        <form onSubmit={handleSellClick} className="space-y-4">
+        <form onSubmit={handleSellClick} className="space-y-5">
           <div>
-            <label htmlFor="sell-amount" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Amount to sell
-            </label>
+            <label htmlFor="sell-amount" className="label block mb-2">Quantity</label>
             <div className="relative">
               <input
                 id="sell-amount"
                 type="text"
                 value={amount}
                 onChange={handleAmountChange}
-                className={`w-full p-2 border rounded-md focus:ring-2 focus:outline-none dark:bg-gray-700 dark:text-white ${
-                  insufficientCoins ? 'border-red-500 focus:ring-red-200' : 'border-gray-300 dark:border-gray-600 focus:ring-red-200'
-                }`}
+                className="input-ink"
                 placeholder="0.00"
                 disabled={loading}
               />
-              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                <span className="text-gray-500">{coin.symbol}</span>
+              <div className="absolute inset-y-0 right-0 flex items-center pointer-events-none">
+                <span className="font-mono text-xs text-ink-mute tracking-caps">{coin.symbol}</span>
               </div>
             </div>
             <button
               type="button"
               onClick={() => setAmount(availableAmount.toString())}
-              className="mt-1 text-xs text-red-600 hover:text-red-700 dark:text-red-400"
+              className="mt-2 label hover:text-gold transition-colors"
             >
-              Sell all ({availableAmount.toFixed(4)})
+              → Divest all ({availableAmount.toFixed(4)})
             </button>
           </div>
 
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-baseline py-3 border-y border-rule">
             <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Price per coin</p>
-              <p className="font-medium">{formatCurrency(currentPrice)}</p>
+              <div className="label mb-1">Unit</div>
+              <div className="font-mono text-sm text-ink tnum">{formatCurrency(currentPrice)}</div>
             </div>
-            <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Total value</p>
-              <p className="font-medium text-green-600 dark:text-green-400">
-                +{formatCurrency(totalValue)}
-              </p>
+            <div className="text-right">
+              <div className="label mb-1">Proceeds</div>
+              <div className="font-mono text-base text-verdigris tnum">+{formatCurrency(totalValue)}</div>
             </div>
           </div>
 
-          <div className="text-sm text-gray-500 dark:text-gray-400">
-            Available: {availableAmount.toFixed(4)} {coin.symbol}
+          <div className="label">
+            Holdings · <span className="text-ink-dim">{availableAmount.toFixed(4)} {coin.symbol}</span>
           </div>
 
-          {error && (
-            <div className="text-sm text-red-500">{error}</div>
-          )}
+          {error && <div className="font-mono text-xs text-oxblood">{error}</div>}
 
           <button
             type="submit"
-            className={`w-full py-2 px-4 rounded-md font-medium text-white ${
-              loading || insufficientCoins || !amount
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-red-600 hover:bg-red-700'
-            }`}
+            className="btn-oxblood w-full"
             disabled={loading || insufficientCoins || !amount}
           >
-            Sell Now
+            File Order
           </button>
         </form>
       )}

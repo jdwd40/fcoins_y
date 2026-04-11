@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { Clock } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -10,6 +9,7 @@ import {
   Tooltip,
   Legend,
   TimeScale,
+  Filler,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
@@ -22,13 +22,15 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  TimeScale
+  TimeScale,
+  Filler
 );
 
 type TimeRange = '5M' | '10M' | '30M' | '1H' | '2H' | '12H' | '24H' | 'ALL';
 
 interface MarketValueChartProps {
   className?: string;
+  refreshTrigger: number;
 }
 
 const TIME_RANGES = [
@@ -39,10 +41,10 @@ const TIME_RANGES = [
   { value: '2H', label: '2h' },
   { value: '12H', label: '12h' },
   { value: '24H', label: '24h' },
-  { value: 'ALL', label: 'All' }
+  { value: 'ALL', label: 'All' },
 ] as const;
 
-export function MarketValueChart({ className = '', refreshTrigger }: MarketValueChartProps & { refreshTrigger: number }) {
+export function MarketValueChart({ className = '', refreshTrigger }: MarketValueChartProps) {
   const [timeRange, setTimeRange] = useState<TimeRange>('30M');
   const [priceHistory, setPriceHistory] = useState<Array<{ value: number; created_at: string; trend: string }>>([]);
   const [loading, setLoading] = useState(false);
@@ -52,24 +54,17 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
       try {
         setLoading(true);
         const url = `https://jdwd40.com/api-2/api/market/price-history?timeRange=${timeRange}`;
-        
-        console.log('Fetching market history from:', url);
         const response = await fetch(url);
         const data = await response.json();
-        console.log('Received market history data:', data);
-
         if (!data.history || !Array.isArray(data.history)) {
-          console.error('Invalid market history data:', data);
           setPriceHistory([]);
           return;
         }
-
-        const transformedData = data.history.map(item => ({
+        const transformedData = data.history.map((item: { total_value: string; created_at: string; market_trend: string }) => ({
           value: parseFloat(item.total_value),
           created_at: item.created_at,
-          trend: item.market_trend
+          trend: item.market_trend,
         }));
-
         setPriceHistory(transformedData);
       } catch (error) {
         console.error('Error fetching market history:', error);
@@ -78,9 +73,14 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         setLoading(false);
       }
     };
-
     fetchMarketHistory();
   }, [timeRange, refreshTrigger]);
+
+  const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+  const lineColor = isDark ? '#d7ad2d' : '#9e7b14';
+  const fillColor = isDark ? 'rgba(215, 173, 45, 0.12)' : 'rgba(158, 123, 20, 0.10)';
+  const axisColor = isDark ? '#8e7f5f' : '#6a5a3b';
+  const gridColor = isDark ? 'rgba(243, 234, 211, 0.06)' : 'rgba(18, 14, 9, 0.08)';
 
   const chartData = {
     datasets: [
@@ -90,15 +90,16 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
           x: new Date(item.created_at),
           y: item.value,
         })),
-        borderColor: '#10B981',
-        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-        borderWidth: 2,
+        borderColor: lineColor,
+        backgroundColor: fillColor,
+        borderWidth: 1.75,
         pointRadius: 0,
-        pointHoverRadius: 4,
-        pointHoverBackgroundColor: '#10B981',
-        pointHoverBorderColor: '#fff',
+        pointHoverRadius: 5,
+        pointHoverBackgroundColor: lineColor,
+        pointHoverBorderColor: isDark ? '#0a0906' : '#f3ead3',
+        pointHoverBorderWidth: 2,
         fill: true,
-        tension: 0.4,
+        tension: 0.35,
       },
     ],
   };
@@ -106,30 +107,25 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
   const options = {
     responsive: true,
     maintainAspectRatio: false,
-    interaction: {
-      intersect: false,
-      mode: 'index' as const,
-    },
+    interaction: { intersect: false, mode: 'index' as const },
     plugins: {
-      legend: {
-        display: false,
-      },
+      legend: { display: false },
       tooltip: {
-        backgroundColor: 'rgba(17, 24, 39, 0.8)',
-        titleColor: '#fff',
-        bodyColor: '#fff',
-        padding: 12,
+        backgroundColor: isDark ? '#120e09' : '#faf4dc',
+        titleColor: isDark ? '#f3ead3' : '#120e09',
+        bodyColor: isDark ? '#d7ad2d' : '#9e7b14',
+        borderColor: isDark ? 'rgba(243,234,211,0.14)' : 'rgba(18,14,9,0.18)',
+        borderWidth: 1,
+        padding: 14,
+        cornerRadius: 0,
         displayColors: false,
+        titleFont: { family: 'JetBrains Mono', size: 10, weight: 'normal' as const },
+        bodyFont: { family: 'Fraunces', size: 18, weight: 'normal' as const },
         callbacks: {
-          label: (context: any) => {
-            return `£${context.parsed.y.toFixed(2)}`;
-          },
-          title: (tooltipItems: any) => {
+          label: (context: { parsed: { y: number } }) => `£${context.parsed.y.toFixed(2)}`,
+          title: (tooltipItems: Array<{ raw: { x: Date } }>) => {
             const date = new Date(tooltipItems[0].raw.x);
-            return date.toLocaleTimeString([], { 
-              hour: '2-digit',
-              minute: '2-digit',
-            });
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toUpperCase();
           },
         },
       },
@@ -137,77 +133,69 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
     scales: {
       x: {
         type: 'time' as const,
-        time: {
-          unit: 'minute' as const,
-          displayFormats: {
-            minute: 'HH:mm',
-          },
-        },
-        grid: {
-          display: false,
-        },
+        time: { unit: 'minute' as const, displayFormats: { minute: 'HH:mm' } },
+        grid: { display: false },
+        border: { color: gridColor },
         ticks: {
           maxRotation: 0,
-          color: '#6B7280',
+          color: axisColor,
+          font: { family: 'JetBrains Mono', size: 10 },
         },
       },
       y: {
-        grid: {
-          color: 'rgba(107, 114, 128, 0.1)',
-        },
+        grid: { color: gridColor },
+        border: { display: false },
         ticks: {
-          color: '#6B7280',
-          callback: (value: number) => `£${value.toFixed(2)}`,
+          color: axisColor,
+          font: { family: 'JetBrains Mono', size: 10 },
+          callback: (value: number | string) => `£${Number(value).toFixed(0)}`,
         },
       },
     },
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Clock className="w-8 h-8 animate-spin text-gray-400" />
-      </div>
-    );
-  }
-
-  if (!priceHistory.length) {
-    return (
-      <div className="flex items-center justify-center h-64 text-gray-500">
-        No market data available
-      </div>
-    );
-  }
-
   return (
-    <div className={`w-full space-y-4 ${className}`}>
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
-          {TIME_RANGES.map(({ value, label }) => (
-            <button
-              key={value}
-              onClick={() => setTimeRange(value)}
-              className={`px-3 py-1 text-sm rounded ${
-                timeRange === value
-                  ? 'bg-green-500 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+    <div className={`paper-card p-6 sm:p-8 h-full ${className}`}>
+      <div className="flex items-start justify-between flex-wrap gap-4 mb-6">
+        <div>
+          <div className="label mb-1">Market · Aggregate</div>
+          <h3 className="font-display text-3xl italic text-ink"
+              style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 40" }}>
+            The Total Value
+          </h3>
         </div>
       </div>
-      
+
+      <div className="flex flex-wrap gap-2 mb-6 pb-4 border-b border-rule">
+        {TIME_RANGES.map(({ value, label }) => (
+          <button
+            key={value}
+            onClick={() => setTimeRange(value)}
+            className={`font-mono text-[0.7rem] tracking-caps uppercase px-3 py-1.5 border transition-all ${
+              timeRange === value
+                ? 'border-gold text-gold bg-paper-alt'
+                : 'border-transparent text-ink-mute hover:text-ink hover:border-rule'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="relative">
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-900/50 rounded-lg">
-            <div className="text-white">Loading...</div>
+        {loading && priceHistory.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="font-display italic text-ink-mute animate-flicker">Wiring in quotations…</div>
           </div>
         )}
-        <div className="h-[400px]">
-          <Line data={chartData} options={options} />
-        </div>
+        {!loading && priceHistory.length === 0 && (
+          <div className="flex items-center justify-center h-64 label">No data on the wire</div>
+        )}
+        {priceHistory.length > 0 && (
+          <div className="h-[300px] sm:h-[360px]">
+            <Line data={chartData} options={options} />
+          </div>
+        )}
       </div>
     </div>
   );

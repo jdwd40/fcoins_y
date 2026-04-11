@@ -1,78 +1,112 @@
-import React from 'react';
-import { TrendingUp, TrendingDown, BarChart3, Clock } from 'lucide-react';
 import { MarketStats as MarketStatsType } from '../types';
 
 interface MarketStatsProps {
   stats: MarketStatsType;
 }
 
+const formatValue = (value: number) =>
+  value.toLocaleString('en-GB', {
+    style: 'currency',
+    currency: 'GBP',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+
+const getCycleTone = (type: string) => {
+  switch (type.toUpperCase()) {
+    case 'STRONG_BOOM':
+      return { label: 'Strong Bull', cls: 'text-verdigris', glyph: '▲▲' };
+    case 'MILD_BOOM':
+    case 'BOOM':
+      return { label: 'Mild Bull', cls: 'text-verdigris', glyph: '▲' };
+    case 'STRONG_BUST':
+      return { label: 'Strong Bear', cls: 'text-oxblood', glyph: '▼▼' };
+    case 'MILD_BUST':
+    case 'BUST':
+      return { label: 'Mild Bear', cls: 'text-oxblood', glyph: '▼' };
+    default:
+      return { label: 'Stable', cls: 'text-ink-dim', glyph: '◆' };
+  }
+};
+
 export function MarketStats({ stats }: MarketStatsProps) {
   if (!stats) return null;
-
-  const formatValue = (value: number) => {
-    return value.toLocaleString('en-GB', {
-      style: 'currency',
-      currency: 'GBP',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    });
-  };
-
-  const getCycleColor = (type: string) => {
-    switch (type.toUpperCase()) {
-      case 'STRONG_BOOM':
-        return 'text-green-600';
-      case 'BOOM':
-        return 'text-green-500';
-      case 'BUST':
-        return 'text-red-500';
-      case 'STRONG_BUST':
-        return 'text-red-600';
-      default:
-        return 'text-gray-600';
-    }
-  };
+  const cycle = getCycleTone(stats.currentCycle.type);
 
   return (
-    <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-3 sm:p-4 mb-6">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Market Overview</h2>
-        <div className="flex items-center">
-          <Clock className="w-4 h-4 mr-2" />
-          <span className={`text-sm font-medium ${getCycleColor(stats.currentCycle.type)}`}>
-            {stats.currentCycle.type.replace('_', ' ')} ({stats.currentCycle.timeRemaining})
-          </span>
+    <div className="paper-card p-6 sm:p-10">
+      <div className="flex items-start justify-between flex-wrap gap-4 mb-8">
+        <div>
+          <div className="label mb-2">Section I · Front Page</div>
+          <h2 className="font-display text-4xl sm:text-5xl italic text-ink leading-none"
+              style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 50" }}>
+            The Ledger
+          </h2>
+        </div>
+        <div className="text-right">
+          <div className="label mb-2">Market Cycle</div>
+          <div className={`font-mono text-sm font-bold tracking-capstight ${cycle.cls}`}>
+            <span className="mr-2">{cycle.glyph}</span>
+            {cycle.label.toUpperCase()}
+          </div>
+          <div className="font-mono text-[0.68rem] text-ink-mute mt-1 tnum">
+            {stats.currentCycle.timeRemaining} remaining
+          </div>
         </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div className="flex items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-          <BarChart3 className="w-5 h-5 text-indigo-600 mr-3" />
-          <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Current Value</p>
-            <p className="font-semibold text-gray-900 dark:text-white">{formatValue(stats.currentValue)}</p>
-          </div>
-        </div>
-        <div className="flex items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-          <TrendingUp className="w-5 h-5 text-green-600 mr-3" />
-          <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">All Time High</p>
-            <p className="font-semibold text-gray-900 dark:text-white">{formatValue(stats.allTimeHigh)}</p>
-          </div>
-        </div>
-        <div className="flex items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-          <TrendingDown className="w-5 h-5 text-red-600 mr-3" />
-          <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">All Time Low</p>
-            <p className="font-semibold text-gray-900 dark:text-white">{formatValue(stats.allTimeLow)}</p>
-          </div>
-        </div>
-        <div className="flex items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-          <BarChart3 className="w-5 h-5 text-purple-600 mr-3" />
-          <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Latest Value</p>
-            <p className="font-semibold text-gray-900 dark:text-white">{formatValue(stats.latestValue)}</p>
-          </div>
-        </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-0 md:gap-0 divide-rule md:divide-y-0">
+        <StatBlock
+          label="Current Value"
+          value={formatValue(stats.currentValue)}
+          emphasis
+          delay={0}
+        />
+        <StatBlock
+          label="Latest Print"
+          value={formatValue(stats.latestValue)}
+          delay={100}
+        />
+        <StatBlock
+          label="All-Time High"
+          value={formatValue(stats.allTimeHigh)}
+          tone="verdigris"
+          delay={200}
+        />
+        <StatBlock
+          label="All-Time Low"
+          value={formatValue(stats.allTimeLow)}
+          tone="oxblood"
+          delay={300}
+        />
+      </div>
+    </div>
+  );
+}
+
+function StatBlock({
+  label,
+  value,
+  emphasis,
+  tone,
+  delay,
+}: {
+  label: string;
+  value: string;
+  emphasis?: boolean;
+  tone?: 'verdigris' | 'oxblood';
+  delay: number;
+}) {
+  const toneCls = tone === 'verdigris' ? 'text-verdigris' : tone === 'oxblood' ? 'text-oxblood' : 'text-ink';
+  return (
+    <div
+      className="md:border-l md:first:border-l-0 border-rule px-0 md:px-6 py-5 md:py-0 animate-reveal-fast"
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      <div className="label mb-3">{label}</div>
+      <div className={`numeral ${toneCls} ${emphasis ? 'text-5xl sm:text-6xl' : 'text-3xl sm:text-4xl'}`}
+           style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 30" }}>
+        {value}
       </div>
     </div>
   );

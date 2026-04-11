@@ -1,70 +1,67 @@
-import React from 'react';
-import { Timer, TrendingUp, TrendingDown } from 'lucide-react';
 import type { MarketStatus as MarketStatusType } from '../types';
 
 interface MarketStatusProps {
   status: MarketStatusType;
 }
 
-export function MarketStatus({ status }: MarketStatusProps) {
-  const getCycleIcon = () => {
-    const type = status?.currentCycle?.type || '';
-    return type.includes('BOOM') ? (
-      <TrendingUp className="w-5 h-5 text-green-500" />
-    ) : (
-      <TrendingDown className="w-5 h-5 text-red-500" />
-    );
-  };
+const formatCycleType = (type: string) => {
+  switch (type) {
+    case 'STRONG_BOOM': return 'Strong Bull';
+    case 'MILD_BOOM':
+    case 'BOOM': return 'Mild Bull';
+    case 'STRONG_BUST': return 'Strong Bear';
+    case 'MILD_BUST':
+    case 'BUST': return 'Mild Bear';
+    case 'STABLE': return 'Stable';
+    default: return type;
+  }
+};
 
-  const formatCycleType = (type: string) => {
-    switch (type) {
-      case 'STRONG_BOOM':
-        return 'STRONG BULL';
-      case 'MILD_BOOM':
-        return 'MILD BULL';
-      case 'STRONG_BUST':
-        return 'STRONG BEAR';
-      case 'MILD_BUST':
-        return 'MILD BEAR';
-      case 'STABLE':
-        return 'STABLE';
-      default:
-        return type;
-    }
-  };
+export function MarketStatus({ status }: MarketStatusProps) {
+  const type = status?.currentCycle?.type || 'STABLE';
+  const isBull = type.includes('BOOM');
+  const tone = isBull ? 'text-verdigris' : type.includes('BUST') ? 'text-oxblood' : 'text-ink';
+  const effect = status?.currentCycle?.baseEffect ?? 0;
 
   return (
-    <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-6 mb-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Market Status</h2>
-        <div className="flex items-center gap-2">
-          <Timer className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-          <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
-            {status?.currentCycle?.timeRemaining || '00:00:00'}
-          </span>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg mb-4">
-        {getCycleIcon()}
+    <div className="paper-card h-full p-6 sm:p-8 flex flex-col">
+      <div className="flex items-start justify-between mb-6">
         <div>
-          {status?.currentCycle?.type && (
-            <>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Current Cycle</p>
-              <p className="font-semibold text-gray-900 dark:text-white">
-                {formatCycleType(status.currentCycle.type)}
-              </p>
-            </>
-          )}
+          <div className="label mb-1">Dispatch</div>
+          <h3 className="font-display text-3xl italic text-ink"
+              style={{ fontVariationSettings: "'opsz' 144" }}>
+            The Tide
+          </h3>
+        </div>
+        <span className="chip">
+          <span className="live-dot" style={{ background: 'currentColor' }}></span>
+          Live
+        </span>
+      </div>
+
+      <div className="rule-thin mb-6"></div>
+
+      <div className="mb-6">
+        <div className="label mb-2">Current Cycle</div>
+        <div className={`font-display text-5xl italic leading-none ${tone}`}
+             style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 40" }}>
+          {formatCycleType(type)}
         </div>
       </div>
 
-      <div className="space-y-2">
-        {status?.currentCycle?.baseEffect && (
-          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Market Effect: {(status.currentCycle.baseEffect * 100).toFixed(2)}%
-          </p>
-        )}
+      <div className="grid grid-cols-2 gap-4 mt-auto pt-6 border-t border-rule">
+        <div>
+          <div className="label mb-1">Ends In</div>
+          <div className="font-mono text-lg text-ink tnum">
+            {status?.currentCycle?.timeRemaining || '--:--'}
+          </div>
+        </div>
+        <div>
+          <div className="label mb-1">Base Effect</div>
+          <div className={`font-mono text-lg tnum ${tone}`}>
+            {effect >= 0 ? '+' : ''}{(effect * 100).toFixed(2)}%
+          </div>
+        </div>
       </div>
     </div>
   );

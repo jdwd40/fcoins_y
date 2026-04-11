@@ -9,60 +9,51 @@ interface CoinDetailProps {
   refreshTrigger: number;
 }
 
-// Format event type to be more readable
 function formatEventType(type: string): string {
   const eventLabels: Record<string, string> = {
     'PARTNERSHIP': 'Partnership Announcement',
     'ADOPTION': 'Mass Adoption',
     'RUMOR': 'Market Rumor',
     'REGULATION': 'Regulatory News',
-    'SCANDAL': 'Scandal'
+    'SCANDAL': 'Scandal',
   };
   return eventLabels[type] || type.charAt(0) + type.slice(1).toLowerCase();
 }
 
-// Format duration to be more readable
 function formatDuration(timeRemaining: string): string {
-  // If already formatted nicely, return as-is
   if (timeRemaining.includes('min') || timeRemaining.includes('sec') || timeRemaining.includes('hour')) {
     return timeRemaining;
   }
-  // Try to parse if it's in seconds or other formats
   const seconds = parseInt(timeRemaining, 10);
   if (!isNaN(seconds)) {
     if (seconds >= 3600) {
       const hours = Math.floor(seconds / 3600);
       const mins = Math.floor((seconds % 3600) / 60);
-      return `${hours}h ${mins}m remaining`;
+      return `${hours}h ${mins}m`;
     } else if (seconds >= 60) {
       const mins = Math.floor(seconds / 60);
       const secs = seconds % 60;
-      return `${mins}m ${secs}s remaining`;
+      return `${mins}m ${secs}s`;
     } else {
-      return `${seconds}s remaining`;
+      return `${seconds}s`;
     }
   }
   return timeRemaining;
 }
 
 function EventItem({ event }: { event: MarketEvent }) {
+  const positive = event.effect === 'POSITIVE';
   return (
-    <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-      <div className="flex flex-col">
-        <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
+    <div className="flex items-center justify-between py-3 border-b border-rule last:border-b-0">
+      <div>
+        <div className="font-display italic text-lg text-ink leading-tight">
           {formatEventType(event.type)}
-        </span>
-        <span className={`text-xs font-medium ${
-          event.effect === 'POSITIVE' ? 'text-green-500' : 'text-red-500'
-        }`}>
-          {event.effect === 'POSITIVE' ? '↑ Bullish' : '↓ Bearish'}
-        </span>
+        </div>
+        <div className={`label mt-1 ${positive ? 'text-verdigris' : 'text-oxblood'}`}>
+          {positive ? '▲ Bullish' : '▼ Bearish'}
+        </div>
       </div>
-      <div className="flex items-center">
-        <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-gray-600 px-2 py-1 rounded">
-          {formatDuration(event.timeRemaining)}
-        </span>
-      </div>
+      <div className="chip">{formatDuration(event.timeRemaining)}</div>
     </div>
   );
 }
@@ -71,74 +62,83 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
   const priceChange = typeof coin.price_change_24h === 'string'
     ? parseFloat(coin.price_change_24h)
     : coin.price_change_24h || 0;
-
-  const priceChangeClass = priceChange >= 0 ? 'text-green-500' : 'text-red-500';
-
+  const up = priceChange >= 0;
   const currentPrice = parsePrice(coin.current_price);
   const marketCap = parsePrice(coin.market_cap);
-
   const activeEvents = events.filter((event) => event.coinId === coin.coin_id);
 
   return (
-    <div className="p-2 sm:p-6 max-w-4xl mx-auto">
-      <div className="flex flex-col md:flex-row justify-between items-start gap-6">
-        {/* Coin Info */}
-        <div className="w-full md:w-1/3 min-w-0">
-          <h2 className="text-xl sm:text-2xl font-bold mb-4">{coin.name}</h2>
-          <div className="space-y-4">
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Current Price</p>
-                  <p className="text-lg font-semibold truncate">{formatCurrency(currentPrice)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">24h Change</p>
-                  <p className={`text-lg font-semibold ${priceChangeClass}`}>
-                    {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Market Cap</p>
-                  <p className="text-lg font-semibold truncate">{formatCurrency(marketCap)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Supply</p>
-                  <p className="text-lg font-semibold truncate">{coin.circulating_supply.toLocaleString()}</p>
-                </div>
+    <div className="p-2 sm:p-4">
+      {/* Masthead */}
+      <div className="border-b border-rule pb-6 mb-6">
+        <div className="flex items-baseline gap-3 label mb-2">
+          <span>№ {String(coin.coin_id).padStart(3, '0')}</span>
+          <span>·</span>
+          <span>{coin.symbol}</span>
+        </div>
+        <h2 className="font-display text-5xl sm:text-6xl italic text-ink leading-none"
+            style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 50" }}>
+          {coin.name}
+        </h2>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+        {/* Left: stats + forms */}
+        <div className="lg:col-span-2 space-y-8">
+          {/* Stats */}
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <div className="label mb-2">Current Price</div>
+              <div className="numeral text-ink text-4xl"
+                   style={{ fontVariationSettings: "'opsz' 144" }}>
+                {formatCurrency(currentPrice)}
               </div>
             </div>
-
-            {/* Transaction Forms */}
-            <div className="grid grid-cols-1 gap-4">
-              <BuyForm 
-                coin={coin} 
-              />
-            </div>
-
-            {/* Events Section */}
-            {activeEvents.length > 0 && (
-              <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
-                <h3 className="text-lg font-semibold mb-3">Market Events</h3>
-                <div className="space-y-2">
-                  {activeEvents.map((event, index) => (
-                    <EventItem key={index} event={event} />
-                  ))}
-                </div>
+            <div>
+              <div className="label mb-2">24h Change</div>
+              <div className={`numeral text-4xl ${up ? 'text-verdigris' : 'text-oxblood'}`}>
+                {up ? '+' : ''}{priceChange.toFixed(2)}%
               </div>
-            )}
+            </div>
+            <div>
+              <div className="label mb-2">Market Cap</div>
+              <div className="font-mono text-lg text-ink tnum">{formatCurrency(marketCap)}</div>
+            </div>
+            <div>
+              <div className="label mb-2">Supply</div>
+              <div className="font-mono text-lg text-ink tnum">
+                {coin.circulating_supply.toLocaleString()}
+              </div>
+            </div>
           </div>
+
+          {/* Buy form */}
+          <BuyForm coin={coin} />
+
+          {/* Events */}
+          {activeEvents.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-3 pb-3 border-b border-rule">
+                <div>
+                  <div className="label">Dispatch</div>
+                  <h3 className="font-display text-2xl italic text-ink">
+                    Active Events
+                  </h3>
+                </div>
+              </div>
+              <div>
+                {activeEvents.map((event, index) => (
+                  <EventItem key={index} event={event} />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Price Chart */}
-        <div className="w-full md:w-2/3 min-w-0">
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
-            <h3 className="text-lg font-semibold mb-4">Price History</h3>
-            <PriceChart
-              coinId={coin.coin_id}
-              refreshTrigger={refreshTrigger}
-            />
-          </div>
+        {/* Right: chart */}
+        <div className="lg:col-span-3">
+          <div className="label mb-3">Price History</div>
+          <PriceChart coinId={coin.coin_id} refreshTrigger={refreshTrigger} />
         </div>
       </div>
     </div>
