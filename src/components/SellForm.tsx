@@ -2,7 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import type { Coin } from '../types';
-import { sellCoins, getUserPortfolio, formatCurrency, parsePrice, SessionExpiredError } from '../services/transactionService';
+import {
+  sellCoins,
+  getUserPortfolio,
+  formatCurrency,
+  parsePrice,
+  SessionExpiredError,
+  type PortfolioItem,
+} from '../services/transactionService';
 import { X, Check } from 'lucide-react';
 
 interface SellFormProps {
@@ -46,10 +53,10 @@ export function SellForm({ coin, onSuccess }: SellFormProps) {
         const data = await getUserPortfolio(user.id, token);
         const portfolioData: Portfolio = {};
         if (data.portfolio) {
-          data.portfolio.forEach((item: any) => {
+          data.portfolio.forEach((item: PortfolioItem) => {
             portfolioData[item.coin_id] = {
-              quantity: parseFloat(item.quantity),
-              averagePrice: parseFloat(item.average_purchase_price || item.average_price),
+              quantity: Number(item.quantity),
+              averagePrice: Number(item.average_purchase_price),
             };
           });
         }

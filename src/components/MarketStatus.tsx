@@ -1,3 +1,4 @@
+import { Activity, Clock3, Gauge } from 'lucide-react';
 import type { MarketStatus as MarketStatusType } from '../types';
 
 interface MarketStatusProps {
@@ -8,10 +9,10 @@ const formatCycleType = (type: string) => {
   switch (type) {
     case 'STRONG_BOOM': return 'Strong Bull';
     case 'MILD_BOOM':
-    case 'BOOM': return 'Mild Bull';
+    case 'BOOM': return 'Bull Market';
     case 'STRONG_BUST': return 'Strong Bear';
     case 'MILD_BUST':
-    case 'BUST': return 'Mild Bear';
+    case 'BUST': return 'Bear Market';
     case 'STABLE': return 'Stable';
     default: return type;
   }
@@ -24,41 +25,32 @@ export function MarketStatus({ status }: MarketStatusProps) {
   const effect = status?.currentCycle?.baseEffect ?? 0;
 
   return (
-    <div className="paper-card h-full p-6 sm:p-8 flex flex-col">
-      <div className="flex items-start justify-between mb-6">
+    <div className="paper-card h-full p-6 sm:p-7 flex flex-col">
+      <div className="flex items-start justify-between gap-4 mb-7">
         <div>
-          <div className="label mb-1">Dispatch</div>
-          <h3 className="font-display text-3xl italic text-ink"
-              style={{ fontVariationSettings: "'opsz' 144" }}>
-            The Tide
-          </h3>
+          <div className="label mb-2">Market pulse</div>
+          <h3 className="font-display text-2xl font-bold text-ink">Simulation status</h3>
         </div>
-        <span className="chip">
-          <span className="live-dot" style={{ background: 'currentColor' }}></span>
-          Live
+        <span className="chip text-verdigris">
+          <span className="live-dot" /> Live
         </span>
       </div>
 
-      <div className="rule-thin mb-6"></div>
-
-      <div className="mb-6">
-        <div className="label mb-2">Current Cycle</div>
-        <div className={`font-display text-5xl italic leading-none ${tone}`}
-             style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 40" }}>
-          {formatCycleType(type)}
-        </div>
+      <div className="rounded-xl bg-paper-alt border border-rule p-5 mb-5">
+        <div className="flex items-center gap-2 label mb-3"><Activity className="w-3.5 h-3.5" /> Current cycle</div>
+        <div className={`font-display text-3xl font-bold tracking-tight ${tone}`}>{formatCycleType(type)}</div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mt-auto pt-6 border-t border-rule">
-        <div>
-          <div className="label mb-1">Ends In</div>
-          <div className="font-mono text-lg text-ink tnum">
+      <div className="grid grid-cols-2 gap-3 mt-auto">
+        <div className="rounded-xl border border-rule p-4">
+          <div className="flex items-center gap-2 label mb-2"><Clock3 className="w-3.5 h-3.5" /> Reprice</div>
+          <div className="font-mono text-base font-semibold text-ink tnum">
             {status?.currentCycle?.timeRemaining || '--:--'}
           </div>
         </div>
-        <div>
-          <div className="label mb-1">Base Effect</div>
-          <div className={`font-mono text-lg tnum ${tone}`}>
+        <div className="rounded-xl border border-rule p-4">
+          <div className="flex items-center gap-2 label mb-2"><Gauge className="w-3.5 h-3.5" /> Drift</div>
+          <div className={`font-mono text-base font-semibold tnum ${tone}`}>
             {effect >= 0 ? '+' : ''}{(effect * 100).toFixed(2)}%
           </div>
         </div>

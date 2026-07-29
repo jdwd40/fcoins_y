@@ -145,13 +145,13 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
   const last = chartData[chartData.length - 1]?.y ?? 0;
   const isUp = last >= first;
   const accent = isUp
-    ? (isDark ? '#5a9c78' : '#2f6a4a')
-    : (isDark ? '#c0504d' : '#8b2e2e');
+    ? (isDark ? '#2ed58a' : '#149e61')
+    : (isDark ? '#ff5d68' : '#dc3545');
   const fillColor = isUp
-    ? (isDark ? 'rgba(90, 156, 120, 0.14)' : 'rgba(47, 106, 74, 0.12)')
-    : (isDark ? 'rgba(192, 80, 77, 0.14)' : 'rgba(139, 46, 46, 0.12)');
-  const axisColor = isDark ? '#8e7f5f' : '#6a5a3b';
-  const gridColor = isDark ? 'rgba(243, 234, 211, 0.06)' : 'rgba(18, 14, 9, 0.08)';
+    ? (isDark ? 'rgba(46, 213, 138, 0.12)' : 'rgba(20, 158, 97, 0.10)')
+    : (isDark ? 'rgba(255, 93, 104, 0.12)' : 'rgba(220, 53, 69, 0.10)');
+  const axisColor = isDark ? '#85899e' : '#686b82';
+  const gridColor = isDark ? 'rgba(148, 151, 169, 0.10)' : 'rgba(104, 107, 130, 0.12)';
 
   const data = {
     datasets: [
@@ -163,7 +163,7 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
         pointRadius: 0,
         pointHoverRadius: 5,
         pointHoverBackgroundColor: accent,
-        pointHoverBorderColor: isDark ? '#0a0906' : '#f3ead3',
+        pointHoverBorderColor: isDark ? '#08090d' : '#ffffff',
         pointHoverBorderWidth: 2,
         fill: true,
         tension: 0.35,
@@ -178,16 +178,16 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: isDark ? '#120e09' : '#faf4dc',
-        titleColor: isDark ? '#f3ead3' : '#120e09',
+        backgroundColor: isDark ? '#12141d' : '#ffffff',
+        titleColor: isDark ? '#f5f6fa' : '#101114',
         bodyColor: accent,
-        borderColor: isDark ? 'rgba(243,234,211,0.14)' : 'rgba(18,14,9,0.18)',
+        borderColor: isDark ? 'rgba(148,151,169,0.18)' : '#dedee5',
         borderWidth: 1,
         padding: 14,
-        cornerRadius: 0,
+        cornerRadius: 10,
         displayColors: false,
         titleFont: { family: 'JetBrains Mono', size: 10, weight: 'normal' as const },
-        bodyFont: { family: 'Fraunces', size: 18, weight: 'normal' as const },
+        bodyFont: { family: 'Inter', size: 16, weight: '600' as const },
         callbacks: {
           title: (tooltipItems: Array<{ parsed: { x: number } }>) => {
             const date = new Date(tooltipItems[0].parsed.x);
@@ -261,13 +261,13 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
       <div className="relative">
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-card/70 z-10">
-            <div className="font-display italic text-ink-mute animate-flicker">Pulling quotations…</div>
+            <div className="text-sm text-ink-mute animate-flicker">Loading price history…</div>
           </div>
         )}
         {error && !loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-card/70 z-10">
             <div className="text-center">
-              <p className="font-display italic text-xl text-oxblood mb-1">Wire severed</p>
+              <p className="font-display font-semibold text-xl text-oxblood mb-1">Price history unavailable</p>
               <p className="label mb-3">{error}</p>
               <button
                 onClick={() => fetchPriceHistory(selectedRange)}
@@ -280,7 +280,7 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
         )}
         {!loading && !error && chartData.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center z-10">
-            <p className="label">No price data on the wire</p>
+            <p className="label">No price history available</p>
           </div>
         )}
         <div className="h-[300px] sm:h-[380px]">

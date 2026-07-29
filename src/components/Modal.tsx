@@ -14,20 +14,14 @@ export function Modal({ isOpen, onClose, children }: ModalProps) {
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex min-h-screen items-center justify-center p-2 sm:p-6">
         <div
-          className="fixed inset-0 bg-ink/70 backdrop-blur-[2px]"
+          className="fixed inset-0 bg-black/75 backdrop-blur-sm"
           onClick={onClose}
           aria-hidden="true"
         />
-        <div className="relative w-full max-w-5xl bg-card border border-rule animate-reveal-fast max-h-[92vh] overflow-y-auto">
-          {/* Ornamental corner marks */}
-          <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-gold pointer-events-none"></div>
-          <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-gold pointer-events-none"></div>
-          <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-gold pointer-events-none"></div>
-          <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-gold pointer-events-none"></div>
-
+        <div className="relative w-full max-w-5xl bg-card border border-rule rounded-2xl shadow-2xl animate-reveal-fast max-h-[92vh] overflow-y-auto">
           <button
             onClick={onClose}
-            className="absolute right-4 top-4 p-2 text-ink-mute hover:text-gold transition-colors z-50"
+            className="absolute right-4 top-4 p-2 rounded-lg bg-paper-alt border border-rule text-ink-mute hover:text-gold hover:border-gold transition-colors z-50"
             aria-label="Close modal"
           >
             <X className="h-5 w-5" />

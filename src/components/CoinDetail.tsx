@@ -72,11 +72,11 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
       {/* Masthead */}
       <div className="border-b border-rule pb-6 mb-6">
         <div className="flex items-baseline gap-3 label mb-2">
-          <span>№ {String(coin.coin_id).padStart(3, '0')}</span>
+          <span>Asset {String(coin.coin_id).padStart(3, '0')}</span>
           <span>·</span>
           <span>{coin.symbol}</span>
         </div>
-        <h2 className="font-display text-5xl sm:text-6xl italic text-ink leading-none"
+        <h2 className="font-display text-5xl sm:text-6xl font-semibold text-ink leading-none"
             style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 50" }}>
           {coin.name}
         </h2>

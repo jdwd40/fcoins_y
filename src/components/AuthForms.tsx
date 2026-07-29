@@ -29,11 +29,11 @@ export function AuthForms({ onClose }: AuthFormsProps) {
       } else {
         success = await register(formData);
         if (success) {
-          showToast('Account opened. Books balanced.', 'success');
+          showToast('Your virtual exchange account is ready.', 'success');
           onClose();
         }
       }
-    } catch (err) {
+    } catch {
       // handled by context
     }
   };
@@ -48,13 +48,13 @@ export function AuthForms({ onClose }: AuthFormsProps) {
   return (
     <div className="w-full max-w-md mx-auto py-4">
       <div className="text-center mb-8">
-        <div className="label mb-3">{isLogin ? 'Ledger Access' : 'Open an Account'}</div>
-        <h2 className="font-display text-5xl italic text-ink leading-none"
+        <div className="label mb-3">{isLogin ? 'Secure account access' : 'Create account'}</div>
+        <h2 className="font-display text-5xl font-semibold text-ink leading-none"
             style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 50" }}>
-          {isLogin ? 'Welcome\u00a0Back' : 'Join\u00a0the\u00a0Floor'}
+          {isLogin ? 'Welcome\u00a0back' : 'Join\u00a0CoinX'}
         </h2>
         <div className="ornament mt-5">
-          <span className="text-gold">❦</span>
+          <span className="asset-mark !w-8 !h-8">CX</span>
         </div>
       </div>
 
@@ -84,7 +84,7 @@ export function AuthForms({ onClose }: AuthFormsProps) {
         )}
 
         <div>
-          <label className="label block mb-2">Electronic Post</label>
+          <label className="label block mb-2">Email address</label>
           <input
             type="email"
             name="email"
@@ -97,7 +97,7 @@ export function AuthForms({ onClose }: AuthFormsProps) {
         </div>
 
         <div>
-          <label className="label block mb-2">Passphrase</label>
+          <label className="label block mb-2">Password</label>
           <input
             type="password"
             name="password"
@@ -110,7 +110,7 @@ export function AuthForms({ onClose }: AuthFormsProps) {
         </div>
 
         <button type="submit" disabled={loading} className="btn-gold w-full">
-          {loading ? 'Consulting the ledger…' : isLogin ? 'Enter Exchange' : 'Open Account'}
+          {loading ? 'Authenticating…' : isLogin ? 'Sign in' : 'Create account'}
         </button>
       </form>
 

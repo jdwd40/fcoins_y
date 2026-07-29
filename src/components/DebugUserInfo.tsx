@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 export function DebugUserInfo() {
   const { user } = useAuth();
-  const [localStorageUser, setLocalStorageUser] = useState<any>(null);
+  const [localStorageUser, setLocalStorageUser] = useState<Record<string, unknown> | null>(null);
   
   useEffect(() => {
     // Get user from localStorage

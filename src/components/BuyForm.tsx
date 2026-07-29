@@ -123,11 +123,11 @@ export function BuyForm({ coin, onSuccess }: BuyFormProps) {
 
   if (showConfirmation) {
     return (
-      <div className="border border-rule p-5 bg-paper-alt">
+      <div className="border border-rule rounded-xl p-5 bg-paper-alt">
         <div className="flex justify-between items-center mb-4 pb-3 border-b border-rule">
           <div>
             <div className="label text-gold">Confirm Purchase</div>
-            <h3 className="font-display italic text-2xl text-ink">Final Review</h3>
+            <h3 className="font-display font-semibold text-2xl text-ink">Review buy order</h3>
           </div>
           <button onClick={handleCancelBuy} disabled={loading} className="text-ink-mute hover:text-ink">
             <X className="w-4 h-4" />
@@ -155,12 +155,12 @@ export function BuyForm({ coin, onSuccess }: BuyFormProps) {
 
         <div className="flex gap-3">
           <button onClick={handleCancelBuy} disabled={loading} className="btn-ink flex-1">
-            Withdraw
+            Cancel
           </button>
           <button onClick={handleConfirmBuy} disabled={loading} className="btn-gold flex-1">
-            {loading ? 'Filing…' : (
+            {loading ? 'Processing…' : (
               <span className="inline-flex items-center gap-2 justify-center">
-                <Check className="w-3 h-3" /> Execute
+                <Check className="w-3 h-3" /> Confirm buy
               </span>
             )}
           </button>
@@ -170,15 +170,15 @@ export function BuyForm({ coin, onSuccess }: BuyFormProps) {
   }
 
   return (
-    <div className="border border-rule p-5">
+    <div className="border border-rule rounded-xl p-5 bg-paper-alt">
       <div className="mb-4 pb-3 border-b border-rule">
-        <div className="label">Order · Buy</div>
-        <h3 className="font-display italic text-2xl text-ink">Acquire {coin.symbol}</h3>
+        <div className="label">Buy order</div>
+        <h3 className="font-display font-semibold text-2xl text-ink">Buy {coin.symbol}</h3>
       </div>
 
       {!user ? (
         <div className="text-center py-6">
-          <p className="font-display italic text-ink-dim mb-3">Sign in to file an order</p>
+          <p className="text-sm text-ink-dim mb-3">Sign in to place a virtual order</p>
           <button onClick={() => showToast('Please log in to continue', 'info')} className="btn-gold">
             Sign In
           </button>
@@ -227,7 +227,7 @@ export function BuyForm({ coin, onSuccess }: BuyFormProps) {
             className="btn-gold w-full"
             disabled={loading || insufficientFunds || !amount}
           >
-            File Order
+            Place buy order
           </button>
         </form>
       )}

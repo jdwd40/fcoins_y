@@ -77,10 +77,10 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
   }, [timeRange, refreshTrigger]);
 
   const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
-  const lineColor = isDark ? '#d7ad2d' : '#9e7b14';
-  const fillColor = isDark ? 'rgba(215, 173, 45, 0.12)' : 'rgba(158, 123, 20, 0.10)';
-  const axisColor = isDark ? '#8e7f5f' : '#6a5a3b';
-  const gridColor = isDark ? 'rgba(243, 234, 211, 0.06)' : 'rgba(18, 14, 9, 0.08)';
+  const lineColor = isDark ? '#8b5cf6' : '#7132f5';
+  const fillColor = isDark ? 'rgba(139, 92, 246, 0.16)' : 'rgba(113, 50, 245, 0.10)';
+  const axisColor = isDark ? '#85899e' : '#686b82';
+  const gridColor = isDark ? 'rgba(148, 151, 169, 0.10)' : 'rgba(104, 107, 130, 0.12)';
 
   const chartData = {
     datasets: [
@@ -96,7 +96,7 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         pointRadius: 0,
         pointHoverRadius: 5,
         pointHoverBackgroundColor: lineColor,
-        pointHoverBorderColor: isDark ? '#0a0906' : '#f3ead3',
+        pointHoverBorderColor: isDark ? '#08090d' : '#ffffff',
         pointHoverBorderWidth: 2,
         fill: true,
         tension: 0.35,
@@ -111,16 +111,16 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: isDark ? '#120e09' : '#faf4dc',
-        titleColor: isDark ? '#f3ead3' : '#120e09',
-        bodyColor: isDark ? '#d7ad2d' : '#9e7b14',
-        borderColor: isDark ? 'rgba(243,234,211,0.14)' : 'rgba(18,14,9,0.18)',
+        backgroundColor: isDark ? '#12141d' : '#ffffff',
+        titleColor: isDark ? '#f5f6fa' : '#101114',
+        bodyColor: isDark ? '#8b5cf6' : '#7132f5',
+        borderColor: isDark ? 'rgba(148,151,169,0.18)' : '#dedee5',
         borderWidth: 1,
         padding: 14,
-        cornerRadius: 0,
+        cornerRadius: 10,
         displayColors: false,
         titleFont: { family: 'JetBrains Mono', size: 10, weight: 'normal' as const },
-        bodyFont: { family: 'Fraunces', size: 18, weight: 'normal' as const },
+        bodyFont: { family: 'Inter', size: 16, weight: '600' as const },
         callbacks: {
           label: (context: { parsed: { y: number } }) => `£${context.parsed.y.toFixed(2)}`,
           title: (tooltipItems: Array<{ raw: { x: Date } }>) => {
@@ -158,10 +158,10 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
     <div className={`paper-card p-6 sm:p-8 h-full ${className}`}>
       <div className="flex items-start justify-between flex-wrap gap-4 mb-6">
         <div>
-          <div className="label mb-1">Market · Aggregate</div>
-          <h3 className="font-display text-3xl italic text-ink"
+          <div className="label mb-1">Market analytics</div>
+          <h3 className="font-display text-3xl font-bold text-ink"
               style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 40" }}>
-            The Total Value
+            Aggregate market value
           </h3>
         </div>
       </div>
@@ -185,11 +185,11 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
       <div className="relative">
         {loading && priceHistory.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="font-display italic text-ink-mute animate-flicker">Wiring in quotations…</div>
+            <div className="text-sm text-ink-mute animate-flicker">Loading market history…</div>
           </div>
         )}
         {!loading && priceHistory.length === 0 && (
-          <div className="flex items-center justify-center h-64 label">No data on the wire</div>
+          <div className="flex items-center justify-center h-64 label">No market history available</div>
         )}
         {priceHistory.length > 0 && (
           <div className="h-[300px] sm:h-[360px]">

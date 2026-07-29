@@ -74,7 +74,7 @@ export function Profile() {
         <div className="paper-card max-w-md w-full p-10 text-center">
           <div className="ornament mb-4"><span className="label-ink">Access</span></div>
           <h2 className="font-display text-4xl italic text-ink mb-4">Credentials Required</h2>
-          <p className="label mb-6">Present your papers at the floor</p>
+          <p className="text-sm text-ink-mute mb-6">Sign in to view your virtual portfolio</p>
           <button onClick={() => navigate('/')} className="btn-gold">
             Return Home
           </button>
@@ -111,7 +111,7 @@ export function Profile() {
           onClick={handleClose}
           className="mb-8 label hover:text-gold transition-colors inline-flex items-center gap-2"
         >
-          <X className="w-3 h-3" /> Return to Floor
+          <X className="w-3 h-3" /> Return to Markets
         </button>
 
         {/* Portfolio masthead */}
@@ -146,7 +146,7 @@ export function Profile() {
               </div>
             </div>
             <div className="sm:border-l sm:border-rule sm:pl-6">
-              <div className="label mb-2">Cash at Bank</div>
+              <div className="label mb-2">Available cash</div>
               <div className="numeral text-ink text-4xl" style={{ fontVariationSettings: "'opsz' 144" }}>
                 {formatCurrency(Number(user.funds) || 0)}
               </div>
@@ -178,7 +178,7 @@ export function Profile() {
           <section className="mb-16 animate-reveal delay-150">
             <div className="flex items-end justify-between mb-6 pb-4 border-b border-rule">
               <div>
-                <div className="label mb-1">Section I</div>
+                <div className="label mb-1">Portfolio</div>
                 <h2 className="font-display text-3xl sm:text-4xl italic text-ink"
                     style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 40" }}>
                   Holdings
@@ -191,12 +191,12 @@ export function Profile() {
 
             {portfolio.length === 0 ? (
               <div className="text-center py-16">
-                <div className="ornament mb-4"><span className="label-ink">Empty Ledger</span></div>
+                <div className="ornament mb-4"><span className="label-ink">No holdings</span></div>
                 <p className="font-display italic text-ink-dim text-xl mb-4">
                   You hold no positions at present
                 </p>
                 <button onClick={() => navigate('/')} className="btn-gold">
-                  Browse the Issues
+                  Browse Markets
                 </button>
               </div>
             ) : (
@@ -249,10 +249,10 @@ export function Profile() {
         {!loading && !error && (
           <section className="animate-reveal delay-300">
             <div className="mb-6 pb-4 border-b border-rule">
-              <div className="label mb-1">Section II</div>
+              <div className="label mb-1">Account activity</div>
               <h2 className="font-display text-3xl sm:text-4xl italic text-ink"
                   style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 40" }}>
-                The Journal
+                Transaction history
               </h2>
             </div>
 

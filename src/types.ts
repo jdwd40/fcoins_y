@@ -36,7 +36,7 @@ export interface PriceHistoryResponse {
 export interface MarketEvent {
   type: string;
   timestamp: string;
-  data: any;
+  data: unknown;
   effect?: 'POSITIVE' | 'NEGATIVE';
   timeRemaining?: string;
   coinId?: number;
@@ -44,6 +44,11 @@ export interface MarketEvent {
 
 export interface MarketStatus {
   status: 'RUNNING' | 'STOPPED';
+  currentCycle?: {
+    type: string;
+    timeRemaining: string;
+    baseEffect?: number;
+  } | null;
   events: MarketEvent[];
 }
 

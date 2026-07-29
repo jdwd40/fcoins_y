@@ -43,7 +43,7 @@ export function UserMenu({ onAuthClick, isDark, onThemeToggle }: UserMenuProps) 
       <div className="flex items-center gap-2">
         <button
           onClick={() => navigate('/profile')}
-          className="p-2 border border-rule hover:border-gold text-ink hover:text-gold transition-colors"
+          className="p-2 rounded-lg border border-rule bg-paper-alt hover:border-gold text-ink hover:text-gold transition-colors"
           aria-label="Profile"
         >
           <UserIcon className="w-4 h-4" />
@@ -53,7 +53,7 @@ export function UserMenu({ onAuthClick, isDark, onThemeToggle }: UserMenuProps) 
         )}
         <button
           onClick={logout}
-          className="p-2 border border-rule hover:border-oxblood text-ink hover:text-oxblood transition-colors"
+          className="p-2 rounded-lg border border-rule bg-paper-alt hover:border-oxblood text-ink hover:text-oxblood transition-colors"
           aria-label="Logout"
         >
           <LogOut className="w-4 h-4" />

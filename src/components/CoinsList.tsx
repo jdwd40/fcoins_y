@@ -7,68 +7,84 @@ interface CoinsListProps {
   events: MarketEvent[];
 }
 
-const sortCoinsByPrice = (coins: Coin[]) => {
-  return [...coins].sort((a, b) => {
+const sortCoinsByPrice = (coins: Coin[]) =>
+  [...coins].sort((a, b) => {
     const priceA = parseFloat(a.current_price?.toString() ?? '0');
     const priceB = parseFloat(b.current_price?.toString() ?? '0');
     return priceB - priceA;
   });
-};
+
+const formatCompact = (value: string | number) =>
+  new Intl.NumberFormat('en-GB', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value) || 0);
 
 export function CoinsList({ coins, onSelectCoin, selectedCoinId }: CoinsListProps) {
   const sortedCoins = sortCoinsByPrice(coins);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-px bg-rule">
-      {sortedCoins.map((coin, i) => {
-        const price = parseFloat(coin?.current_price?.toString() ?? '0');
-        const priceChange = parseFloat(coin?.price_change_24h?.toString() ?? '0');
-        const up = priceChange >= 0;
-        const selected = selectedCoinId === coin.coin_id;
-        return (
-          <button
-            key={coin.coin_id}
-            onClick={() => onSelectCoin(coin.coin_id)}
-            className={`group relative text-left bg-card p-6 transition-all duration-300 hover:bg-paper-alt animate-reveal-fast ${
-              selected ? 'ring-1 ring-gold' : ''
-            }`}
-            style={{ animationDelay: `${Math.min(i * 40, 600)}ms` }}
-          >
-            {/* Top row: label + trend arrow */}
-            <div className="flex items-start justify-between mb-4">
-              <div className="min-w-0 flex-1">
-                <div className="label mb-1 truncate">№ {String(coin.coin_id).padStart(3, '0')}</div>
-                <h3 className="font-display text-2xl italic text-ink leading-tight truncate"
-                    style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 30" }}>
-                  {coin.name}
-                </h3>
-              </div>
-              <div className={`font-mono text-xs font-bold tracking-caps shrink-0 ml-3 ${up ? 'text-verdigris' : 'text-oxblood'}`}>
-                {up ? '▲' : '▼'}
-              </div>
-            </div>
+    <div className="paper-card overflow-hidden">
+      <div className="hidden md:grid grid-cols-12 gap-4 px-5 py-3 bg-paper-alt border-b border-rule label">
+        <div className="col-span-4">Asset</div>
+        <div className="col-span-2 text-right">Price</div>
+        <div className="col-span-2 text-right">24h</div>
+        <div className="col-span-2 text-right">Market cap</div>
+        <div className="col-span-2 text-right">Supply</div>
+      </div>
 
-            <div className="rule-thin mb-4"></div>
+      <div className="divide-rule">
+        {sortedCoins.map((coin, index) => {
+          const price = parseFloat(coin?.current_price?.toString() ?? '0');
+          const priceChange = parseFloat(coin?.price_change_24h?.toString() ?? '0');
+          const up = priceChange >= 0;
+          const selected = selectedCoinId === coin.coin_id;
 
-            {/* Price row */}
-            <div className="flex items-end justify-between">
-              <div>
-                <div className="label mb-1">{coin.symbol}</div>
-                <div className="numeral text-ink text-3xl"
-                     style={{ fontVariationSettings: "'opsz' 144" }}>
-                  £{price.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          return (
+            <button
+              key={coin.coin_id}
+              onClick={() => onSelectCoin(coin.coin_id)}
+              className={`group w-full text-left px-4 sm:px-5 py-4 transition-colors animate-reveal-fast hover:bg-paper-alt ${
+                selected ? 'bg-paper-alt ring-1 ring-inset ring-gold' : 'bg-card'
+              }`}
+              style={{ animationDelay: `${Math.min(index * 35, 450)}ms` }}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-12 md:items-center gap-4">
+                <div className="md:col-span-4 flex items-center gap-3 min-w-0">
+                  <span className="asset-mark">{coin.symbol.slice(0, 3)}</span>
+                  <div className="min-w-0">
+                    <div className="font-display font-semibold text-ink truncate group-hover:text-gold transition-colors">
+                      {coin.name}
+                    </div>
+                    <div className="font-mono text-[0.68rem] text-ink-mute mt-0.5">{coin.symbol}/GBP</div>
+                  </div>
+                </div>
+
+                <div className="md:col-span-2 md:text-right flex md:block items-center justify-between">
+                  <span className="label md:hidden">Price</span>
+                  <span className="font-mono text-sm font-semibold text-ink tnum">
+                    £{price.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="md:col-span-2 md:text-right flex md:block items-center justify-between">
+                  <span className="label md:hidden">24h</span>
+                  <span className={`inline-flex items-center justify-end gap-1 font-mono text-sm font-semibold tnum ${up ? 'text-verdigris' : 'text-oxblood'}`}>
+                    {up ? '↗' : '↘'} {up ? '+' : ''}{priceChange.toFixed(2)}%
+                  </span>
+                </div>
+
+                <div className="md:col-span-2 md:text-right flex md:block items-center justify-between">
+                  <span className="label md:hidden">Market cap</span>
+                  <span className="font-mono text-sm text-ink-dim tnum">£{formatCompact(coin.market_cap)}</span>
+                </div>
+
+                <div className="md:col-span-2 md:text-right flex md:block items-center justify-between">
+                  <span className="label md:hidden">Supply</span>
+                  <span className="font-mono text-sm text-ink-dim tnum">{formatCompact(coin.circulating_supply)} {coin.symbol}</span>
                 </div>
               </div>
-              <div className={`font-mono text-xs tnum ${up ? 'text-verdigris' : 'text-oxblood'}`}>
-                {up ? '+' : ''}{priceChange.toFixed(2)}%
-              </div>
-            </div>
-
-            {/* Hover indicator line */}
-            <div className="absolute bottom-0 left-0 right-0 h-px bg-gold origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500"></div>
-          </button>
-        );
-      })}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

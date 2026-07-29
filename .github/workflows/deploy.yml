@@ -31,7 +31,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build production frontend
+      - name: Verify UI contract and types
+        run: |
+          npm run test:ui
+          npx tsc --noEmit
+
+      - name: Build production bundle
         run: npm run build
 
       - name: Configure deployment SSH
