@@ -1,36 +1,67 @@
 name: Deploy to VPS
 
-# Deployment workflow for automatic updates
 on:
   push:
     branches:
-      - master  # or your default branch name
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: coins-production-deploy
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Check out source
+        uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
+          cache: npm
 
-      - name: Install Dependencies
-        run: npm install
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Build
+      - name: Build production frontend
         run: npm run build
 
-      - name: Install SSH Key
-        uses: shimataro/ssh-key-action@v2
-        with:
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
-
-      - name: Deploy to VPS
+      - name: Configure deployment SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
-          rsync -avz -e "ssh -p 4020" --delete ./dist/ jd@213.165.91.221:/var/www/jdwd40.com/html/coins/
-          ssh -p 4020 jd@213.165.91.221 'sudo systemctl reload nginx'
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Verify SSH access
+        run: |
+          ssh -p 4020 \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            jd@213.165.91.221 \
+            'test -d /var/www/jdwd40.com/html/coins && test -w /var/www/jdwd40.com/html/coins'
+
+      - name: Deploy static build
+        run: |
+          rsync -az --delete --delay-updates \
+            -e "ssh -p 4020 -o BatchMode=yes" \
+            ./dist/ \
+            jd@213.165.91.221:/var/www/jdwd40.com/html/coins/
+
+      - name: Verify live deployment
+        run: |
+          curl --fail --silent --show-error \
+            --retry 5 --retry-delay 2 \
+            https://jdwd40.com/coins/ > /dev/null
