@@ -13,6 +13,7 @@ import { UserMenu } from './components/UserMenu';
 import { AuthForms } from './components/AuthForms';
 import { Profile } from './components/Profile';
 import { MarketValueChart } from './components/MarketValueChart';
+import { parsePrice } from './services/transactionService';
 import type { Coin, MarketStatus as MarketStatusType, MarketStats as MarketStatsType } from './types';
 
 const AUTO_REFRESH_INTERVAL = 30000;
@@ -29,7 +30,7 @@ function TickerTape({ coins }: { coins: Coin[] }) {
     <div className="border-b border-rule overflow-hidden bg-paper-alt">
       <div className="flex animate-ticker whitespace-nowrap py-2.5">
         {items.map((coin, i) => {
-          const price = parseFloat(coin?.current_price?.toString() ?? '0');
+          const price = parsePrice(coin?.current_price ?? 0);
           const change = parseFloat(coin?.price_change_24h?.toString() ?? '0');
           const up = change >= 0;
           return (

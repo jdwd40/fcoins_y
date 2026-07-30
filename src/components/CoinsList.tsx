@@ -1,4 +1,5 @@
 import { Coin, MarketEvent } from '../types';
+import { parsePrice } from '../services/transactionService';
 
 interface CoinsListProps {
   coins: Coin[];
@@ -9,13 +10,13 @@ interface CoinsListProps {
 
 const sortCoinsByPrice = (coins: Coin[]) =>
   [...coins].sort((a, b) => {
-    const priceA = parseFloat(a.current_price?.toString() ?? '0');
-    const priceB = parseFloat(b.current_price?.toString() ?? '0');
+    const priceA = parsePrice(a.current_price ?? 0);
+    const priceB = parsePrice(b.current_price ?? 0);
     return priceB - priceA;
   });
 
 const formatCompact = (value: string | number) =>
-  new Intl.NumberFormat('en-GB', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value) || 0);
+  new Intl.NumberFormat('en-GB', { notation: 'compact', maximumFractionDigits: 1 }).format(parsePrice(value) || 0);
 
 export function CoinsList({ coins, onSelectCoin, selectedCoinId }: CoinsListProps) {
   const sortedCoins = sortCoinsByPrice(coins);
@@ -32,7 +33,7 @@ export function CoinsList({ coins, onSelectCoin, selectedCoinId }: CoinsListProp
 
       <div className="divide-rule">
         {sortedCoins.map((coin, index) => {
-          const price = parseFloat(coin?.current_price?.toString() ?? '0');
+          const price = parsePrice(coin?.current_price ?? 0);
           const priceChange = parseFloat(coin?.price_change_24h?.toString() ?? '0');
           const up = priceChange >= 0;
           const selected = selectedCoinId === coin.coin_id;

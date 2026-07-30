@@ -283,8 +283,8 @@ export function formatCurrency(value: number) {
 
 export function parsePrice(price: string | number): number {
   if (typeof price === 'string') {
-    // Remove any existing currency symbols and spaces
-    const cleanPrice = price.replace(/[£\s]/g, '');
+    // Remove display formatting before converting API values to numbers.
+    const cleanPrice = price.replace(/[£,\s]/g, '');
     return parseFloat(cleanPrice);
   }
   return price;
