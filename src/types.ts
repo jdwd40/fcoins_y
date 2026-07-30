@@ -1,3 +1,5 @@
+export type TimeRange = '24H' | '7D' | '30D' | 'ALL';
+
 export interface Coin {
   coin_id: number;
   name: string;
