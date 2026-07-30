@@ -14,23 +14,23 @@ export interface MarketData {
   market_stats?: MarketStats;
 }
 
-export interface PriceHistoryItem {
-  price_history_id: number;
-  coin_id: number;
-  price: number;
-  created_at: string;
-  name: string;
-  symbol: string;
+export interface PricePoint {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  samples: number;
+  complete: boolean;
 }
 
 export interface PriceHistoryResponse {
-  data: PriceHistoryItem[];
-  pagination: {
-    currentPage: number;
-    totalPages: number;
-    totalItems: number;
-    hasMore: boolean;
-  };
+  range: { requested: string; from: string; to: string };
+  resolution: string;
+  serverTime: string;
+  latestValue: number;
+  coin: { coin_id: number; symbol: string };
+  points: PricePoint[];
 }
 
 export interface MarketEvent {

@@ -13,6 +13,8 @@ import {
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
 
+import { PricePoint, PriceHistoryResponse } from '../types';
+
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -31,19 +33,15 @@ interface PriceChartProps {
   refreshTrigger?: number;
 }
 
-interface PriceDataPoint {
-  price: number | string;
-  created_at: string;
-}
-
-interface ApiResponse {
-  data: PriceDataPoint[];
-  pagination: {
-    currentPage: number;
-    totalPages: number;
-    totalItems: number;
-    hasMore: boolean;
-  };
+function formatAdaptivePrice(value: number): string {
+  if (value < 0.01) return `£${value.toFixed(6)}`;
+  if (value < 1) return `£${value.toFixed(4)}`;
+  return value.toLocaleString('en-GB', {
+    style: 'currency',
+    currency: 'GBP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 const TIME_RANGES: { value: TimeRange; label: string }[] = [
@@ -69,31 +67,24 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
     setLoading(true);
     setError(null);
     try {
-      const allData: PriceDataPoint[] = [];
-      let page = 1;
-      const maxPages = range === '24H' ? 10 : range === '2H' ? 5 : range === '1H' ? 3 : 2;
-      while (page <= maxPages) {
-        const response = await fetch(
-          `${API_BASE}/coins/${coinId}/price-history?range=${range}&page=${page}`,
-          { signal: abortControllerRef.current.signal }
-        );
-        if (!response.ok) throw new Error(`Failed to fetch data (${response.status})`);
-        const result: ApiResponse = await response.json();
-        if (!result.data || !Array.isArray(result.data)) break;
-        allData.push(...result.data);
-        if (!result.pagination.hasMore || page >= result.pagination.totalPages) break;
-        page++;
-      }
-      const processed = allData
-        .filter((item) => {
-          const ts = new Date(item.created_at).getTime();
-          const price = typeof item.price === 'string' ? parseFloat(item.price) : item.price;
-          return !isNaN(ts) && !isNaN(price) && price > 0;
+      // Single request per design (no pagination)
+      const response = await fetch(
+        `${API_BASE}/coins/${coinId}/price-history?range=${range}`,
+        { signal: abortControllerRef.current.signal }
+      );
+      if (!response.ok) throw new Error(`Failed to fetch data (${response.status})`);
+      const result: PriceHistoryResponse = await response.json();
+
+      const processed = (result.points || [])
+        .filter((p: PricePoint) => {
+          const ts = new Date(p.time).getTime();
+          return !isNaN(ts) && !isNaN(p.close) && p.close > 0;
         })
-        .map((item) => ({
-          x: new Date(item.created_at).getTime(),
-          y: typeof item.price === 'string' ? parseFloat(item.price) : item.price,
+        .map((p: PricePoint) => ({
+          x: new Date(p.time).getTime(),
+          y: p.close,
         }))
+        // already chronological from backend; explicit sort for safety
         .sort((a, b) => a.x - b.x);
       setChartData(processed);
     } catch (err) {
@@ -202,7 +193,7 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
             }
             return date.toLocaleString('en-GB', opts).toUpperCase();
           },
-          label: (context: { parsed: { y: number } }) => `£${context.parsed.y.toFixed(2)}`,
+          label: (context: { parsed: { y: number } }) => formatAdaptivePrice(context.parsed.y),
         },
       },
     },
@@ -233,7 +224,7 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
         ticks: {
           color: axisColor,
           font: { family: 'JetBrains Mono', size: 10 },
-          callback: (value: number | string) => `£${Number(value).toFixed(2)}`,
+          callback: (value: number | string) => formatAdaptivePrice(Number(value)),
           maxTicksLimit: 6,
         },
       },
