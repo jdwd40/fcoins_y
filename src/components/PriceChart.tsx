@@ -95,19 +95,25 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
   const [history, setHistory] = useState<PriceHistoryResponse | null>(null);
   const [chartData, setChartData] = useState<{ x: number; y: number }[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef(0);
 
   const fetchPriceHistory = useCallback(async (range: TimeRange) => {
     if (abortControllerRef.current) abortControllerRef.current.abort();
-    abortControllerRef.current = new AbortController();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const response = await fetch(
         `${API_BASE}/coins/${coinId}/price-history?range=${range}`,
-        { signal: abortControllerRef.current.signal }
+        { signal: controller.signal }
       );
       if (!response.ok) throw new Error(`Failed to fetch data (${response.status})`);
       const result: PriceHistoryResponse = await response.json();
+      // Ignore stale responses from aborted/superseded requests
+      if (requestId !== requestIdRef.current) return;
+
       setHistory(result);
 
       const processed = (result.points || [])
@@ -123,11 +129,15 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
       setChartData(processed);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return;
+      if (requestId !== requestIdRef.current) return;
       setError(err instanceof Error ? err.message : 'Failed to load price data');
       setHistory(null);
       setChartData([]);
     } finally {
-      setLoading(false);
+      // Only the active request may clear loading — prevents races hiding newer loads
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [coinId]);
 
@@ -355,15 +365,15 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
         ))}
       </div>
 
-      {/* Chart area with states */}
-      <div className="relative" role="img" aria-label={ariaLabel}>
+      {/* Chart area with states — role=img only on the chart graphic, not overlays/controls */}
+      <div className="relative">
         {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-card/70 z-10">
+          <div className="absolute inset-0 flex items-center justify-center bg-card/70 z-10" aria-live="polite">
             <div className="text-sm text-ink-mute animate-flicker">Loading price history…</div>
           </div>
         )}
         {error && !loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-card/70 z-10">
+          <div className="absolute inset-0 flex items-center justify-center bg-card/70 z-10" role="alert">
             <div className="text-center">
               <p className="font-display font-semibold text-xl text-oxblood mb-1">Price history unavailable</p>
               <p className="label mb-3">{error}</p>
@@ -381,7 +391,7 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
             <p className="label">No price history available for this period yet</p>
           </div>
         )}
-        <div className="h-[300px] sm:h-[380px]">
+        <div className="h-[300px] sm:h-[380px]" role="img" aria-label={ariaLabel}>
           <Line data={data} options={options} />
         </div>
       </div>
