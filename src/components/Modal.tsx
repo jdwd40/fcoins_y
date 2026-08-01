@@ -12,13 +12,13 @@ export function Modal({ isOpen, onClose, children }: ModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-screen items-center justify-center p-2 sm:p-6">
+      <div className="flex min-h-screen items-end sm:items-center justify-center p-0 sm:p-6">
         <div
           className="fixed inset-0 bg-black/75 backdrop-blur-sm"
           onClick={onClose}
           aria-hidden="true"
         />
-        <div className="relative w-full max-w-5xl bg-card border border-rule rounded-2xl shadow-2xl animate-reveal-fast max-h-[92vh] overflow-y-auto">
+        <div className="relative w-full max-w-5xl bg-card border border-rule rounded-t-2xl sm:rounded-2xl shadow-2xl animate-reveal-fast max-h-[94vh] sm:max-h-[92vh] overflow-y-auto">
           <button
             onClick={onClose}
             className="absolute right-4 top-4 p-2 rounded-lg bg-paper-alt border border-rule text-ink-mute hover:text-gold hover:border-gold transition-colors z-50"

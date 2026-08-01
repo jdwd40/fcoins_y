@@ -76,7 +76,7 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
           <span>·</span>
           <span>{coin.symbol}</span>
         </div>
-        <h2 className="font-display text-5xl sm:text-6xl font-semibold text-ink leading-none"
+        <h2 className="font-display text-3xl sm:text-5xl lg:text-6xl font-semibold text-ink leading-none"
             style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 50" }}>
           {coin.name}
         </h2>
@@ -86,27 +86,27 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
         {/* Left: stats + forms */}
         <div className="lg:col-span-2 space-y-8">
           {/* Stats */}
-          <div className="grid grid-cols-2 gap-6">
-            <div>
+          <div className="grid grid-cols-2 gap-4 sm:gap-6">
+            <div className="min-w-0">
               <div className="label mb-2">Current Price</div>
-              <div className="numeral text-ink text-4xl"
+              <div className="numeral text-ink text-2xl sm:text-4xl break-all"
                    style={{ fontVariationSettings: "'opsz' 144" }}>
                 {formatCurrency(currentPrice)}
               </div>
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="label mb-2">24h Change</div>
-              <div className={`numeral text-4xl ${up ? 'text-verdigris' : 'text-oxblood'}`}>
+              <div className={`numeral text-2xl sm:text-4xl ${up ? 'text-verdigris' : 'text-oxblood'}`}>
                 {up ? '+' : ''}{priceChange.toFixed(2)}%
               </div>
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="label mb-2">Market Cap</div>
-              <div className="font-mono text-lg text-ink tnum">{formatCurrency(marketCap)}</div>
+              <div className="font-mono text-base sm:text-lg text-ink tnum">{formatCurrency(marketCap)}</div>
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="label mb-2">Supply</div>
-              <div className="font-mono text-lg text-ink tnum">
+              <div className="font-mono text-base sm:text-lg text-ink tnum">
                 {coin.circulating_supply.toLocaleString()}
               </div>
             </div>
