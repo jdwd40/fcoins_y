@@ -15,6 +15,7 @@ import 'chartjs-adapter-date-fns';
 
 import { PricePoint, PriceHistoryResponse, TimeRange } from '../types';
 import { computePeriodSummary, PeriodSummary } from '../utils/priceSummary';
+import { API_BASE } from '../config/api';
 
 ChartJS.register(
   CategoryScale,
@@ -49,8 +50,6 @@ const TIME_RANGES: { value: TimeRange; label: string }[] = [
   { value: '30D', label: '30D' },
   { value: 'ALL', label: 'ALL' },
 ];
-
-const API_BASE = 'https://jdwd40.com/api-2/api';
 
 function getRangeLabel(range: TimeRange): string {
   switch (range) {
