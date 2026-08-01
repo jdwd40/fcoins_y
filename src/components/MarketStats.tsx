@@ -30,10 +30,10 @@ export function MarketStats({ stats }: MarketStatsProps) {
 
   return (
     <div className="paper-card">
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5">
-        <div className="p-5 sm:p-6 xl:border-r border-rule bg-paper-alt">
-          <div className="label mb-3">Market regime</div>
-          <div className={`flex items-center gap-2 font-display text-xl font-bold ${cycle.cls}`}>
+      <div className="grid grid-cols-2 xl:grid-cols-5">
+        <div className="col-span-2 xl:col-span-1 p-4 sm:p-6 xl:border-r border-rule bg-paper-alt">
+          <div className="label mb-2 sm:mb-3">Market regime</div>
+          <div className={`flex items-center gap-2 font-display text-lg sm:text-xl font-bold ${cycle.cls}`}>
             <span>{cycle.glyph}</span> {cycle.label}
           </div>
           <div className="font-mono text-[0.68rem] text-ink-mute mt-2 tnum">
@@ -65,11 +65,11 @@ function StatBlock({
   const toneClass = tone === 'verdigris' ? 'text-verdigris' : tone === 'oxblood' ? 'text-oxblood' : 'text-ink';
   return (
     <div
-      className="p-5 sm:p-6 border-t sm:border-t-0 sm:border-l first:border-l-0 border-rule animate-reveal-fast"
+      className="p-4 sm:p-6 border-t xl:border-t-0 xl:border-l xl:first:border-l-0 border-rule animate-reveal-fast"
       style={{ animationDelay: `${delay}ms` }}
     >
-      <div className="label mb-3">{label}</div>
-      <div className={`numeral ${toneClass} ${emphasis ? 'text-3xl' : 'text-2xl'}`}>{value}</div>
+      <div className="label mb-2 sm:mb-3">{label}</div>
+      <div className={`numeral ${toneClass} ${emphasis ? 'text-xl sm:text-3xl' : 'text-lg sm:text-2xl'}`}>{value}</div>
     </div>
   );
 }

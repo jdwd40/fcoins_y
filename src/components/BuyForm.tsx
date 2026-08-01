@@ -210,7 +210,7 @@ export function BuyForm({ coin, onSuccess }: BuyFormProps) {
             </div>
             <div className="text-right">
               <div className="label mb-1">Total</div>
-              <div className={`font-mono text-base tnum ${insufficientFunds ? 'text-oxblood' : 'text-gold'}`}>
+              <div className={`font-mono text-sm sm:text-base tnum ${insufficientFunds ? 'text-oxblood' : 'text-gold'}`}>
                 {formatCurrency(totalCost)}
               </div>
             </div>

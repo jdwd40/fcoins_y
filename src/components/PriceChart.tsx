@@ -307,11 +307,11 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
       {/* Header: current price + range-relative change + high/low */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between border-b border-rule pb-3">
         <div>
-          <div className="numeral text-3xl sm:text-4xl font-semibold tracking-tight">
+          <div className="numeral text-2xl sm:text-3xl font-semibold tracking-tight break-all">
             {formatAdaptivePrice(latestValue)}
           </div>
           {summary && (
-            <div className={`mt-1 text-lg font-semibold ${changeClass}`}>
+            <div className={`mt-1 text-sm sm:text-lg font-semibold ${changeClass}`}>
               {changeText}
             </div>
           )}
@@ -337,14 +337,14 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
       <div
         role="group"
         aria-label="Select chart time range"
-        className="flex flex-wrap gap-2"
+        className="flex gap-1 sm:gap-2"
       >
         {TIME_RANGES.map(({ value, label }) => (
           <button
             key={value}
             onClick={() => setSelectedRange(value)}
             aria-pressed={selectedRange === value}
-            className={`min-h-[44px] px-4 py-2 font-mono text-sm tracking-[0.5px] uppercase border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
+            className={`flex-1 sm:flex-none min-h-[44px] px-2 sm:px-4 py-2 font-mono text-xs sm:text-sm tracking-[0.5px] uppercase border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
               selectedRange === value
                 ? 'border-gold text-gold bg-paper-alt'
                 : 'border-transparent text-ink-mute hover:text-ink hover:border-rule'
@@ -381,7 +381,7 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
             <p className="label">No price history available for this period yet</p>
           </div>
         )}
-        <div className="h-[300px] sm:h-[380px]">
+        <div className="h-[240px] sm:h-[380px]">
           <Line data={data} options={options} />
         </div>
       </div>
