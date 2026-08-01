@@ -13,6 +13,7 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
+import { API_BASE } from '../config/api';
 
 ChartJS.register(
   CategoryScale,
@@ -53,7 +54,7 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
     const fetchMarketHistory = async () => {
       try {
         setLoading(true);
-        const url = `https://jdwd40.com/api-2/api/market/price-history?timeRange=${timeRange}`;
+        const url = `${API_BASE}/market/price-history?timeRange=${timeRange}`;
         const response = await fetch(url);
         const data = await response.json();
         if (!data.history || !Array.isArray(data.history)) {

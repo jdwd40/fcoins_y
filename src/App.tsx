@@ -14,6 +14,7 @@ import { AuthForms } from './components/AuthForms';
 import { Profile } from './components/Profile';
 import { MarketValueChart } from './components/MarketValueChart';
 import { parsePrice } from './services/transactionService';
+import { API_BASE } from './config/api';
 import type { Coin, MarketStatus as MarketStatusType, MarketStats as MarketStatsType } from './types';
 
 const AUTO_REFRESH_INTERVAL = 30000;
@@ -108,10 +109,10 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
   });
 
   const { data: coinsData, loading: coinsLoading, error: coinsError } =
-    useFetch<{ coins: Coin[] }>('https://jdwd40.com/api-2/api/coins', 2000);
+    useFetch<{ coins: Coin[] }>(`${API_BASE}/coins`, 2000);
 
   const { data: marketStats, loading: marketStatsLoading, error: marketStatsError } =
-    useFetch<MarketStatsType>('https://jdwd40.com/api-2/api/market/stats', 2000);
+    useFetch<MarketStatsType>(`${API_BASE}/market/stats`, 2000);
 
   const marketData = coinsData && marketStats ? {
     coins: coinsData.coins,
@@ -122,12 +123,12 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
   const error = coinsError || marketStatsError;
 
   const { data: marketStatus } = useFetch<MarketStatusType>(
-    'https://jdwd40.com/api-2/api/market/status',
+    `${API_BASE}/market/status`,
     2000
   );
 
   const { data: coinDetail, loading: coinLoading } = useFetch<{ coin: Coin }>(
-    selectedCoinId ? `https://jdwd40.com/api-2/api/coins/${selectedCoinId}` : ''
+    selectedCoinId ? `${API_BASE}/coins/${selectedCoinId}` : ''
   );
 
   useEffect(() => {

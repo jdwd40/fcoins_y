@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { User, AuthResponse, LoginCredentials, RegisterCredentials } from '../types';
+import { API_BASE } from '../config/api';
 
 interface AuthContextType {
   user: User | null;
@@ -149,7 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       console.log('Attempting login with credentials:', { email: credentials.email, password: '********' });
       
-      const response = await fetch('https://jdwd40.com/api-2/api/users/login', {
+      const response = await fetch(`${API_BASE}/users/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),
@@ -226,7 +227,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         username: credentials.username
       });
       
-      const response = await fetch('https://jdwd40.com/api-2/api/users/register', {
+      const response = await fetch(`${API_BASE}/users/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),
@@ -263,7 +264,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // The registration API doesn't return a token, so we need to call login
       console.log('Registration successful, now logging in automatically...');
       
-      const loginResponse = await fetch('https://jdwd40.com/api-2/api/users/login', {
+      const loginResponse = await fetch(`${API_BASE}/users/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: credentials.email, password: credentials.password }),
