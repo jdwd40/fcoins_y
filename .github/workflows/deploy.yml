@@ -32,11 +32,20 @@ jobs:
         run: npm ci
 
       - name: Verify UI contract and types
+        # App-project typecheck (root `tsc --noEmit` missed tsconfig.app.json
+        # failures at baseline — see docs/CURRENT_STATE_INVENTORY.md)
         run: |
           npm run test:ui
-          npx tsc --noEmit
+          npx tsc -p tsconfig.app.json --noEmit
 
       - name: Build production bundle
+        # Public Supabase config comes from GitHub environment/repo variables
+        # (anon key only — the service-role key must NEVER be a frontend var).
+        # Configure `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` as Actions
+        # variables before merging this branch to master (Task 14/16).
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
 
       - name: Configure deployment SSH
