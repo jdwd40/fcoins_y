@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { requestPasswordReset } from '../services/authService';
+import { mapAuthError } from '../services/errorMapper';
 
 interface AuthFormsProps {
   onClose: () => void;
@@ -18,7 +20,8 @@ export function AuthForms({ onClose }: AuthFormsProps) {
     password: '',
     username: '',
   });
-  const [mode, setMode] = useState<'auth' | 'complete_profile'>('auth');
+  const [mode, setMode] = useState<'auth' | 'complete_profile' | 'reset'>('auth');
+  const [resetBusy, setResetBusy] = useState(false);
 
   useEffect(() => {
     if (needsProfile && !user) setMode('complete_profile');
@@ -31,6 +34,21 @@ export function AuthForms({ onClose }: AuthFormsProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      if (mode === 'reset') {
+        setResetBusy(true);
+        try {
+          await requestPasswordReset(formData.email);
+          showToast('If that email exists, a reset link is on its way.', 'info');
+          setMode('auth');
+          setIsLogin(true);
+        } catch (err) {
+          showToast(mapAuthError(err), 'error');
+        } finally {
+          setResetBusy(false);
+        }
+        return;
+      }
+
       if (mode === 'complete_profile') {
         const result = await completeProfile(formData.username);
         if (result.ok && result.status === 'ready') {
@@ -87,15 +105,19 @@ export function AuthForms({ onClose }: AuthFormsProps) {
   const title =
     mode === 'complete_profile'
       ? 'Finish setup'
-      : isLogin
-        ? 'Welcome\u00a0back'
-        : 'Join\u00a0CoinX';
+      : mode === 'reset'
+        ? 'Reset password'
+        : isLogin
+          ? 'Welcome\u00a0back'
+          : 'Join\u00a0CoinX';
   const subtitle =
     mode === 'complete_profile'
       ? 'Pick a display username for the exchange'
-      : isLogin
-        ? 'Secure account access'
-        : 'Create account';
+      : mode === 'reset'
+        ? 'We will email a recovery link'
+        : isLogin
+          ? 'Secure account access'
+          : 'Create account';
 
   return (
     <div className="w-full max-w-md mx-auto py-4">
@@ -110,7 +132,7 @@ export function AuthForms({ onClose }: AuthFormsProps) {
         </div>
       </div>
 
-      {error && (
+      {error && mode !== 'reset' && (
         <div className="mb-6 border-l-2 border-oxblood px-4 py-3 bg-card">
           <div className="label text-oxblood mb-1">
             {mode === 'complete_profile'
@@ -124,7 +146,7 @@ export function AuthForms({ onClose }: AuthFormsProps) {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {(mode === 'complete_profile' || !isLogin) && (
+        {(mode === 'complete_profile' || (mode === 'auth' && !isLogin)) && (
           <div>
             <label className="label block mb-2">Username</label>
             <input
@@ -140,51 +162,65 @@ export function AuthForms({ onClose }: AuthFormsProps) {
           </div>
         )}
 
-        {mode === 'auth' && (
-          <>
-            <div>
-              <label className="label block mb-2">Email address</label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                className="input-ink"
-                placeholder="you@elsewhere.co"
-                required
-                autoComplete="email"
-              />
-            </div>
-
-            <div>
-              <label className="label block mb-2">Password</label>
-              <input
-                type="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                className="input-ink"
-                placeholder="••••••••"
-                required
-                autoComplete={isLogin ? 'current-password' : 'new-password'}
-              />
-            </div>
-          </>
+        {(mode === 'auth' || mode === 'reset') && (
+          <div>
+            <label className="label block mb-2">Email address</label>
+            <input
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              className="input-ink"
+              placeholder="you@elsewhere.co"
+              required
+              autoComplete="email"
+            />
+          </div>
         )}
 
-        <button type="submit" disabled={loading} className="btn-gold w-full">
-          {loading
-            ? 'Authenticating…'
+        {mode === 'auth' && (
+          <div>
+            <label className="label block mb-2">Password</label>
+            <input
+              type="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              className="input-ink"
+              placeholder="••••••••"
+              required
+              autoComplete={isLogin ? 'current-password' : 'new-password'}
+            />
+          </div>
+        )}
+
+        <button type="submit" disabled={loading || resetBusy} className="btn-gold w-full">
+          {loading || resetBusy
+            ? 'Working…'
             : mode === 'complete_profile'
               ? 'Finish setup'
-              : isLogin
-                ? 'Sign in'
-                : 'Create account'}
+              : mode === 'reset'
+                ? 'Send reset link'
+                : isLogin
+                  ? 'Sign in'
+                  : 'Create account'}
         </button>
       </form>
 
       {mode === 'auth' && (
-        <div className="mt-8 pt-6 border-t border-rule text-center">
+        <div className="mt-8 pt-6 border-t border-rule text-center space-y-3">
+          {isLogin && (
+            <button
+              type="button"
+              onClick={() => {
+                setMode('reset');
+                clearError();
+              }}
+              className="label hover:text-gold transition-colors block w-full"
+            >
+              Forgot password?
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -194,6 +230,22 @@ export function AuthForms({ onClose }: AuthFormsProps) {
             className="label hover:text-gold transition-colors"
           >
             {isLogin ? '→ Register a New Account' : '← Return to Sign In'}
+          </button>
+        </div>
+      )}
+
+      {mode === 'reset' && (
+        <div className="mt-8 pt-6 border-t border-rule text-center">
+          <button
+            type="button"
+            onClick={() => {
+              setMode('auth');
+              setIsLogin(true);
+              clearError();
+            }}
+            className="label hover:text-gold transition-colors"
+          >
+            ← Return to Sign In
           </button>
         </div>
       )}
