@@ -290,7 +290,7 @@ function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <Router basename="/coins">
+        <Router basename={(import.meta.env.BASE_URL || '/coins/').replace(/\/$/, '') || '/'}>
           <Routes>
             <Route path="/" element={<Market refreshTrigger={refreshTrigger} />} />
             <Route path="/profile" element={<Profile />} />
