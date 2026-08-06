@@ -1,16 +1,21 @@
-import { MarketStats as MarketStatsType } from '../types';
+import type { MarketStatsData } from '../services/marketService';
+import type { MarketStatusView } from '../types';
+import { formatCountdown } from '../utils/format';
 
 interface MarketStatsProps {
-  stats: MarketStatsType;
+  stats: MarketStatsData;
+  status: MarketStatusView;
 }
 
-const formatValue = (value: number) =>
-  value.toLocaleString('en-GB', {
-    style: 'currency',
-    currency: 'GBP',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
+const formatValue = (value: number | null) =>
+  value === null
+    ? '—'
+    : value.toLocaleString('en-GB', {
+        style: 'currency',
+        currency: 'GBP',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      });
 
 const getCycleTone = (type: string) => {
   switch (type.toUpperCase()) {
@@ -24,9 +29,9 @@ const getCycleTone = (type: string) => {
   }
 };
 
-export function MarketStats({ stats }: MarketStatsProps) {
+export function MarketStats({ stats, status }: MarketStatsProps) {
   if (!stats) return null;
-  const cycle = getCycleTone(stats.currentCycle.type);
+  const cycle = getCycleTone(status.cycle);
 
   return (
     <div className="paper-card">
@@ -37,7 +42,7 @@ export function MarketStats({ stats }: MarketStatsProps) {
             <span>{cycle.glyph}</span> {cycle.label}
           </div>
           <div className="font-mono text-[0.68rem] text-ink-mute mt-2 tnum">
-            Reprices in {stats.currentCycle.timeRemaining}
+            Reprices in {formatCountdown(status.cycle_seconds_remaining)}
           </div>
         </div>
         <StatBlock label="Market value" value={formatValue(stats.currentValue)} emphasis delay={0} />

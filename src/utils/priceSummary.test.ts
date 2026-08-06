@@ -8,7 +8,7 @@ import { computePeriodSummary } from './priceSummary.ts';
 
 test('returns null for empty points', () => {
   assert.strictEqual(computePeriodSummary([], 100), null);
-  assert.strictEqual(computePeriodSummary(undefined as unknown, 100), null);
+  assert.strictEqual(computePeriodSummary(undefined as unknown as { high: number; low: number; close: number }[], 100), null);
 });
 
 test('single point is neutral, high=low=that price, change=0', () => {

@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Activity, BarChart3, ShieldCheck } from 'lucide-react';
 import { CoinsList } from './components/CoinsList';
 import { CoinDetail } from './components/CoinDetail';
 import { MarketStats } from './components/MarketStats';
 import { MarketStatus } from './components/MarketStatus';
-import { useFetch } from './hooks/useFetch';
+import { useSupabaseQuery } from './hooks/useSupabaseQuery';
 import { Modal } from './components/Modal';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
@@ -13,12 +13,14 @@ import { UserMenu } from './components/UserMenu';
 import { AuthForms } from './components/AuthForms';
 import { Profile } from './components/Profile';
 import { MarketValueChart } from './components/MarketValueChart';
-import { parsePrice } from './services/transactionService';
-import type { Coin, MarketStatus as MarketStatusType, MarketStats as MarketStatsType } from './types';
+import {
+  fetchAssets, fetchAsset, fetchMarketStatus, fetchMarketStats, subscribeMarket,
+} from './services/marketService';
+import type { PublicAsset, MarketStatusView } from './types';
 
 const AUTO_REFRESH_INTERVAL = 30000;
 
-function TickerTape({ coins }: { coins: Coin[] }) {
+function TickerTape({ coins }: { coins: PublicAsset[] }) {
   const items = useMemo(() => {
     const base = coins.slice(0, 20);
     return [...base, ...base];
@@ -30,11 +32,11 @@ function TickerTape({ coins }: { coins: Coin[] }) {
     <div className="border-b border-rule overflow-hidden bg-paper-alt">
       <div className="flex animate-ticker whitespace-nowrap py-2.5">
         {items.map((coin, i) => {
-          const price = parsePrice(coin?.current_price ?? 0);
-          const change = parseFloat(coin?.price_change_24h?.toString() ?? '0');
+          const price = Number(coin.current_price);
+          const change = Number(coin.price_change_24h ?? 0);
           const up = change >= 0;
           return (
-            <div key={`${coin.coin_id}-${i}`} className="flex items-center gap-3 px-5 border-r border-rule">
+            <div key={`${coin.id}-${i}`} className="flex items-center gap-3 px-5 border-r border-rule">
               <span className="font-mono text-[0.7rem] text-ink font-bold">{coin.symbol}/GBP</span>
               <span className="font-mono text-[0.72rem] text-ink-dim tnum">£{price.toFixed(2)}</span>
               <span className={`font-mono text-[0.68rem] font-semibold tnum ${up ? 'text-verdigris' : 'text-oxblood'}`}>
@@ -57,10 +59,10 @@ function ExchangeHeader({
   onAuthClick: () => void;
   isDark: boolean;
   onThemeToggle: () => void;
-  marketStatus: MarketStatusType | null | undefined;
+  marketStatus: MarketStatusView | null;
 }) {
-  const cycle = marketStatus?.currentCycle?.type?.replace('_', ' ') ?? 'STABLE';
-  const isLive = marketStatus?.status !== 'STOPPED';
+  const cycle = marketStatus?.cycle?.replace('_', ' ') ?? 'STABLE';
+  const isLive = marketStatus?.is_running !== false;
 
   return (
     <header className="exchange-nav sticky top-0 z-30">
@@ -107,27 +109,34 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
     return true;
   });
 
-  const { data: coinsData, loading: coinsLoading, error: coinsError } =
-    useFetch<{ coins: Coin[] }>('https://jdwd40.com/api-2/api/coins', 2000);
+  // Initial snapshot + polling recovery path; Realtime merges live updates.
+  const assetsQuery = useSupabaseQuery<PublicAsset[]>(fetchAssets, 2000);
+  const statusQuery = useSupabaseQuery<MarketStatusView>(fetchMarketStatus, 2000);
+  const statsQuery = useSupabaseQuery(fetchMarketStats, 5000);
 
-  const { data: marketStats, loading: marketStatsLoading, error: marketStatsError } =
-    useFetch<MarketStatsType>('https://jdwd40.com/api-2/api/market/stats', 2000);
+  // Realtime: merge asset updates by primary key; refetch status on change.
+  useEffect(() => {
+    const unsubscribe = subscribeMarket(
+      () => { void assetsQuery.refetch(); },
+      () => { void statusQuery.refetch(); },
+    );
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const marketData = coinsData && marketStats ? {
-    coins: coinsData.coins,
-    market_stats: marketStats,
-  } : undefined;
+  const assets = assetsQuery.data;
+  const marketStatus = statusQuery.data;
+  const marketStats = statsQuery.data;
 
-  const loading = coinsLoading || marketStatsLoading;
-  const error = coinsError || marketStatsError;
+  const loading = (assetsQuery.loading || statusQuery.loading) && !assets;
+  const error = assetsQuery.error || statusQuery.error;
 
-  const { data: marketStatus } = useFetch<MarketStatusType>(
-    'https://jdwd40.com/api-2/api/market/status',
-    2000
+  const detailFetcher = useCallback(
+    () => (selectedCoinId ? fetchAsset(selectedCoinId) : Promise.resolve(null)),
+    [selectedCoinId],
   );
-
-  const { data: coinDetail, loading: coinLoading } = useFetch<{ coin: Coin }>(
-    selectedCoinId ? `https://jdwd40.com/api-2/api/coins/${selectedCoinId}` : ''
+  const { data: coinDetail, loading: coinLoading } = useSupabaseQuery(
+    selectedCoinId ? detailFetcher : null,
   );
 
   useEffect(() => {
@@ -140,7 +149,7 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
     }
   }, [isDark]);
 
-  if (marketStatus?.status === 'STOPPED') {
+  if (marketStatus && !marketStatus.is_running) {
     return (
       <div className="min-h-screen bg-paper flex items-center justify-center px-4">
         <div className="paper-card max-w-md w-full p-9 text-center animate-reveal">
@@ -155,7 +164,7 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
     );
   }
 
-  if (error) {
+  if (error && !assets) {
     return (
       <div className="min-h-screen bg-paper flex items-center justify-center px-4">
         <div className="paper-card max-w-md w-full p-9 text-center">
@@ -167,7 +176,7 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
     );
   }
 
-  if (loading && !marketData) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-paper flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -187,7 +196,7 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
         marketStatus={marketStatus}
       />
 
-      {marketData?.coins && <TickerTape coins={marketData.coins} />}
+      {assets && <TickerTape coins={assets} />}
 
       <main className="max-w-[1400px] mx-auto px-4 sm:px-8 py-8 sm:py-12">
         <section className="animate-reveal delay-75 mb-6 sm:mb-8">
@@ -201,9 +210,11 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
                 Track fantasy assets, monitor simulated price movement and manage your virtual GBP portfolio.
               </p>
             </div>
-            <span className="chip self-start lg:self-auto">Refreshes every 2 seconds</span>
+            <span className="chip self-start lg:self-auto">Live via Supabase Realtime</span>
           </div>
-          {marketData?.market_stats && <MarketStats stats={marketData.market_stats} />}
+          {marketStats && marketStatus && (
+            <MarketStats stats={marketStats} status={marketStatus} />
+          )}
         </section>
 
         <section id="analytics" className="mt-7 grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -222,16 +233,16 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
               <h2 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-ink">Markets</h2>
             </div>
             <div className="text-right">
-              <div className="font-mono text-sm text-ink">{marketData?.coins.length ?? 0} assets</div>
+              <div className="font-mono text-sm text-ink">{assets?.length ?? 0} assets</div>
               <div className="label mt-1">Sorted by price</div>
             </div>
           </div>
-          {marketData?.coins && (
+          {assets && (
             <CoinsList
-              coins={marketData.coins}
+              coins={assets}
               onSelectCoin={setSelectedCoinId}
               selectedCoinId={selectedCoinId}
-              events={marketStatus?.events || []}
+              activeEvents={marketStatus?.active_events ?? []}
             />
           )}
         </section>
@@ -250,8 +261,12 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
               <div className="label animate-flicker">Loading asset market…</div>
             </div>
           ) : (
-            coinDetail?.coin && (
-              <CoinDetail coin={coinDetail.coin} events={marketStatus?.events || []} refreshTrigger={refreshTrigger} />
+            coinDetail && (
+              <CoinDetail
+                coin={coinDetail}
+                activeEvents={marketStatus?.active_events ?? []}
+                refreshTrigger={refreshTrigger}
+              />
             )
           )}
         </Modal>

@@ -1,8 +1,9 @@
 import { Activity, Clock3, Gauge } from 'lucide-react';
-import type { MarketStatus as MarketStatusType } from '../types';
+import type { MarketStatusView } from '../types';
+import { formatCountdown } from '../utils/format';
 
 interface MarketStatusProps {
-  status: MarketStatusType;
+  status: MarketStatusView;
 }
 
 const formatCycleType = (type: string) => {
@@ -19,10 +20,9 @@ const formatCycleType = (type: string) => {
 };
 
 export function MarketStatus({ status }: MarketStatusProps) {
-  const type = status?.currentCycle?.type || 'STABLE';
+  const type = status.cycle || 'STABLE';
   const isBull = type.includes('BOOM');
   const tone = isBull ? 'text-verdigris' : type.includes('BUST') ? 'text-oxblood' : 'text-ink';
-  const effect = status?.currentCycle?.baseEffect ?? 0;
 
   return (
     <div className="paper-card h-full p-6 sm:p-7 flex flex-col">
@@ -31,8 +31,8 @@ export function MarketStatus({ status }: MarketStatusProps) {
           <div className="label mb-2">Market pulse</div>
           <h3 className="font-display text-2xl font-bold text-ink">Simulation status</h3>
         </div>
-        <span className="chip text-verdigris">
-          <span className="live-dot" /> Live
+        <span className={`chip ${status.is_running ? 'text-verdigris' : 'text-oxblood'}`}>
+          <span className="live-dot" /> {status.is_running ? 'Live' : 'Halted'}
         </span>
       </div>
 
@@ -45,13 +45,13 @@ export function MarketStatus({ status }: MarketStatusProps) {
         <div className="rounded-xl border border-rule p-4">
           <div className="flex items-center gap-2 label mb-2"><Clock3 className="w-3.5 h-3.5" /> Reprice</div>
           <div className="font-mono text-base font-semibold text-ink tnum">
-            {status?.currentCycle?.timeRemaining || '--:--'}
+            {formatCountdown(status.cycle_seconds_remaining)}
           </div>
         </div>
         <div className="rounded-xl border border-rule p-4">
-          <div className="flex items-center gap-2 label mb-2"><Gauge className="w-3.5 h-3.5" /> Drift</div>
+          <div className="flex items-center gap-2 label mb-2"><Gauge className="w-3.5 h-3.5" /> Events</div>
           <div className={`font-mono text-base font-semibold tnum ${tone}`}>
-            {effect >= 0 ? '+' : ''}{(effect * 100).toFixed(2)}%
+            {status.active_event_count} active
           </div>
         </div>
       </div>

@@ -21,13 +21,13 @@ export function AuthForms({ onClose }: AuthFormsProps) {
     try {
       let success = false;
       if (isLogin) {
-        success = await login({ email: formData.email, password: formData.password });
+        success = await login(formData.email, formData.password);
         if (success) {
           showToast('Welcome back to the exchange', 'success');
           onClose();
         }
       } else {
-        success = await register(formData);
+        success = await register(formData.email, formData.password, formData.username);
         if (success) {
           showToast('Your virtual exchange account is ready.', 'success');
           onClose();

@@ -37,7 +37,7 @@ export function UserMenu({ onAuthClick, isDark, onThemeToggle }: UserMenuProps) 
           {user?.username || 'User'}
         </span>
         <span className="font-mono text-xs text-ink-dim tnum">
-          £{(user?.funds || 0).toLocaleString('en-GB', { minimumFractionDigits: 2 })}
+          £{(user?.cashBalance || 0).toLocaleString('en-GB', { minimumFractionDigits: 2 })}
         </span>
       </button>
       <div className="flex items-center gap-2">

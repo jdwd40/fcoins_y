@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import type { Coin } from '../types';
-import { buyCoins, formatCurrency, parsePrice, SessionExpiredError } from '../services/transactionService';
+import { buyCoin } from '../services/tradingService';
+import { CoinsError, describeError } from '../services/errorMapper';
+import { formatCurrency } from '../utils/format';
 import { X, Check } from 'lucide-react';
 
 interface BuyFormProps {
@@ -11,31 +13,22 @@ interface BuyFormProps {
 }
 
 export function BuyForm({ coin, onSuccess }: BuyFormProps) {
-  const { user, getAuthToken, getUserIdFromToken, handleSessionExpired, refreshUser } = useAuth();
+  const { user, refreshAccount } = useAuth();
   const { showToast } = useToast();
   const [amount, setAmount] = useState<string>('');
-  const [totalCost, setTotalCost] = useState<number>(0);
+  const [estimatedTotal, setEstimatedTotal] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [showConfirmation, setShowConfirmation] = useState<boolean>(false);
+  // One idempotency key per order attempt: double-clicks/retries replay
+  // server-side instead of duplicating the trade.
+  const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
 
-  const refreshUserData = () => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      try {
-        return JSON.parse(storedUser);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  };
-
-  const currentPrice = parsePrice(coin.current_price);
+  const currentPrice = Number(coin.current_price);
 
   useEffect(() => {
     const amountValue = parseFloat(amount) || 0;
-    setTotalCost(amountValue * currentPrice);
+    setEstimatedTotal(amountValue * currentPrice);
   }, [amount, currentPrice]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -57,59 +50,40 @@ export function BuyForm({ coin, onSuccess }: BuyFormProps) {
       setError('Please enter a valid amount greater than 0');
       return;
     }
-    if (totalCost > (user.funds || 0)) {
-      setError(`Insufficient funds. You need ${formatCurrency(totalCost)} to complete this purchase.`);
+    if (estimatedTotal > user.cashBalance) {
+      setError(`Insufficient funds. You need ${formatCurrency(estimatedTotal)} to complete this purchase.`);
       return;
     }
     setShowConfirmation(true);
   };
 
   const handleConfirmBuy = async () => {
-    if (!user) return;
+    if (!user || loading) return;
     const amountValue = parseFloat(amount);
     try {
       setLoading(true);
       setError(null);
-      const freshUser = refreshUserData() || user;
-      const token = getAuthToken();
-      if (!token) throw new Error('Authentication token not found');
-      let userId = token ? getUserIdFromToken(token) : null;
-      if (!userId && freshUser && freshUser.id) {
-        userId = typeof freshUser.id === 'string' ? parseInt(freshUser.id, 10) : freshUser.id;
-      }
-      if (!userId || isNaN(userId) || userId <= 0) {
-        throw new Error('Could not determine valid user ID. Please log out and log in again.');
-      }
-      let coinId;
-      try {
-        coinId = typeof coin.coin_id === 'string' ? parseInt(coin.coin_id, 10) : coin.coin_id;
-        if (isNaN(coinId) || coinId <= 0) throw new Error('Coin ID is not a valid number');
-      } catch {
-        throw new Error('Invalid coin ID. Please try again.');
-      }
-      if (isNaN(amountValue) || amountValue <= 0) throw new Error('Amount must be greater than 0');
-
-      const result = await buyCoins(userId, coinId, amountValue, token);
-      const newBalance = result.data?.new_balance ?? (freshUser.funds - totalCost);
-      const updatedUser = { ...freshUser, funds: newBalance };
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      refreshUser();
-
-      showToast(`Purchased ${amountValue} ${coin.symbol}`, 'success');
+      const result = await buyCoin(coin.id, amountValue, idempotencyKeyRef.current);
+      // Authoritative post-state from the server — never browser arithmetic.
+      showToast(
+        `Purchased ${result.quantity} ${coin.symbol} for ${formatCurrency(Number(result.total_amount))}`,
+        'success',
+      );
+      await refreshAccount();
+      idempotencyKeyRef.current = crypto.randomUUID(); // next order = new key
       setAmount('');
       setShowConfirmation(false);
       if (onSuccess) onSuccess();
     } catch (err) {
-      if (err instanceof SessionExpiredError) {
-        handleSessionExpired();
-        showToast('Your session has expired. Please log in again.', 'error');
-        setShowConfirmation(false);
-        setLoading(false);
-        return;
+      const code = err instanceof CoinsError ? err.code : 'UNKNOWN';
+      const message = describeError(code);
+      setError(message);
+      showToast(message, 'error');
+      // A replayed key after a timeout is safe; on conflict, rotate so the
+      // user can deliberately resubmit changed semantics.
+      if (code === 'IDEMPOTENCY_CONFLICT') {
+        idempotencyKeyRef.current = crypto.randomUUID();
       }
-      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
-      setError(errorMessage);
-      showToast(errorMessage, 'error');
       setShowConfirmation(false);
     } finally {
       setLoading(false);
@@ -118,7 +92,7 @@ export function BuyForm({ coin, onSuccess }: BuyFormProps) {
 
   const handleCancelBuy = () => setShowConfirmation(false);
 
-  const insufficientFunds = !!user && totalCost > (user.funds || 0);
+  const insufficientFunds = !!user && estimatedTotal > user.cashBalance;
   const amountValue = parseFloat(amount) || 0;
 
   if (showConfirmation) {
@@ -144,14 +118,15 @@ export function BuyForm({ coin, onSuccess }: BuyFormProps) {
             <dd className="text-ink tnum">{formatCurrency(currentPrice)}</dd>
           </div>
           <div className="flex justify-between border-t border-rule pt-2 mt-2">
-            <dt className="text-ink font-bold">Total</dt>
-            <dd className="text-gold tnum font-bold">{formatCurrency(totalCost)}</dd>
+            <dt className="text-ink font-bold">Estimated total</dt>
+            <dd className="text-gold tnum font-bold">{formatCurrency(estimatedTotal)}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-ink-mute">After Purchase</dt>
-            <dd className="text-ink-dim tnum">{formatCurrency((user?.funds || 0) - totalCost)}</dd>
+            <dt className="text-ink-mute">Est. balance after</dt>
+            <dd className="text-ink-dim tnum">{formatCurrency((user?.cashBalance || 0) - estimatedTotal)}</dd>
           </div>
         </dl>
+        <p className="label text-ink-mute mb-4">Estimates only — the server sets the final price and total.</p>
 
         <div className="flex gap-3">
           <button onClick={handleCancelBuy} disabled={loading} className="btn-ink flex-1">
@@ -209,15 +184,15 @@ export function BuyForm({ coin, onSuccess }: BuyFormProps) {
               <div className="font-mono text-sm text-ink tnum">{formatCurrency(currentPrice)}</div>
             </div>
             <div className="text-right">
-              <div className="label mb-1">Total</div>
+              <div className="label mb-1">Est. total</div>
               <div className={`font-mono text-base tnum ${insufficientFunds ? 'text-oxblood' : 'text-gold'}`}>
-                {formatCurrency(totalCost)}
+                {formatCurrency(estimatedTotal)}
               </div>
             </div>
           </div>
 
           <div className="label">
-            Available · <span className="text-ink-dim">{formatCurrency(user.funds || 0)}</span>
+            Available · <span className="text-ink-dim">{formatCurrency(user.cashBalance)}</span>
           </div>
 
           {error && <div className="font-mono text-xs text-oxblood">{error}</div>}

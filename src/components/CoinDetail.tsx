@@ -1,11 +1,18 @@
-import type { Coin, MarketEvent } from '../types';
+import type { Coin } from '../types';
 import { PriceChart } from './PriceChart';
 import { BuyForm } from './BuyForm';
-import { formatCurrency, parsePrice } from '../services/transactionService';
+import { formatAdaptivePrice, formatCurrency, formatCountdown, formatCompact } from '../utils/format';
+
+interface ActiveEvent {
+  asset_id: number;
+  event_type: string;
+  event_multiplier: number;
+  event_ends_at: string | null;
+}
 
 interface CoinDetailProps {
   coin: Coin;
-  events: MarketEvent[];
+  activeEvents: ActiveEvent[];
   refreshTrigger: number;
 }
 
@@ -20,59 +27,37 @@ function formatEventType(type: string): string {
   return eventLabels[type] || type.charAt(0) + type.slice(1).toLowerCase();
 }
 
-function formatDuration(timeRemaining: string): string {
-  if (timeRemaining.includes('min') || timeRemaining.includes('sec') || timeRemaining.includes('hour')) {
-    return timeRemaining;
-  }
-  const seconds = parseInt(timeRemaining, 10);
-  if (!isNaN(seconds)) {
-    if (seconds >= 3600) {
-      const hours = Math.floor(seconds / 3600);
-      const mins = Math.floor((seconds % 3600) / 60);
-      return `${hours}h ${mins}m`;
-    } else if (seconds >= 60) {
-      const mins = Math.floor(seconds / 60);
-      const secs = seconds % 60;
-      return `${mins}m ${secs}s`;
-    } else {
-      return `${seconds}s`;
-    }
-  }
-  return timeRemaining;
-}
-
-function EventItem({ event }: { event: MarketEvent }) {
-  const positive = event.effect === 'POSITIVE';
+function EventItem({ event }: { event: ActiveEvent }) {
+  const positive = event.event_multiplier >= 1;
+  const remaining = event.event_ends_at
+    ? formatCountdown((new Date(event.event_ends_at).getTime() - Date.now()) / 1000)
+    : '—';
   return (
     <div className="flex items-center justify-between py-3 border-b border-rule last:border-b-0">
       <div>
         <div className="font-display italic text-lg text-ink leading-tight">
-          {formatEventType(event.type)}
+          {formatEventType(event.event_type)}
         </div>
         <div className={`label mt-1 ${positive ? 'text-verdigris' : 'text-oxblood'}`}>
           {positive ? '▲ Bullish' : '▼ Bearish'}
         </div>
       </div>
-      <div className="chip">{formatDuration(event.timeRemaining)}</div>
+      <div className="chip">{remaining}</div>
     </div>
   );
 }
 
-export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProps) {
-  const priceChange = typeof coin.price_change_24h === 'string'
-    ? parseFloat(coin.price_change_24h)
-    : coin.price_change_24h || 0;
+export function CoinDetail({ coin, activeEvents = [], refreshTrigger }: CoinDetailProps) {
+  const priceChange = Number(coin.price_change_24h ?? 0);
   const up = priceChange >= 0;
-  const currentPrice = parsePrice(coin.current_price);
-  const marketCap = parsePrice(coin.market_cap);
-  const activeEvents = events.filter((event) => event.coinId === coin.coin_id);
+  const events = activeEvents.filter((event) => event.asset_id === coin.id);
 
   return (
     <div className="p-2 sm:p-4">
       {/* Masthead */}
       <div className="border-b border-rule pb-6 mb-6">
         <div className="flex items-baseline gap-3 label mb-2">
-          <span>Asset {String(coin.coin_id).padStart(3, '0')}</span>
+          <span>Asset {String(coin.id).padStart(3, '0')}</span>
           <span>·</span>
           <span>{coin.symbol}</span>
         </div>
@@ -91,7 +76,7 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
               <div className="label mb-2">Current Price</div>
               <div className="numeral text-ink text-4xl"
                    style={{ fontVariationSettings: "'opsz' 144" }}>
-                {formatCurrency(currentPrice)}
+                {formatAdaptivePrice(Number(coin.current_price))}
               </div>
             </div>
             <div>
@@ -102,12 +87,12 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
             </div>
             <div>
               <div className="label mb-2">Market Cap</div>
-              <div className="font-mono text-lg text-ink tnum">{formatCurrency(marketCap)}</div>
+              <div className="font-mono text-lg text-ink tnum">{formatCurrency(Number(coin.market_cap))}</div>
             </div>
             <div>
               <div className="label mb-2">Supply</div>
               <div className="font-mono text-lg text-ink tnum">
-                {coin.circulating_supply.toLocaleString()}
+                {formatCompact(Number(coin.circulating_supply))}
               </div>
             </div>
           </div>
@@ -116,7 +101,7 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
           <BuyForm coin={coin} />
 
           {/* Events */}
-          {activeEvents.length > 0 && (
+          {events.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-3 pb-3 border-b border-rule">
                 <div>
@@ -127,7 +112,7 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
                 </div>
               </div>
               <div>
-                {activeEvents.map((event, index) => (
+                {events.map((event, index) => (
                   <EventItem key={index} event={event} />
                 ))}
               </div>
@@ -138,7 +123,7 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
         {/* Right: chart */}
         <div className="lg:col-span-3">
           <div className="label mb-3">Price History</div>
-          <PriceChart coinId={coin.coin_id} refreshTrigger={refreshTrigger} />
+          <PriceChart coinId={coin.id} symbol={coin.symbol} refreshTrigger={refreshTrigger} />
         </div>
       </div>
     </div>

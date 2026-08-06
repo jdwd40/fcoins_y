@@ -1,22 +1,20 @@
-import { Coin, MarketEvent } from '../types';
-import { parsePrice } from '../services/transactionService';
+import type { Coin } from '../types';
+import { formatCompact } from '../utils/format';
+
+interface ActiveEvent {
+  asset_id: number;
+  event_type: string;
+}
 
 interface CoinsListProps {
   coins: Coin[];
   onSelectCoin: (id: number) => void;
   selectedCoinId: number | null;
-  events: MarketEvent[];
+  activeEvents: ActiveEvent[];
 }
 
 const sortCoinsByPrice = (coins: Coin[]) =>
-  [...coins].sort((a, b) => {
-    const priceA = parsePrice(a.current_price ?? 0);
-    const priceB = parsePrice(b.current_price ?? 0);
-    return priceB - priceA;
-  });
-
-const formatCompact = (value: string | number) =>
-  new Intl.NumberFormat('en-GB', { notation: 'compact', maximumFractionDigits: 1 }).format(parsePrice(value) || 0);
+  [...coins].sort((a, b) => Number(b.current_price) - Number(a.current_price));
 
 export function CoinsList({ coins, onSelectCoin, selectedCoinId }: CoinsListProps) {
   const sortedCoins = sortCoinsByPrice(coins);
@@ -33,15 +31,15 @@ export function CoinsList({ coins, onSelectCoin, selectedCoinId }: CoinsListProp
 
       <div className="divide-rule">
         {sortedCoins.map((coin, index) => {
-          const price = parsePrice(coin?.current_price ?? 0);
-          const priceChange = parseFloat(coin?.price_change_24h?.toString() ?? '0');
+          const price = Number(coin.current_price);
+          const priceChange = Number(coin.price_change_24h ?? 0);
           const up = priceChange >= 0;
-          const selected = selectedCoinId === coin.coin_id;
+          const selected = selectedCoinId === coin.id;
 
           return (
             <button
-              key={coin.coin_id}
-              onClick={() => onSelectCoin(coin.coin_id)}
+              key={coin.id}
+              onClick={() => onSelectCoin(coin.id)}
               className={`group w-full text-left px-4 sm:px-5 py-4 transition-colors animate-reveal-fast hover:bg-paper-alt ${
                 selected ? 'bg-paper-alt ring-1 ring-inset ring-gold' : 'bg-card'
               }`}
@@ -74,12 +72,12 @@ export function CoinsList({ coins, onSelectCoin, selectedCoinId }: CoinsListProp
 
                 <div className="md:col-span-2 md:text-right flex md:block items-center justify-between">
                   <span className="label md:hidden">Market cap</span>
-                  <span className="font-mono text-sm text-ink-dim tnum">£{formatCompact(coin.market_cap)}</span>
+                  <span className="font-mono text-sm text-ink-dim tnum">£{formatCompact(Number(coin.market_cap))}</span>
                 </div>
 
                 <div className="md:col-span-2 md:text-right flex md:block items-center justify-between">
                   <span className="label md:hidden">Supply</span>
-                  <span className="font-mono text-sm text-ink-dim tnum">{formatCompact(coin.circulating_supply)} {coin.symbol}</span>
+                  <span className="font-mono text-sm text-ink-dim tnum">{formatCompact(Number(coin.circulating_supply))} {coin.symbol}</span>
                 </div>
               </div>
             </button>

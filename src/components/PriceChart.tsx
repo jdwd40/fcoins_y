@@ -13,8 +13,10 @@ import {
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
 
-import { PricePoint, PriceHistoryResponse, TimeRange } from '../types';
+import { TimeRange } from '../types';
 import { computePeriodSummary, PeriodSummary } from '../utils/priceSummary';
+import { fetchPriceHistory } from '../services/marketService';
+import type { PriceHistoryResult, HistoryPoint } from '../types/database';
 
 ChartJS.register(
   CategoryScale,
@@ -29,6 +31,7 @@ ChartJS.register(
 
 interface PriceChartProps {
   coinId: number;
+  symbol?: string;
   refreshTrigger?: number;
 }
 
@@ -49,8 +52,6 @@ const TIME_RANGES: { value: TimeRange; label: string }[] = [
   { value: '30D', label: '30D' },
   { value: 'ALL', label: 'ALL' },
 ];
-
-const API_BASE = 'https://jdwd40.com/api-2/api';
 
 function getRangeLabel(range: TimeRange): string {
   switch (range) {
@@ -88,62 +89,54 @@ function getTooltipTitleFormat(/* eslint-disable-line @typescript-eslint/no-unus
   };
 }
 
-export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
+export function PriceChart({ coinId, symbol: symbolProp, refreshTrigger = 0 }: PriceChartProps) {
   const [selectedRange, setSelectedRange] = useState<TimeRange>('24H');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [history, setHistory] = useState<PriceHistoryResponse | null>(null);
+  const [history, setHistory] = useState<PriceHistoryResult | null>(null);
   const [chartData, setChartData] = useState<{ x: number; y: number }[]>([]);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const generationRef = useRef(0);
 
-  const fetchPriceHistory = useCallback(async (range: TimeRange) => {
-    if (abortControllerRef.current) abortControllerRef.current.abort();
-    abortControllerRef.current = new AbortController();
+  const loadHistory = useCallback(async (range: TimeRange) => {
+    const generation = ++generationRef.current;
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(
-        `${API_BASE}/coins/${coinId}/price-history?range=${range}`,
-        { signal: abortControllerRef.current.signal }
-      );
-      if (!response.ok) throw new Error(`Failed to fetch data (${response.status})`);
-      const result: PriceHistoryResponse = await response.json();
+      const result = await fetchPriceHistory(coinId, range);
+      if (generation !== generationRef.current) return; // stale range/coin
       setHistory(result);
 
       const processed = (result.points || [])
-        .filter((p: PricePoint) => {
+        .filter((p: HistoryPoint) => {
           const ts = new Date(p.time).getTime();
-          return !isNaN(ts) && !isNaN(p.close) && p.close > 0;
+          return !isNaN(ts) && !isNaN(Number(p.close)) && Number(p.close) > 0;
         })
-        .map((p: PricePoint) => ({
+        .map((p: HistoryPoint) => ({
           x: new Date(p.time).getTime(),
-          y: p.close,
+          y: Number(p.close),
         }))
         .sort((a, b) => a.x - b.x);
       setChartData(processed);
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return;
+      if (generation !== generationRef.current) return;
       setError(err instanceof Error ? err.message : 'Failed to load price data');
       setHistory(null);
       setChartData([]);
     } finally {
-      setLoading(false);
+      if (generation === generationRef.current) setLoading(false);
     }
   }, [coinId]);
 
   useEffect(() => {
-    fetchPriceHistory(selectedRange);
-    return () => {
-      if (abortControllerRef.current) abortControllerRef.current.abort();
-    };
-  }, [selectedRange, refreshTrigger, fetchPriceHistory]);
+    void loadHistory(selectedRange);
+  }, [selectedRange, refreshTrigger, loadHistory]);
 
   const summary: PeriodSummary | null = history
-    ? computePeriodSummary(history.points || [], history.latestValue)
+    ? computePeriodSummary(history.points || [], Number(history.latest))
     : null;
 
-  const symbol = history?.coin?.symbol || 'COIN';
-  const latestValue = history?.latestValue ?? 0;
+  const symbol = symbolProp || 'COIN';
+  const latestValue = Number(history?.latest ?? 0);
 
   // movement state for colors (neutral when no summary or flat)
   const direction = summary?.direction || 'flat';
@@ -221,7 +214,7 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
         pointHoverBorderColor: isDark ? '#08090d' : '#ffffff',
         pointHoverBorderWidth: 2,
         fill: true,
-        tension: 0.35,
+        tension: 0, // no smoothing: lines connect real samples only (plan §12)
       },
     ],
   };
@@ -242,7 +235,7 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
         cornerRadius: 10,
         displayColors: false,
         titleFont: { family: 'JetBrains Mono', size: 10, weight: 'normal' as const },
-        bodyFont: { family: 'Inter', size: 16, weight: '600' as const },
+        bodyFont: { family: 'Inter', size: 16, weight: 600 },
         callbacks: {
           title: (tooltipItems: Array<{ parsed: { x: number } }>) => {
             const date = new Date(tooltipItems[0].parsed.x);
@@ -368,7 +361,7 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
               <p className="font-display font-semibold text-xl text-oxblood mb-1">Price history unavailable</p>
               <p className="label mb-3">{error}</p>
               <button
-                onClick={() => fetchPriceHistory(selectedRange)}
+                onClick={() => loadHistory(selectedRange)}
                 className="btn-ink"
               >
                 Retry

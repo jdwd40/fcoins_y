@@ -1,74 +1,62 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { X, RefreshCw } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import {
-  getUserPortfolio,
-  getUserTransactions,
-  formatCurrency,
-  SessionExpiredError,
-  type PortfolioItem,
-  type TransactionHistoryItem,
-} from '../services/transactionService';
+import { fetchPortfolio, fetchMyTrades } from '../services/tradingService';
+import type { PortfolioRow, TradeRow } from '../types';
+import { formatCurrency, formatQuantity } from '../utils/format';
 import { SellForm } from './SellForm';
 import { Modal } from './Modal';
 
 export function Profile() {
-  const { user, getAuthToken, handleSessionExpired, refreshUser } = useAuth();
+  const { user, loading: authLoading, refreshAccount } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
-  const [transactions, setTransactions] = useState<TransactionHistoryItem[]>([]);
+  const [portfolio, setPortfolio] = useState<PortfolioRow[]>([]);
+  const [transactions, setTransactions] = useState<TradeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCoin, setSelectedCoin] = useState<PortfolioItem | null>(null);
+  const [selected, setSelected] = useState<PortfolioRow | null>(null);
   const [showSellModal, setShowSellModal] = useState(false);
 
-  const fetchData = async () => {
-    if (!user || !user.id) {
-      setLoading(false);
-      return;
-    }
-    const token = getAuthToken();
-    if (!token) {
-      setError('Please log in to view your portfolio');
+  const fetchData = useCallback(async () => {
+    if (!user) {
       setLoading(false);
       return;
     }
     try {
       setLoading(true);
       setError(null);
-      const [portfolioData, transactionsData] = await Promise.all([
-        getUserPortfolio(user.id, token),
-        getUserTransactions(user.id, token),
+      // RLS scopes both queries to the caller — no user IDs leave the browser.
+      const [portfolioData, tradesData] = await Promise.all([
+        fetchPortfolio(),
+        fetchMyTrades(100),
       ]);
-      setPortfolio(portfolioData.portfolio || []);
-      setTransactions(transactionsData.transactions || []);
-      if (portfolioData.user_funds !== undefined && portfolioData.user_funds !== user.funds) {
-        const updatedUser = { ...user, funds: portfolioData.user_funds };
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-        refreshUser();
-      }
+      setPortfolio(portfolioData);
+      setTransactions(tradesData);
     } catch (err) {
-      if (err instanceof SessionExpiredError) {
-        handleSessionExpired();
-        showToast('Your session has expired. Please log in again.', 'error');
-        return;
-      }
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchData();
   }, [user]);
 
-  if (!user || !user.id) {
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-paper flex items-center justify-center">
+        <div className="w-11 h-11 rounded-full border-2 border-rule border-t-gold animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
     return (
       <div className="min-h-screen bg-paper text-ink flex items-center justify-center px-4">
         <div className="paper-card max-w-md w-full p-10 text-center">
@@ -87,22 +75,23 @@ export function Profile() {
   const displayInitial = displayName.charAt(0).toUpperCase();
 
   const handleClose = () => {
-    navigate(location.state?.from || '/');
+    navigate((location.state as { from?: string } | null)?.from || '/');
   };
 
-  const handleSellClick = (item: PortfolioItem) => {
-    setSelectedCoin(item);
+  const handleSellClick = (item: PortfolioRow) => {
+    setSelected(item);
     setShowSellModal(true);
   };
 
   const handleSellSuccess = () => {
     setShowSellModal(false);
-    setSelectedCoin(null);
-    fetchData();
+    setSelected(null);
+    showToast('Portfolio updated', 'success');
+    void fetchData();
   };
 
-  const totalPortfolioValue = portfolio.reduce((sum, item) => sum + (Number(item.total_value) || 0), 0);
-  const totalProfitLoss = portfolio.reduce((sum, item) => sum + (Number(item.profit_loss) || 0), 0);
+  const totalPortfolioValue = portfolio.reduce((sum, item) => sum + Number(item.current_value), 0);
+  const totalProfitLoss = portfolio.reduce((sum, item) => sum + Number(item.unrealized_pl), 0);
 
   return (
     <div className="min-h-screen bg-paper text-ink">
@@ -137,7 +126,7 @@ export function Profile() {
 
           <div className="rule-thin mb-6"></div>
 
-          {/* Portfolio summary stats */}
+          {/* Portfolio summary stats — cash from the server-side wallet */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             <div>
               <div className="label mb-2">Portfolio Value</div>
@@ -148,7 +137,7 @@ export function Profile() {
             <div className="sm:border-l sm:border-rule sm:pl-6">
               <div className="label mb-2">Available cash</div>
               <div className="numeral text-ink text-4xl" style={{ fontVariationSettings: "'opsz' 144" }}>
-                {formatCurrency(Number(user.funds) || 0)}
+                {formatCurrency(user.cashBalance)}
               </div>
             </div>
             <div className="sm:border-l sm:border-rule sm:pl-6">
@@ -169,7 +158,7 @@ export function Profile() {
           <div className="border-l-2 border-oxblood bg-card p-5 mb-10">
             <div className="label text-oxblood mb-1">Error</div>
             <p className="font-mono text-xs text-ink-dim mb-3">{error}</p>
-            <button onClick={fetchData} className="btn-ink">Retry</button>
+            <button onClick={() => void fetchData()} className="btn-ink">Retry</button>
           </div>
         )}
 
@@ -184,7 +173,7 @@ export function Profile() {
                   Holdings
                 </h2>
               </div>
-              <button onClick={fetchData} className="label hover:text-gold inline-flex items-center gap-2">
+              <button onClick={() => { void refreshAccount(); void fetchData(); }} className="label hover:text-gold inline-flex items-center gap-2">
                 <RefreshCw className="w-3 h-3" /> Refresh
               </button>
             </div>
@@ -202,30 +191,35 @@ export function Profile() {
             ) : (
               <div className="divide-rule border border-rule">
                 {portfolio.map((item) => {
-                  const pl = Number(item.profit_loss) || 0;
-                  const plPct = Number(item.profit_loss_percentage || 0);
+                  const pl = Number(item.unrealized_pl);
+                  const plPct = Number(item.cost_basis) > 0
+                    ? (pl / Number(item.cost_basis)) * 100
+                    : 0;
                   const up = pl >= 0;
+                  const avgPrice = Number(item.quantity) > 0
+                    ? Number(item.cost_basis) / Number(item.quantity)
+                    : 0;
                   return (
                     <div
-                      key={item.portfolio_id}
+                      key={item.asset_id}
                       className="flex items-center gap-4 p-5 bg-card hover:bg-paper-alt transition-colors"
                     >
                       <div className="w-12 h-12 shrink-0 border border-rule flex items-center justify-center bg-paper-alt">
                         <span className="font-display italic text-xl text-gold">
-                          {(item.coin_symbol || '?').charAt(0)}
+                          {(item.symbol || '?').charAt(0)}
                         </span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-display italic text-xl text-ink truncate">
-                          {item.coin_name}
+                          {item.name}
                         </div>
                         <div className="font-mono text-[0.7rem] text-ink-mute tracking-caps uppercase tnum">
-                          {Number(item.quantity || 0).toFixed(4)} {item.coin_symbol} · avg {formatCurrency(Number(item.average_purchase_price) || 0)}
+                          {formatQuantity(Number(item.quantity))} {item.symbol} · avg {formatCurrency(avgPrice)}
                         </div>
                       </div>
                       <div className="text-right hidden sm:block">
                         <div className="font-mono text-sm text-ink tnum">
-                          {formatCurrency(Number(item.total_value) || 0)}
+                          {formatCurrency(Number(item.current_value))}
                         </div>
                         <div className={`font-mono text-xs tnum ${up ? 'text-verdigris' : 'text-oxblood'}`}>
                           {up ? '+' : ''}{formatCurrency(pl)} ({plPct.toFixed(2)}%)
@@ -272,10 +266,10 @@ export function Profile() {
                 </div>
                 <div className="divide-rule">
                   {transactions.slice(0, 20).map((transaction) => {
-                    const isBuy = transaction.type === 'BUY';
+                    const isBuy = transaction.side === 'BUY';
                     return (
                       <div
-                        key={transaction.transaction_id}
+                        key={transaction.trade_id}
                         className="grid grid-cols-1 sm:grid-cols-12 gap-4 px-5 py-4 bg-card hover:bg-paper-alt transition-colors"
                       >
                         <div className="sm:col-span-1">
@@ -286,10 +280,10 @@ export function Profile() {
                           </span>
                         </div>
                         <div className="sm:col-span-4 font-display italic text-lg text-ink truncate">
-                          {transaction.coin_name}
+                          {transaction.asset_name}
                         </div>
                         <div className="sm:col-span-3 font-mono text-[0.7rem] text-ink-mute tracking-caps">
-                          {new Date(transaction.created_at).toLocaleDateString('en-GB', {
+                          {new Date(transaction.executed_at).toLocaleDateString('en-GB', {
                             day: 'numeric',
                             month: 'short',
                             year: 'numeric',
@@ -298,10 +292,10 @@ export function Profile() {
                           })}
                         </div>
                         <div className="sm:col-span-2 font-mono text-sm text-ink-dim tnum sm:text-right">
-                          {Number(transaction.quantity || 0).toFixed(4)} {transaction.coin_symbol}
+                          {formatQuantity(Number(transaction.quantity))} {transaction.symbol}
                         </div>
                         <div className="sm:col-span-2 font-mono text-sm text-ink tnum sm:text-right">
-                          {formatCurrency(Number(transaction.total_amount) || 0)}
+                          {formatCurrency(Number(transaction.total_amount))}
                         </div>
                       </div>
                     );
@@ -318,26 +312,20 @@ export function Profile() {
         )}
       </div>
 
-      {showSellModal && selectedCoin && (
+      {showSellModal && selected && (
         <Modal
           isOpen={showSellModal}
           onClose={() => {
             setShowSellModal(false);
-            setSelectedCoin(null);
+            setSelected(null);
           }}
         >
           <SellForm
-            coin={{
-              coin_id: selectedCoin.coin_id,
-              name: selectedCoin.coin_name,
-              symbol: selectedCoin.coin_symbol,
-              current_price: selectedCoin.current_price,
-              market_cap: 0,
-              circulating_supply: 0,
-              price_change_24h: 0,
-              date_added: '',
-              latest_price: selectedCoin.current_price,
-            }}
+            assetId={selected.asset_id}
+            symbol={selected.symbol}
+            name={selected.name}
+            currentPrice={Number(selected.current_price)}
+            maxQuantity={Number(selected.quantity)}
             onSuccess={handleSellSuccess}
           />
         </Modal>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -13,6 +13,8 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
+import { fetchMarketHistory, type MarketRange } from '../services/marketService';
+import type { HistoryPoint } from '../types/database';
 
 ChartJS.register(
   CategoryScale,
@@ -26,14 +28,12 @@ ChartJS.register(
   Filler
 );
 
-type TimeRange = '5M' | '10M' | '30M' | '1H' | '2H' | '12H' | '24H' | 'ALL';
-
 interface MarketValueChartProps {
   className?: string;
   refreshTrigger: number;
 }
 
-const TIME_RANGES = [
+const TIME_RANGES: { value: MarketRange; label: string }[] = [
   { value: '5M', label: '5m' },
   { value: '10M', label: '10m' },
   { value: '30M', label: '30m' },
@@ -42,39 +42,35 @@ const TIME_RANGES = [
   { value: '12H', label: '12h' },
   { value: '24H', label: '24h' },
   { value: 'ALL', label: 'All' },
-] as const;
+];
 
 export function MarketValueChart({ className = '', refreshTrigger }: MarketValueChartProps) {
-  const [timeRange, setTimeRange] = useState<TimeRange>('30M');
-  const [priceHistory, setPriceHistory] = useState<Array<{ value: number; created_at: string; trend: string }>>([]);
+  const [timeRange, setTimeRange] = useState<MarketRange>('30M');
+  const [points, setPoints] = useState<HistoryPoint[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const generationRef = useRef(0);
+
+  const load = useCallback(async (range: MarketRange) => {
+    const generation = ++generationRef.current;
+    try {
+      setLoading(true);
+      setError(null);
+      const result = await fetchMarketHistory(range);
+      if (generation !== generationRef.current) return; // stale
+      setPoints(result.points ?? []);
+    } catch (err) {
+      if (generation !== generationRef.current) return;
+      setError(err instanceof Error ? err.message : 'Failed to load market history');
+      setPoints([]);
+    } finally {
+      if (generation === generationRef.current) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const fetchMarketHistory = async () => {
-      try {
-        setLoading(true);
-        const url = `https://jdwd40.com/api-2/api/market/price-history?timeRange=${timeRange}`;
-        const response = await fetch(url);
-        const data = await response.json();
-        if (!data.history || !Array.isArray(data.history)) {
-          setPriceHistory([]);
-          return;
-        }
-        const transformedData = data.history.map((item: { total_value: string; created_at: string; market_trend: string }) => ({
-          value: parseFloat(item.total_value),
-          created_at: item.created_at,
-          trend: item.market_trend,
-        }));
-        setPriceHistory(transformedData);
-      } catch (error) {
-        console.error('Error fetching market history:', error);
-        setPriceHistory([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchMarketHistory();
-  }, [timeRange, refreshTrigger]);
+    void load(timeRange);
+  }, [timeRange, refreshTrigger, load]);
 
   const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
   const lineColor = isDark ? '#8b5cf6' : '#7132f5';
@@ -86,9 +82,9 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
     datasets: [
       {
         label: 'Market Value',
-        data: priceHistory.map((item) => ({
-          x: new Date(item.created_at),
-          y: item.value,
+        data: points.map((p) => ({
+          x: new Date(p.time).getTime(),
+          y: Number(p.close),
         })),
         borderColor: lineColor,
         backgroundColor: fillColor,
@@ -99,7 +95,7 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         pointHoverBorderColor: isDark ? '#08090d' : '#ffffff',
         pointHoverBorderWidth: 2,
         fill: true,
-        tension: 0.35,
+        tension: 0, // no smoothing: lines connect real samples only (plan §12)
       },
     ],
   };
@@ -120,12 +116,14 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         cornerRadius: 10,
         displayColors: false,
         titleFont: { family: 'JetBrains Mono', size: 10, weight: 'normal' as const },
-        bodyFont: { family: 'Inter', size: 16, weight: '600' as const },
+        bodyFont: { family: 'Inter', size: 16, weight: 600 },
         callbacks: {
           label: (context: { parsed: { y: number } }) => `£${context.parsed.y.toFixed(2)}`,
-          title: (tooltipItems: Array<{ raw: { x: Date } }>) => {
-            const date = new Date(tooltipItems[0].raw.x);
-            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toUpperCase();
+          title: (tooltipItems: Array<{ parsed: { x: number } }>) => {
+            const date = new Date(tooltipItems[0].parsed.x);
+            return date.toLocaleString('en-GB', {
+              day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+            }).toUpperCase();
           },
         },
       },
@@ -133,7 +131,7 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
     scales: {
       x: {
         type: 'time' as const,
-        time: { unit: 'minute' as const, displayFormats: { minute: 'HH:mm' } },
+        time: { displayFormats: { minute: 'HH:mm', hour: 'HH:mm', day: 'dd MMM' } },
         grid: { display: false },
         border: { color: gridColor },
         ticks: {
@@ -166,12 +164,17 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-6 pb-4 border-b border-rule">
+      <div
+        role="group"
+        aria-label="Select market chart time range"
+        className="flex flex-wrap gap-2 mb-6 pb-4 border-b border-rule"
+      >
         {TIME_RANGES.map(({ value, label }) => (
           <button
             key={value}
             onClick={() => setTimeRange(value)}
-            className={`font-mono text-[0.7rem] tracking-caps uppercase px-3 py-1.5 border transition-all ${
+            aria-pressed={timeRange === value}
+            className={`min-h-[44px] font-mono text-[0.7rem] tracking-caps uppercase px-3 py-1.5 border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
               timeRange === value
                 ? 'border-gold text-gold bg-paper-alt'
                 : 'border-transparent text-ink-mute hover:text-ink hover:border-rule'
@@ -183,16 +186,26 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
       </div>
 
       <div className="relative">
-        {loading && priceHistory.length === 0 && (
+        {loading && points.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-sm text-ink-mute animate-flicker">Loading market history…</div>
           </div>
         )}
-        {!loading && priceHistory.length === 0 && (
+        {error && !loading && (
+          <div className="flex flex-col items-center justify-center h-64 gap-3">
+            <p className="label text-oxblood">{error}</p>
+            <button onClick={() => void load(timeRange)} className="btn-ink">Retry</button>
+          </div>
+        )}
+        {!loading && !error && points.length === 0 && (
           <div className="flex items-center justify-center h-64 label">No market history available</div>
         )}
-        {priceHistory.length > 0 && (
-          <div className="h-[300px] sm:h-[360px]">
+        {points.length > 0 && (
+          <div
+            className="h-[300px] sm:h-[360px]"
+            role="img"
+            aria-label={`Aggregate market value chart over ${timeRange}: ${points.length} points, latest £${Number(points[points.length - 1].close).toFixed(2)}`}
+          >
             <Line data={chartData} options={options} />
           </div>
         )}
