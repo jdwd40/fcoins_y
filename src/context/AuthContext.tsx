@@ -43,14 +43,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     // Own profile + wallet via RLS (no client-supplied user id).
-    const { data: profile } = await coins()
+    let { data: profile } = await coins()
       .from('profiles')
       .select('id, username, created_at, disabled_at')
       .maybeSingle();
     if (!profile) {
-      // Authenticated but never bootstrapped into Coins (or bootstrap pending).
-      setUser(null);
-      return;
+      // Deferred session (email confirm) or first login after recovery:
+      // bootstrap idempotently from Auth metadata username when present.
+      const metaName = typeof s.user.user_metadata?.username === 'string'
+        ? s.user.user_metadata.username.trim()
+        : '';
+      if (metaName) {
+        try {
+          await bootstrapAccount(metaName);
+          ({ data: profile } = await coins()
+            .from('profiles')
+            .select('id, username, created_at, disabled_at')
+            .maybeSingle());
+        } catch {
+          // Leave user null; surface via next explicit register/login action.
+        }
+      }
+      if (!profile) {
+        setUser(null);
+        return;
+      }
     }
     const { data: wallet } = await coins()
       .from('wallets')
