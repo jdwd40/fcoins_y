@@ -27,6 +27,31 @@ export function mapRpcError(err: unknown): CoinsError {
   return new CoinsError(code, message);
 }
 
+/** Map Supabase Auth / GoTrue errors to readable copy. */
+export function mapAuthError(err: unknown): string {
+  const message =
+    typeof err === 'object' && err !== null && 'message' in err
+      ? String((err as { message: unknown }).message)
+      : String(err);
+  const lower = message.toLowerCase();
+  if (lower.includes('email not confirmed')) {
+    return 'Confirm your email before signing in. Check your inbox for the link.';
+  }
+  if (lower.includes('invalid login credentials')) {
+    return 'Email or password is incorrect.';
+  }
+  if (lower.includes('user already registered')) {
+    return 'An account with that email already exists. Try signing in.';
+  }
+  if (lower.includes('password')) {
+    return message;
+  }
+  if (lower.includes('rate limit') || lower.includes('too many')) {
+    return 'Too many attempts. Please wait a moment and try again.';
+  }
+  return message || 'Authentication failed. Please try again.';
+}
+
 /** User-facing copy per code (components may override). */
 export function describeError(code: CoinsErrorCode): string {
   switch (code) {

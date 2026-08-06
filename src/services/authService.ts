@@ -4,11 +4,21 @@ import { supabase, coins } from '../lib/supabase';
 import { mapRpcError } from './errorMapper';
 import type { BootstrapResult } from '../types/database';
 
+/** Public app origin+base for recovery/confirm redirects (staging or /coins). */
+function authRedirectTo(): string {
+  if (typeof window === 'undefined') return 'https://jdwd40.com/coins/';
+  const base = (import.meta.env.BASE_URL || '/coins/').replace(/\/?$/, '/');
+  return `${window.location.origin}${base}`;
+}
+
 export async function signUp(email: string, password: string, username: string) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { username, product: 'coins' } },
+    options: {
+      data: { username, product: 'coins' },
+      emailRedirectTo: authRedirectTo(),
+    },
   });
   if (error) throw error;
   return data;
@@ -25,8 +35,10 @@ export async function signOut() {
   if (error) throw error;
 }
 
-export async function requestPasswordReset(email: string, redirectTo: string) {
-  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+export async function requestPasswordReset(email: string) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: authRedirectTo(),
+  });
   if (error) throw error;
 }
 
