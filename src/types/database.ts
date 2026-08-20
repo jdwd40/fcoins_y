@@ -1,4 +1,4 @@
-// Hand-written types mirroring the coins schema (migrations 00001–00007).
+// Hand-written types mirroring the coins schema (migrations 00001–00010).
 // Regenerate from the live staging schema with the Supabase CLI before
 // production cutover; keep this file the authoritative contract until then.
 
@@ -153,3 +153,18 @@ export type CoinsErrorCode =
   | 'SEQUENCE_MISMATCH'
   | 'ARCHIVE_NOT_CONFIRMED'
   | 'UNKNOWN';
+
+/** coins.get_game_state() RPC result — Crypto Chaos Core 1 (migration 00010).
+ * Server-owned global apocalypse cycle. server_time is authoritative;
+ * remaining_ms is never negative; apocalypse_pct is clamped to 0–100. */
+export interface GameState {
+  apocalypse_id: string;
+  cycle_number: number;
+  seed: number;
+  starts_at: string;
+  ends_at: string;
+  duration_ms: number;
+  server_time: string;
+  remaining_ms: number;
+  apocalypse_pct: number;
+}
