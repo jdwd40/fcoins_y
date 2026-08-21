@@ -1,7 +1,9 @@
 import type { Coin, MarketEvent } from '../types';
 import { PriceChart } from './PriceChart';
-import { BuyForm } from './BuyForm';
-import { formatCurrency, parsePrice } from '../services/transactionService';
+import { RoundTradePanel } from './RoundTradePanel.tsx';
+import { formatCurrency, parsePrice } from '../services/transactionService.ts';
+import { isCoinCollapsed } from '../utils/gameLogic.ts';
+import { Skull } from 'lucide-react';
 
 interface CoinDetailProps {
   coin: Coin;
@@ -66,6 +68,7 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
   const currentPrice = parsePrice(coin.current_price);
   const marketCap = parsePrice(coin.market_cap);
   const activeEvents = events.filter((event) => event.coinId === coin.coin_id);
+  const dead = isCoinCollapsed(coin.current_price);
 
   return (
     <div className="p-2 sm:p-4">
@@ -75,12 +78,23 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
           <span>Asset {String(coin.coin_id).padStart(3, '0')}</span>
           <span>·</span>
           <span>{coin.symbol}</span>
+          {dead && <span className="text-oxblood font-bold">DEAD · COLLAPSED</span>}
         </div>
         <h2 className="font-display text-3xl sm:text-5xl lg:text-6xl font-semibold text-ink leading-none"
             style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 50" }}>
           {coin.name}
         </h2>
       </div>
+
+      {dead && (
+        <div className="mb-6 border border-oxblood rounded-xl p-4 bg-paper-alt flex items-center gap-3" role="note">
+          <Skull className="w-5 h-5 text-oxblood shrink-0" />
+          <p className="text-sm text-ink-dim">
+            <strong className="text-oxblood">This coin collapsed to £0.00.</strong>{' '}
+            It can never be bought again. The chart below is its obituary.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
         {/* Left: stats + forms */}
@@ -112,8 +126,9 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
             </div>
           </div>
 
-          {/* Buy form */}
-          <BuyForm coin={coin} />
+          {/* Round trading (Core 4 round wallet) — replaces the legacy
+              account buy form inside the Crypto Chaos market experience. */}
+          <RoundTradePanel coin={coin} />
 
           {/* Events */}
           {activeEvents.length > 0 && (

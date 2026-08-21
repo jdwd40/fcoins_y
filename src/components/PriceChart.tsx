@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { API_BASE_URL } from '../services/apiConfig.ts';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -50,7 +51,7 @@ const TIME_RANGES: { value: TimeRange; label: string }[] = [
   { value: 'ALL', label: 'ALL' },
 ];
 
-const API_BASE = 'https://jdwd40.com/api-2/api';
+const API_BASE = API_BASE_URL;
 
 function getRangeLabel(range: TimeRange): string {
   switch (range) {

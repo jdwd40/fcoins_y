@@ -116,6 +116,14 @@ export function Profile() {
 
         {/* Portfolio masthead */}
         <div className="paper-card p-6 sm:p-10 mb-10 animate-reveal">
+          <div className="mb-6 border border-rule rounded-xl px-4 py-3 bg-paper-alt">
+            <span className="label">Legacy exchange account</span>
+            <p className="text-xs text-ink-mute mt-1">
+              These are account-level virtual funds and holdings from the classic CoinX exchange.
+              Crypto Chaos rounds use a separate £1,000.00 round wallet shown on the main page —
+              nothing here is playable apocalypse cash.
+            </p>
+          </div>
           <div className="flex items-start gap-6 mb-8">
             <div className="w-24 h-24 shrink-0 border border-rule flex items-center justify-center bg-paper-alt">
               <span className="font-display italic text-5xl text-gold"
@@ -146,7 +154,7 @@ export function Profile() {
               </div>
             </div>
             <div className="sm:border-l sm:border-rule sm:pl-6">
-              <div className="label mb-2">Available cash</div>
+              <div className="label mb-2">Available cash (legacy)</div>
               <div className="numeral text-ink text-4xl" style={{ fontVariationSettings: "'opsz' 144" }}>
                 {formatCurrency(Number(user.funds) || 0)}
               </div>

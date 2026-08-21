@@ -1,19 +1,57 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const chart = readFileSync(new URL('../src/components/PriceChart.tsx', import.meta.url), 'utf8');
+const header = readFileSync(new URL('../src/components/ApocalypseHeader.tsx', import.meta.url), 'utf8');
+const gameContext = readFileSync(new URL('../src/context/GameContext.tsx', import.meta.url), 'utf8');
+const roundTrade = readFileSync(new URL('../src/components/RoundTradePanel.tsx', import.meta.url), 'utf8');
 
-assert.match(app, /CoinX/);
+// --- Core Crypto Chaos surface ------------------------------------------
+assert.match(app, /Crypto Chaos/);
 assert.match(app, /Virtual GBP/);
 assert.match(app, /Market Overview/);
 assert.match(app, /Markets/);
+assert.match(app, /ApocalypseHeader/);
+assert.match(app, /PlayerRoundPanel/);
+assert.match(app, /LeaderboardPanel/);
+assert.match(app, /ResultsOverlay/);
+assert.match(app, /GameProvider/);
+
+// Persistent apocalypse header: identity, countdown, meter, phase, stale state.
+assert.match(header, /progressbar/);
+assert.match(header, /aria-valuenow/);
+assert.match(header, /Connection stale/);
+assert.match(header, /Backend unavailable/);
+assert.match(header, /formatCountdown/);
+assert.match(header, /meterPhase/);
+
+// Central polling with focus/visibility resync; no per-component game timers.
+assert.match(gameContext, /GAME_POLL_INTERVAL_MS/);
+assert.match(gameContext, /visibilitychange/);
+assert.match(gameContext, /window\.addEventListener\('focus'/);
+assert.match(gameContext, /localStorage/); // participant cache
+
+// Round trading carries the authoritative cycle id and never fakes success.
+assert.match(roundTrade, /trade\(side, coin\.coin_id, amountValue\)/);
+assert.match(roundTrade, /tradeBlockReason/);
+assert.match(roundTrade, /Round cash/);
+assert.match(roundTrade, /isCoinCollapsed/);
+assert.match(roundTrade, /aria-pressed/);
+
+// Styling: game escalation + reduced-motion respect.
 assert.match(styles, /--accent:\s*#7132f5/);
 assert.match(styles, /font-family:\s*'Inter'/);
 assert.doesNotMatch(styles, /fractalNoise/);
-assert.match(html, /<title>CoinX Virtual Exchange<\/title>/);
+assert.match(styles, /apocalypse-meter/);
+assert.match(styles, /prefers-reduced-motion/);
+assert.match(styles, /coin-dead/);
+assert.match(styles, /leaderboard-me/);
+
+assert.match(html, /<title>Crypto Chaos · CoinX Apocalypse Exchange<\/title>/);
 assert.match(html, /family=Inter/);
 
 assert.match(chart, /24H/);
@@ -22,4 +60,20 @@ assert.match(chart, /30D/);
 assert.match(chart, /ALL/);
 assert.match(chart, /aria-pressed/);
 assert.match(chart, /role="group"/);
-console.log('Crypto exchange UI contract passed');
+
+// --- Centralised API base ------------------------------------------------
+// No source file outside services/apiConfig.ts may hard-code the deployed
+// API origin (test fixtures asserting the default are the only exception).
+const SRC = new URL('../src', import.meta.url).pathname;
+const violations = [];
+for (const entry of readdirSync(SRC, { recursive: true })) {
+  const file = join(SRC, entry.toString());
+  if (!statSync(file).isFile() || !/\.(ts|tsx)$/.test(file)) continue;
+  if (/apiConfig\.ts$/.test(file)) continue;
+  if (/\.test\.ts$/.test(file)) continue; // contract fixtures pin the default
+  const text = readFileSync(file, 'utf8');
+  if (text.includes('jdwd40.com')) violations.push(entry.toString());
+}
+assert.deepEqual(violations, [], `hard-coded API origin outside apiConfig.ts: ${violations.join(', ')}`);
+
+console.log('Crypto Chaos UI contract passed');

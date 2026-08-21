@@ -1,6 +1,5 @@
 import type { TransactionResponse } from '../types';
-
-const API_BASE_URL = 'https://jdwd40.com/api-2/api';
+import { API_BASE_URL } from './apiConfig.ts';
 
 // Custom error class for session expired errors
 export class SessionExpiredError extends Error {

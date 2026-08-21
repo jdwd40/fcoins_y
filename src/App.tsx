@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Activity, BarChart3, ShieldCheck } from 'lucide-react';
+import { Activity, BarChart3, ShieldCheck, Skull } from 'lucide-react';
 import { CoinsList } from './components/CoinsList';
 import { CoinDetail } from './components/CoinDetail';
 import { MarketStats } from './components/MarketStats';
@@ -9,11 +9,18 @@ import { useFetch } from './hooks/useFetch';
 import { Modal } from './components/Modal';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
+import { GameProvider } from './context/GameContext.tsx';
 import { UserMenu } from './components/UserMenu';
 import { AuthForms } from './components/AuthForms';
 import { Profile } from './components/Profile';
 import { MarketValueChart } from './components/MarketValueChart';
-import { parsePrice } from './services/transactionService';
+import { ApocalypseHeader } from './components/ApocalypseHeader.tsx';
+import { PlayerRoundPanel } from './components/PlayerRoundPanel.tsx';
+import { LeaderboardPanel } from './components/LeaderboardPanel.tsx';
+import { ResultsOverlay, RecentResultsPanel } from './components/ResultsPanel.tsx';
+import { parsePrice } from './services/transactionService.ts';
+import { API_BASE_URL } from './services/apiConfig.ts';
+import { isCoinCollapsed } from './utils/gameLogic.ts';
 import type { Coin, MarketStatus as MarketStatusType, MarketStats as MarketStatsType } from './types';
 
 const AUTO_REFRESH_INTERVAL = 30000;
@@ -33,10 +40,15 @@ function TickerTape({ coins }: { coins: Coin[] }) {
           const price = parsePrice(coin?.current_price ?? 0);
           const change = parseFloat(coin?.price_change_24h?.toString() ?? '0');
           const up = change >= 0;
+          const dead = isCoinCollapsed(coin?.current_price ?? 0);
           return (
             <div key={`${coin.coin_id}-${i}`} className="flex items-center gap-3 px-5 border-r border-rule">
-              <span className="font-mono text-[0.7rem] text-ink font-bold">{coin.symbol}/GBP</span>
-              <span className="font-mono text-[0.72rem] text-ink-dim tnum">£{price.toFixed(2)}</span>
+              <span className="font-mono text-[0.7rem] text-ink font-bold">
+                {coin.symbol}/GBP{dead && <span className="text-oxblood ml-1">DEAD</span>}
+              </span>
+              <span className={`font-mono text-[0.72rem] tnum ${dead ? 'text-oxblood' : 'text-ink-dim'}`}>
+                {dead ? '£0.00' : `£${price.toFixed(2)}`}
+              </span>
               <span className={`font-mono text-[0.68rem] font-semibold tnum ${up ? 'text-verdigris' : 'text-oxblood'}`}>
                 {up ? '+' : ''}{change.toFixed(2)}%
               </span>
@@ -65,16 +77,18 @@ function ExchangeHeader({
   return (
     <header className="exchange-nav sticky top-0 z-30">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-8 h-16 flex items-center justify-between gap-5">
-        <a href="#top" className="flex items-center gap-3 shrink-0" aria-label="CoinX home">
-          <span className="w-9 h-9 rounded-xl bg-gold text-white grid place-items-center font-extrabold text-sm shadow-gold-glow">CX</span>
-          <span className="font-display text-xl font-bold tracking-tight text-ink">CoinX</span>
+        <a href="#top" className="flex items-center gap-3 shrink-0" aria-label="Crypto Chaos home">
+          <span className="w-9 h-9 rounded-xl bg-gold text-white grid place-items-center font-extrabold text-sm shadow-gold-glow">
+            <Skull className="w-4 h-4" />
+          </span>
+          <span className="font-display text-xl font-bold tracking-tight text-ink">Crypto Chaos</span>
           <span className="hidden sm:inline chip">Virtual GBP</span>
         </a>
 
         <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-ink-mute" aria-label="Main navigation">
+          <a href="#game" className="hover:text-gold transition-colors">Apocalypse</a>
           <a href="#markets" className="hover:text-gold transition-colors">Markets</a>
           <a href="#analytics" className="hover:text-gold transition-colors">Analytics</a>
-          <a href="#about" className="hover:text-gold transition-colors">About</a>
         </nav>
 
         <UserMenu onAuthClick={onAuthClick} isDark={isDark} onThemeToggle={onThemeToggle} />
@@ -89,7 +103,7 @@ function ExchangeHeader({
             <span className="label">Cycle <strong className="text-ink ml-1">{cycle}</strong></span>
           </div>
           <div className="hidden sm:flex items-center gap-2 label whitespace-nowrap">
-            <ShieldCheck className="w-3.5 h-3.5 text-gold" /> Simulation only · No real funds
+            <ShieldCheck className="w-3.5 h-3.5 text-gold" /> Simulation only · No real funds · Coins may die permanently
           </div>
         </div>
       </div>
@@ -108,10 +122,10 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
   });
 
   const { data: coinsData, loading: coinsLoading, error: coinsError } =
-    useFetch<{ coins: Coin[] }>('https://jdwd40.com/api-2/api/coins', 2000);
+    useFetch<{ coins: Coin[] }>(`${API_BASE_URL}/coins`, 2000);
 
   const { data: marketStats, loading: marketStatsLoading, error: marketStatsError } =
-    useFetch<MarketStatsType>('https://jdwd40.com/api-2/api/market/stats', 2000);
+    useFetch<MarketStatsType>(`${API_BASE_URL}/market/stats`, 2000);
 
   const marketData = coinsData && marketStats ? {
     coins: coinsData.coins,
@@ -122,12 +136,12 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
   const error = coinsError || marketStatsError;
 
   const { data: marketStatus } = useFetch<MarketStatusType>(
-    'https://jdwd40.com/api-2/api/market/status',
+    `${API_BASE_URL}/market/status`,
     2000
   );
 
   const { data: coinDetail, loading: coinLoading } = useFetch<{ coin: Coin }>(
-    selectedCoinId ? `https://jdwd40.com/api-2/api/coins/${selectedCoinId}` : ''
+    selectedCoinId ? `${API_BASE_URL}/coins/${selectedCoinId}` : ''
   );
 
   useEffect(() => {
@@ -187,23 +201,40 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
         marketStatus={marketStatus}
       />
 
+      {/* Persistent game status: always answers "how long, how bad, can I trade" */}
+      <ApocalypseHeader coins={marketData?.coins ?? []} />
+
       {marketData?.coins && <TickerTape coins={marketData.coins} />}
 
       <main className="max-w-[1400px] mx-auto px-4 sm:px-8 py-8 sm:py-12">
-        <section className="animate-reveal delay-75 mb-6 sm:mb-8">
+        <section id="game" className="animate-reveal delay-75 mb-6 sm:mb-8">
           <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5 mb-7">
             <div>
               <div className="flex items-center gap-2 label text-gold mb-2">
-                <BarChart3 className="w-3.5 h-3.5" /> Live simulation
+                <BarChart3 className="w-3.5 h-3.5" /> Live simulation · apocalypse mode
               </div>
               <h1 className="font-display text-4xl sm:text-5xl font-bold tracking-tight text-ink">Market Overview</h1>
               <p className="text-ink-mute mt-3 max-w-2xl text-sm sm:text-base">
-                Track fantasy assets, monitor simulated price movement and manage your virtual GBP portfolio.
+                Trade virtual GBP against the clock. Coins collapse permanently as the
+                apocalypse matures; final cash decides the reckoning.
               </p>
             </div>
             <span className="chip self-start lg:self-auto">Refreshes every 2 seconds</span>
           </div>
           {marketData?.market_stats && <MarketStats stats={marketData.market_stats} />}
+        </section>
+
+        {/* Crypto Chaos game surface: round dashboard + live leaderboard + history */}
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10" aria-label="Crypto Chaos game">
+          <div className="animate-reveal delay-150">
+            <PlayerRoundPanel coins={marketData?.coins ?? []} onAuthRequest={() => setShowAuthModal(true)} />
+          </div>
+          <div className="animate-reveal delay-225">
+            <LeaderboardPanel />
+          </div>
+          <div className="animate-reveal delay-300">
+            <RecentResultsPanel />
+          </div>
         </section>
 
         <section id="analytics" className="mt-7 grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -223,7 +254,7 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
             </div>
             <div className="text-right">
               <div className="font-mono text-sm text-ink">{marketData?.coins.length ?? 0} assets</div>
-              <div className="label mt-1">Sorted by price</div>
+              <div className="label mt-1">Sorted by price · dead coins sink</div>
             </div>
           </div>
           {marketData?.coins && (
@@ -238,8 +269,8 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
 
         <footer id="about" className="mt-16 sm:mt-20 pt-7 border-t border-rule flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="font-display font-bold text-ink">CoinX Virtual Exchange</div>
-            <p className="text-ink-mute text-xs mt-1">A private fantasy market for friends and family.</p>
+            <div className="font-display font-bold text-ink">Crypto Chaos · a CoinX apocalypse</div>
+            <p className="text-ink-mute text-xs mt-1">A private fantasy market for friends and family — now with scheduled extinction events.</p>
           </div>
           <p className="label max-w-xl md:text-right">Virtual GBP only · No real cryptocurrency, deposits, withdrawals or financial services</p>
         </footer>
@@ -260,6 +291,9 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
       <Modal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)}>
         <AuthForms onClose={() => setShowAuthModal(false)} />
       </Modal>
+
+      {/* End-of-round immutable results experience (Core 6 snapshot) */}
+      <ResultsOverlay />
     </div>
   );
 }
@@ -275,12 +309,14 @@ function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <Router basename="/coins">
-          <Routes>
-            <Route path="/" element={<Market refreshTrigger={refreshTrigger} />} />
-            <Route path="/profile" element={<Profile />} />
-          </Routes>
-        </Router>
+        <GameProvider>
+          <Router basename="/coins">
+            <Routes>
+              <Route path="/" element={<Market refreshTrigger={refreshTrigger} />} />
+              <Route path="/profile" element={<Profile />} />
+            </Routes>
+          </Router>
+        </GameProvider>
       </ToastProvider>
     </AuthProvider>
   );

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../services/apiConfig.ts';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -53,7 +54,7 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
     const fetchMarketHistory = async () => {
       try {
         setLoading(true);
-        const url = `https://jdwd40.com/api-2/api/market/price-history?timeRange=${timeRange}`;
+        const url = `${API_BASE_URL}/market/price-history?timeRange=${timeRange}`;
         const response = await fetch(url);
         const data = await response.json();
         if (!data.history || !Array.isArray(data.history)) {
