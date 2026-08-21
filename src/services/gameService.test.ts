@@ -31,7 +31,6 @@ const VALID_STATE: GameState = {
   durationMs: 1_800_000,
   remainingMs: 900_000,
   apocalypsePercent: 50,
-  seed: '3cf1c63ae4d5b38047e9028d88f7500b',
   serverTime: '2026-08-20T10:15:00.000Z'
 };
 
@@ -142,11 +141,26 @@ test('returns the camelCase contract on a successful response', async () => {
   try {
     const state = await getGameState();
     assert.deepEqual(state, VALID_STATE);
-    // camelCase keys exactly; no snake_case leakage.
+    // camelCase keys exactly; no snake_case leakage. Milestone 1: no seed —
+    // the cycle seed is internal-only on the backend (it determines future
+    // collapses and bot moves) and is never part of the parsed contract.
     assert.deepEqual(Object.keys(state).sort(), [
       'apocalypseId', 'apocalypsePercent', 'durationMs', 'endTime',
-      'remainingMs', 'seed', 'serverTime', 'startTime', 'status'
+      'remainingMs', 'serverTime', 'startTime', 'status'
     ]);
+  } finally {
+    restore();
+  }
+});
+
+test('a legacy/non-conforming payload carrying a seed has it stripped at the boundary', async () => {
+  const restore = stubFetch(async () =>
+    jsonResponse({ ...VALID_STATE, seed: '3cf1c63ae4d5b38047e9028d88f7500b' })
+  );
+  try {
+    const state = await getGameState();
+    assert.equal('seed' in state, false);
+    assert.deepEqual(state, VALID_STATE);
   } finally {
     restore();
   }
@@ -202,7 +216,10 @@ test('rejects malformed/invalid contract payloads', () => {
   assert.throws(() => parseGameState({ ...VALID_STATE, remainingMs: '900000' }), /remainingMs/);
   assert.throws(() => parseGameState({ ...VALID_STATE, apocalypsePercent: Number.NaN }), /apocalypsePercent/);
   assert.throws(() => parseGameState({ ...VALID_STATE, status: 'PAUSED' }), /unknown status/);
-  assert.throws(() => parseGameState({ ...VALID_STATE, seed: '' }), /seed/);
+  // Milestone 1: no seed is required — and none is retained — in the parsed
+  // contract.
+  const parsed = parseGameState(VALID_STATE);
+  assert.equal('seed' in parsed, false);
 });
 
 test('forwards AbortSignal to fetch and propagates cancellation', async () => {

@@ -31,7 +31,8 @@ import {
   findMyEntry,
   lifecycleFromState,
   participantBelongsToCycle,
-  participantCacheKey
+  readCachedParticipant,
+  writeCachedParticipant
 } from '../utils/gameLogic.ts';
 import type { ConnectionState, CountdownAnchor, LifecyclePhase } from '../utils/gameLogic.ts';
 
@@ -75,24 +76,10 @@ interface GameContextValue {
 
 const GameContext = createContext<GameContextValue | undefined>(undefined);
 
-function readCachedParticipant(apocalypseId: string): RoundParticipant | null {
-  try {
-    const raw = localStorage.getItem(participantCacheKey(apocalypseId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as RoundParticipant;
-    return parsed && parsed.apocalypseId === apocalypseId ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function cacheParticipant(participant: RoundParticipant): void {
-  try {
-    localStorage.setItem(participantCacheKey(participant.apocalypseId), JSON.stringify(participant));
-  } catch {
-    // Cache is a convenience only; the leaderboard is the live fallback.
-  }
-}
+// Milestone 1: participant cache reads/writes are keyed by BOTH the
+// authenticated user identity and the apocalypse id (helpers in gameLogic).
+// A logout or account switch can therefore never surface another user's
+// round state, and the payload identity is re-validated on every read.
 
 export function GameProvider({ children }: { children: React.ReactNode }) {
   const { user, getAuthToken, handleSessionExpired } = useAuth();
@@ -190,14 +177,27 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     previousCycleRef.current = currentId;
   }, [gameState?.apocalypseId]);
 
-  // Restore the cached participant when the live cycle becomes known.
+  // Milestone 1: account changes never leave unsafe in-memory state. A
+  // logout or identity switch drops the cached-participant mirror
+  // immediately; the restore effect below only ever re-reads the CURRENT
+  // user's key. (Round state for a previous cycle is already dropped by the
+  // transition effect above.)
+  useEffect(() => {
+    setMyParticipant(null);
+  }, [user?.id]);
+
+  // Restore the cached participant when the live cycle becomes known —
+  // strictly the current user's entry for the current apocalypse.
   useEffect(() => {
     const currentId = gameState?.apocalypseId ?? null;
     if (!currentId) return;
+    const userId = user?.id ?? null;
     setMyParticipant((existing) =>
-      participantBelongsToCycle(existing, currentId) ? existing : readCachedParticipant(currentId)
+      participantBelongsToCycle(existing, currentId) && existing?.userId === userId
+        ? existing
+        : readCachedParticipant(localStorage, userId, currentId)
     );
-  }, [gameState?.apocalypseId]);
+  }, [gameState?.apocalypseId, user?.id]);
 
   const connection = connectionState(lastSyncAt, nowTick);
   const lifecycle = lifecycleFromState(gameState?.status ?? null, settling, gameState === null);
@@ -217,7 +217,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setJoinPending(true);
     try {
       const participant = await joinGame(token);
-      cacheParticipant(participant);
+      writeCachedParticipant(localStorage, participant);
       setMyParticipant(participant);
       await syncNow();
     } catch (err) {
@@ -247,7 +247,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           ? await buyGameTrade(token, request)
           : await sellGameTrade(token, request);
 
-        cacheParticipant(result.participant);
+        writeCachedParticipant(localStorage, result.participant);
         setMyParticipant(result.participant);
         await syncNow();
       } catch (err) {

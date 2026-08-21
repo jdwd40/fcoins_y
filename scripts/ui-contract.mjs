@@ -8,6 +8,7 @@ const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const chart = readFileSync(new URL('../src/components/PriceChart.tsx', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../src/components/ApocalypseHeader.tsx', import.meta.url), 'utf8');
 const gameContext = readFileSync(new URL('../src/context/GameContext.tsx', import.meta.url), 'utf8');
+const gameLogic = readFileSync(new URL('../src/utils/gameLogic.ts', import.meta.url), 'utf8');
 const roundTrade = readFileSync(new URL('../src/components/RoundTradePanel.tsx', import.meta.url), 'utf8');
 
 // --- Core Crypto Chaos surface ------------------------------------------
@@ -34,6 +35,12 @@ assert.match(gameContext, /GAME_POLL_INTERVAL_MS/);
 assert.match(gameContext, /visibilitychange/);
 assert.match(gameContext, /window\.addEventListener\('focus'/);
 assert.match(gameContext, /localStorage/); // participant cache
+// Milestone 1: the participant cache key carries the authenticated user
+// identity AND the apocalypse id — no cross-account round-state leakage.
+assert.match(gameLogic, /cc_participant_\$\{userId\}_\$\{apocalypseId\}/);
+assert.match(gameLogic, /parsed\.userId !== userId/);
+assert.match(gameContext, /readCachedParticipant\(localStorage, userId, currentId\)/);
+assert.match(gameContext, /setMyParticipant\(null\)/); // cleared on identity change
 
 // Round trading carries the authoritative cycle id and never fakes success.
 assert.match(roundTrade, /trade\(side, coin\.coin_id, amountValue\)/);

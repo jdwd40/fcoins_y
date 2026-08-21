@@ -23,8 +23,6 @@ export interface GameState {
   remainingMs: number;
   /** Elapsed portion of the cycle; clamped to 0..100. */
   apocalypsePercent: number;
-  /** Server-generated public seed for reproducibility. Clients cannot set it. */
-  seed: string;
   /** ISO 8601 server timestamp captured when the state was derived. */
   serverTime: string;
 }
@@ -187,11 +185,17 @@ function requireStatus(payload: Record<string, unknown>, contract: string): Game
 // Validate the wire contract before handing it to callers: a malformed or
 // snake_case/non-conforming payload fails loudly here instead of corrupting
 // downstream state. Exported for focused contract tests.
+//
+// Milestone 1: the cycle seed is no longer part of the public contract (it
+// deterministically drives future collapses and bot moves, so it must never
+// reach the client). The parser neither requires nor retains it: the result
+// is built from contract fields only, so any legacy/extra keys — seed
+// included — are stripped at the boundary.
 export function parseGameState(payload: unknown): GameState {
   if (!isRecord(payload)) {
     throw new Error('Invalid game state response: expected a JSON object');
   }
-  const stringFields = ['apocalypseId', 'status', 'startTime', 'endTime', 'seed', 'serverTime'] as const;
+  const stringFields = ['apocalypseId', 'status', 'startTime', 'endTime', 'serverTime'] as const;
   for (const field of stringFields) {
     if (typeof payload[field] !== 'string' || (payload[field] as string).length === 0) {
       throw new Error(`Invalid game state response: ${field} must be a non-empty string`);
@@ -203,8 +207,17 @@ export function parseGameState(payload: unknown): GameState {
       throw new Error(`Invalid game state response: ${field} must be a finite number`);
     }
   }
-  requireStatus(payload, 'game state');
-  return payload as unknown as GameState;
+  const status = requireStatus(payload, 'game state');
+  return {
+    apocalypseId: payload.apocalypseId as string,
+    status,
+    startTime: payload.startTime as string,
+    endTime: payload.endTime as string,
+    durationMs: payload.durationMs as number,
+    remainingMs: payload.remainingMs as number,
+    apocalypsePercent: payload.apocalypsePercent as number,
+    serverTime: payload.serverTime as string
+  };
 }
 
 export function parseRoundParticipant(payload: unknown): RoundParticipant {

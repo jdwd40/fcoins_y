@@ -18,6 +18,8 @@ import {
   TRADE_BLOCK_LABEL,
   findMyEntry,
   participantCacheKey,
+  readCachedParticipant,
+  writeCachedParticipant,
   revalueHoldings,
   livePriceMapFromCoins,
   detectCompletedCycle,
@@ -198,9 +200,65 @@ const PARTICIPANT: RoundParticipant = {
   ]
 };
 
-test('participant cache keys are per-cycle so round state never crosses apocalypses', () => {
-  assert.notEqual(participantCacheKey('APOC-0001'), participantCacheKey('APOC-0002'));
-  assert.equal(participantCacheKey('APOC-0001'), 'cc_participant_APOC-0001');
+test('participant cache keys are per-user AND per-cycle so round state never crosses accounts or apocalypses', () => {
+  assert.notEqual(participantCacheKey(1, 'APOC-0001'), participantCacheKey(1, 'APOC-0002'));
+  assert.notEqual(participantCacheKey(1, 'APOC-0001'), participantCacheKey(2, 'APOC-0001'));
+  assert.equal(participantCacheKey(1, 'APOC-0001'), 'cc_participant_1_APOC-0001');
+});
+
+// Milestone 1: the cached participant is only ever readable by the SAME
+// authenticated identity that cached it, in the SAME apocalypse. These tests
+// drive the storage helpers with a fake Storage so the whole
+// login-A → logout → login-B browser sequence is covered without a DOM.
+function fakeStorage() {
+  const map = new Map<string, string>();
+  return {
+    getItem: (k: string) => (map.has(k) ? map.get(k)! : null),
+    setItem: (k: string, v: string) => void map.set(k, v),
+    removeItem: (k: string) => void map.delete(k),
+    key: (i: number) => Array.from(map.keys())[i] ?? null,
+    get length() { return map.size; }
+  };
+}
+
+test('same browser: user A\'s cached participant is invisible after logout and to user B', () => {
+  const storage = fakeStorage();
+
+  // A joins and trades in APOC-0001: the authoritative participant is cached.
+  writeCachedParticipant(storage, PARTICIPANT); // PARTICIPANT.userId === 1
+  assert.equal(readCachedParticipant(storage, 1, 'APOC-0001')?.participantId, 7);
+
+  // A logs out: no authenticated identity -> nothing is readable.
+  assert.equal(readCachedParticipant(storage, null, 'APOC-0001'), null);
+  assert.equal(readCachedParticipant(storage, undefined, 'APOC-0001'), null);
+
+  // B logs in on the same browser/cycle: A's round state must not leak.
+  assert.equal(readCachedParticipant(storage, 2, 'APOC-0001'), null);
+
+  // B joins and caches their own participant; A's entry remains untouched.
+  writeCachedParticipant(storage, { ...PARTICIPANT, participantId: 9, userId: 2 });
+  assert.equal(readCachedParticipant(storage, 2, 'APOC-0001')?.participantId, 9);
+  assert.equal(readCachedParticipant(storage, 1, 'APOC-0001')?.participantId, 7);
+});
+
+test('rollover preserved: a cached participant never crosses into the next apocalypse', () => {
+  const storage = fakeStorage();
+  writeCachedParticipant(storage, PARTICIPANT);
+  assert.equal(readCachedParticipant(storage, 1, 'APOC-0002'), null);
+  assert.equal(readCachedParticipant(storage, 1, 'APOC-0001')?.participantId, 7);
+});
+
+test('corrupt or tampered cache entries are never honoured', () => {
+  const storage = fakeStorage();
+  // Garbage JSON.
+  storage.setItem(participantCacheKey(1, 'APOC-0001'), '{not json');
+  assert.equal(readCachedParticipant(storage, 1, 'APOC-0001'), null);
+  // Well-formed but stored under the wrong user key (tampered/copy-pasted).
+  storage.setItem(participantCacheKey(1, 'APOC-0001'), JSON.stringify({ ...PARTICIPANT, userId: 2 }));
+  assert.equal(readCachedParticipant(storage, 1, 'APOC-0001'), null);
+  // Well-formed but for another cycle under this user's key.
+  storage.setItem(participantCacheKey(1, 'APOC-0001'), JSON.stringify({ ...PARTICIPANT, apocalypseId: 'APOC-0002' }));
+  assert.equal(readCachedParticipant(storage, 1, 'APOC-0001'), null);
 });
 
 test('holdings revalue against live prices; dead coins contribute exactly £0', () => {

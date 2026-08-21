@@ -189,8 +189,56 @@ export function findMyEntry(
 // Join/trade responses are the only per-participant reads the backend
 // exposes; the UI caches the latest authoritative participant per cycle so a
 // reload mid-round restores the dashboard without re-joining.
-export function participantCacheKey(apocalypseId: string): string {
-  return `cc_participant_${apocalypseId}`;
+//
+// Milestone 1: the cache key carries BOTH the authenticated user identity and
+// the apocalypse identity. On a shared browser, user A logging out and user B
+// logging in must never surface A's round state — the key (and a defensive
+// payload identity check on read) make that impossible, while rollover keeps
+// its per-cycle isolation.
+export function participantCacheKey(userId: number, apocalypseId: string): string {
+  return `cc_participant_${userId}_${apocalypseId}`;
+}
+
+// Minimal Storage interface so the helpers are testable without a DOM.
+export interface ParticipantCacheStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+// Read the cached participant for THIS user in THIS cycle. Returns null when
+// logged out (no identity), when nothing is cached, on corrupt JSON, and on
+// any identity/cycle mismatch between the key and the stored payload.
+export function readCachedParticipant(
+  storage: ParticipantCacheStorage,
+  userId: number | null | undefined,
+  apocalypseId: string
+): RoundParticipant | null {
+  if (typeof userId !== 'number' || !Number.isInteger(userId) || userId <= 0) return null;
+  try {
+    const raw = storage.getItem(participantCacheKey(userId, apocalypseId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as RoundParticipant;
+    if (!parsed || parsed.userId !== userId || parsed.apocalypseId !== apocalypseId) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+// Cache the latest authoritative participant under ITS OWN identity + cycle.
+export function writeCachedParticipant(
+  storage: ParticipantCacheStorage,
+  participant: RoundParticipant
+): void {
+  try {
+    storage.setItem(
+      participantCacheKey(participant.userId, participant.apocalypseId),
+      JSON.stringify(participant)
+    );
+  } catch {
+    // Cache is a convenience only; the leaderboard is the live fallback.
+  }
 }
 
 // Live holdings value: cached quantities re-priced against the live market
