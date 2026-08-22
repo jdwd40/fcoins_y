@@ -26,7 +26,10 @@ import {
   participantBelongsToCycle,
   formatSignedGbp,
   personalityLabel,
-  countLivingCoins
+  countLivingCoins,
+  TRADE_QUANTITY_MAX_DECIMALS,
+  parseTradeQuantity,
+  formatQuantity
 } from './gameLogic.ts';
 import type { LeaderboardEntry, RoundParticipant } from '../services/gameService.ts';
 
@@ -295,4 +298,62 @@ test('signed GBP and personality labels render results readably', () => {
   assert.equal(formatSignedGbp(-249.5), '-£249.50');
   assert.equal(personalityLabel('dip_buyer'), 'Dip Buyer');
   assert.equal(personalityLabel(null), null);
+});
+
+// --- Trade quantities (fractional coin contract, backend DECIMAL(18,8)) ------------
+
+test('the trade quantity precision matches the authoritative ledger contract', () => {
+  // Backend migration 012: apocalypse quantity columns are DECIMAL(18,8).
+  assert.equal(TRADE_QUANTITY_MAX_DECIMALS, 8);
+});
+
+test('parseTradeQuantity accepts the required fractional and integer quantities', () => {
+  for (const [raw, value] of [
+    ['1', 1],
+    ['1.5', 1.5],
+    ['0.5', 0.5],
+    ['0.04', 0.04],
+    ['0.004', 0.004], // the canonical issue example
+    ['1.25', 1.25],
+    ['0.00000001', 0.00000001], // exact ledger dust precision (8dp)
+    ['.5', 0.5],
+    ['10', 10],
+    ['0.00400000', 0.004], // trailing zeros are free — value-identical
+    [' 0.004 ', 0.004] // surrounding whitespace is not malformation
+  ] as const) {
+    const parsed = parseTradeQuantity(raw);
+    assert.ok(parsed.ok, `expected ${raw} to parse`);
+    assert.equal(parsed.value, value);
+  }
+});
+
+test('parseTradeQuantity rejects zero, negatives, blank and malformed input without rounding', () => {
+  for (const raw of ['', '   ', '0', '0.0', '0.00000000', '-0.5', '-1', 'abc', '1.2.3', '1e-3', '1,5', '0x10', 'NaN', 'Infinity', '+1']) {
+    const parsed = parseTradeQuantity(raw);
+    assert.ok(!parsed.ok, `expected ${JSON.stringify(raw)} to be rejected`);
+    assert.match(parsed.error, /quantity/i);
+  }
+});
+
+test('parseTradeQuantity rejects precision beyond the ledger contract instead of rounding it', () => {
+  for (const raw of ['0.000000001', '0.004000001', '1.000000005']) {
+    const parsed = parseTradeQuantity(raw);
+    assert.ok(!parsed.ok, `expected ${raw} to be rejected for excessive precision`);
+    assert.match(parsed.error, /8 decimal places/);
+  }
+});
+
+test('formatQuantity preserves meaningful fractional digits — never rounds to a whole coin', () => {
+  assert.equal(formatQuantity(0.004), '0.004'); // a fractional holding must not display as 0
+  assert.equal(formatQuantity(0.006), '0.006'); // remainder after a partial sale
+  assert.equal(formatQuantity(1.25), '1.25');
+  assert.equal(formatQuantity(0.5), '0.5');
+  assert.equal(formatQuantity(10), '10'); // integers stay integers
+  assert.equal(formatQuantity(1), '1');
+  assert.equal(formatQuantity(0), '0');
+  assert.equal(formatQuantity(0.00000001), '0.00000001'); // dust: no exponent notation
+  assert.equal(formatQuantity(1.0), '1'); // no meaningless trailing zeros
+  assert.equal(formatQuantity(0.10000000), '0.1');
+  assert.equal(formatQuantity(2500.5), '2500.5');
+  assert.equal(formatQuantity(NaN), '0');
 });

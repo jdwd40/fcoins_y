@@ -10,6 +10,7 @@ const header = readFileSync(new URL('../src/components/ApocalypseHeader.tsx', im
 const gameContext = readFileSync(new URL('../src/context/GameContext.tsx', import.meta.url), 'utf8');
 const gameLogic = readFileSync(new URL('../src/utils/gameLogic.ts', import.meta.url), 'utf8');
 const roundTrade = readFileSync(new URL('../src/components/RoundTradePanel.tsx', import.meta.url), 'utf8');
+const playerRound = readFileSync(new URL('../src/components/PlayerRoundPanel.tsx', import.meta.url), 'utf8');
 
 // --- Core Crypto Chaos surface ------------------------------------------
 assert.match(app, /Crypto Chaos/);
@@ -48,6 +49,22 @@ assert.match(roundTrade, /tradeBlockReason/);
 assert.match(roundTrade, /Round cash/);
 assert.match(roundTrade, /isCoinCollapsed/);
 assert.match(roundTrade, /aria-pressed/);
+
+// Fractional coin quantities (backend migration 012, DECIMAL(18,8)): the
+// trade panel validates entry through the shared contract parser (never
+// integer-only, never silently rounded), the confirmation shows the exact
+// fractional quantity, and holdings render without rounding to a whole coin.
+assert.match(gameLogic, /TRADE_QUANTITY_MAX_DECIMALS = 8/);
+assert.match(gameLogic, /export function parseTradeQuantity/);
+assert.match(gameLogic, /export function formatQuantity/);
+assert.match(roundTrade, /parseTradeQuantity\(amount\)/);
+assert.match(roundTrade, /formatQuantity\(amountValue\)/); // confirmation + toast
+assert.match(roundTrade, /formatQuantity\(heldQuantity\)/); // sell-all + held display
+assert.match(roundTrade, /inputMode="decimal"/); // mobile decimal keypad
+assert.doesNotMatch(roundTrade, /step="1"/);
+assert.doesNotMatch(roundTrade, /parseInt\(amount/);
+assert.match(playerRound, /formatQuantity\(holding\.quantity\)/);
+assert.doesNotMatch(playerRound, /holding\.quantity\.toFixed\(0\)/);
 
 // Styling: game escalation + reduced-motion respect.
 assert.match(styles, /--accent:\s*#7132f5/);

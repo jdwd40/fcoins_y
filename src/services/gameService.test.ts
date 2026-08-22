@@ -334,6 +334,42 @@ for (const [side, fn, path] of [
   });
 }
 
+test('fractional round trades send the exact decimal quantity — never integer-truncated or rounded', async () => {
+  const FRACTIONAL_RESULT = {
+    transaction: { roundTransactionId: 4, type: 'BUY', coinId: 2, quantity: 0.004, price: 2500, totalAmount: 10 },
+    participant: {
+      ...VALID_PARTICIPANT,
+      currentCash: 990,
+      holdingsValue: 10,
+      wealth: 1000,
+      holdings: [{ coinId: 2, symbol: 'JDC', quantity: 0.004, currentPrice: 2500, currentValue: 10 }]
+    },
+    peakWealth: 1000
+  };
+  for (const [side, fn, path] of [
+    ['buy', buyGameTrade, '/game/trades/buy'],
+    ['sell', sellGameTrade, '/game/trades/sell']
+  ] as const) {
+    let seen: FetchArgs | undefined;
+    const restore = stubFetch(async (args) => {
+      seen = args;
+      return jsonResponse({ status: 'success', message: `Round ${side} completed successfully`, data: FRACTIONAL_RESULT }, 201);
+    });
+    try {
+      const result = await fn('token-abc', { cycleId: 'APOC-0001', coinId: 2, amount: 0.004 });
+      assert.equal(seen?.url, `${API_BASE_URL}${path}`);
+      // The wire body carries the exact fractional quantity: 0.004, not 0 or 1.
+      assert.deepEqual(JSON.parse(String(seen?.init?.body)), { cycleId: 'APOC-0001', coin_id: 2, amount: 0.004 });
+      // The fractional response parses without precision loss.
+      assert.equal(result.transaction.quantity, 0.004);
+      assert.equal(result.transaction.totalAmount, 10);
+      assert.equal(result.participant.holdings[0].quantity, 0.004);
+    } finally {
+      restore();
+    }
+  }
+});
+
 test('a stale-cycle 409 rejection carries the backend message and status', async () => {
   const restore = stubFetch(async () =>
     jsonResponse({ status: 'error', message: 'Apocalypse cycle APOC-0001 is no longer active. Fetch GET /api/game/state for the current round.' }, 409)

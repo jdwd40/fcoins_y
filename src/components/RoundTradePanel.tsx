@@ -4,7 +4,7 @@ import { useToast } from '../context/ToastContext';
 import { useGame } from '../context/GameContext.tsx';
 import { SessionExpiredError, formatCurrency, parsePrice } from '../services/transactionService.ts';
 import { GameApiError } from '../services/gameService.ts';
-import { isCoinCollapsed, tradeBlockReason, TRADE_BLOCK_LABEL } from '../utils/gameLogic.ts';
+import { isCoinCollapsed, tradeBlockReason, TRADE_BLOCK_LABEL, formatQuantity, parseTradeQuantity } from '../utils/gameLogic.ts';
 import type { Coin } from '../types';
 import { Check, X } from 'lucide-react';
 
@@ -31,7 +31,11 @@ export function RoundTradePanel({ coin }: RoundTradePanelProps) {
 
   const collapsed = isCoinCollapsed(coin.current_price);
   const currentPrice = parsePrice(coin.current_price);
-  const amountValue = parseFloat(amount) || 0;
+  // The quantity is validated against the authoritative ledger precision
+  // (DECIMAL(18,8)) as the user types — an unparseable or over-precise entry
+  // is worth exactly nothing until it validates; it is never rounded.
+  const parsedQuantity = parseTradeQuantity(amount);
+  const amountValue = parsedQuantity.ok ? parsedQuantity.value : 0;
   const total = Math.round(amountValue * currentPrice * 100) / 100;
 
   const roundCash = myEntry?.currentCash ?? myParticipant?.currentCash ?? 0;
@@ -59,12 +63,12 @@ export function RoundTradePanel({ coin }: RoundTradePanelProps) {
   };
 
   const validationError = (): string | null => {
-    if (!amountValue || amountValue <= 0) return 'Enter a quantity greater than 0';
+    if (!parsedQuantity.ok) return parsedQuantity.error;
     if (side === 'BUY' && total > roundCash) {
       return `Insufficient round cash. You need ${formatCurrency(total)} but have ${formatCurrency(roundCash)}.`;
     }
     if (side === 'SELL' && amountValue > heldQuantity) {
-      return `Insufficient round holdings. You hold ${heldQuantity} ${coin.symbol} this round.`;
+      return `Insufficient round holdings. You hold ${formatQuantity(heldQuantity)} ${coin.symbol} this round.`;
     }
     return null;
   };
@@ -87,8 +91,8 @@ export function RoundTradePanel({ coin }: RoundTradePanelProps) {
       await trade(side, coin.coin_id, amountValue);
       showToast(
         side === 'BUY'
-          ? `Bought ${amountValue} ${coin.symbol} for the round`
-          : `Sold ${amountValue} ${coin.symbol} for the round`,
+          ? `Bought ${formatQuantity(amountValue)} ${coin.symbol} for the round`
+          : `Sold ${formatQuantity(amountValue)} ${coin.symbol} for the round`,
         'success'
       );
       setAmount('');
@@ -125,7 +129,7 @@ export function RoundTradePanel({ coin }: RoundTradePanelProps) {
         </p>
         {joined && heldQuantity > 0 && (
           <button onClick={() => setSide('SELL')} className="btn-ink mt-4">
-            Sell remaining {heldQuantity} {coin.symbol} for £0.00
+            Sell remaining {formatQuantity(heldQuantity)} {coin.symbol} for £0.00
           </button>
         )}
       </div>
@@ -162,7 +166,7 @@ export function RoundTradePanel({ coin }: RoundTradePanelProps) {
         <dl className="space-y-2 mb-5 font-mono text-sm">
           <div className="flex justify-between">
             <dt className="text-ink-mute">Quantity</dt>
-            <dd className="text-ink tnum">{amountValue} {coin.symbol}</dd>
+            <dd className="text-ink tnum">{formatQuantity(amountValue)} {coin.symbol}</dd>
           </div>
           <div className="flex justify-between">
             <dt className="text-ink-mute">Unit price</dt>
@@ -227,10 +231,11 @@ export function RoundTradePanel({ coin }: RoundTradePanelProps) {
               <input
                 id="round-amount"
                 type="text"
+                inputMode="decimal"
                 value={amount}
                 onChange={handleAmountChange}
                 className="input-ink"
-                placeholder="0.00"
+                placeholder="0.004"
                 disabled={pending}
               />
               <div className="absolute inset-y-0 right-0 flex items-center pointer-events-none pr-3">
@@ -238,8 +243,8 @@ export function RoundTradePanel({ coin }: RoundTradePanelProps) {
               </div>
             </div>
             {side === 'SELL' && heldQuantity > 0 && (
-              <button type="button" onClick={() => setAmount(String(heldQuantity))} className="mt-2 label hover:text-gold transition-colors">
-                → Sell all ({heldQuantity})
+              <button type="button" onClick={() => setAmount(formatQuantity(heldQuantity))} className="mt-2 label hover:text-gold transition-colors">
+                → Sell all ({formatQuantity(heldQuantity)})
               </button>
             )}
           </div>
@@ -257,7 +262,7 @@ export function RoundTradePanel({ coin }: RoundTradePanelProps) {
 
           <div className="label">
             Round cash · <span className="text-ink-dim">{formatCurrency(roundCash)}</span>
-            {side === 'SELL' && <span className="ml-3">Held · <span className="text-ink-dim">{heldQuantity} {coin.symbol}</span></span>}
+            {side === 'SELL' && <span className="ml-3">Held · <span className="text-ink-dim">{formatQuantity(heldQuantity)} {coin.symbol}</span></span>}
           </div>
 
           {error && <div className="font-mono text-xs text-oxblood" role="alert">{error}</div>}

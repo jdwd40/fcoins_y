@@ -262,6 +262,69 @@ export function livePriceMapFromCoins(
   return map;
 }
 
+// --- Trade quantities ---------------------------------------------------------
+
+// Crypto Chaos round-trade quantity contract. The authoritative precision is
+// the backend ledger: apocalypse_holdings/apocalypse_transactions quantity
+// DECIMAL(18,8) (backend migration 012) — crypto-style fractional coins, so
+// 0.004 JDC is exact. Money stays 2-decimal; only the coin amount carries up
+// to 8 decimal places. The backend re-validates every trade authoritatively;
+// these helpers let the UI fail early under the SAME rule and never silently
+// round a requested quantity into a materially different one.
+export const TRADE_QUANTITY_MAX_DECIMALS = 8;
+
+export type TradeQuantityParse = { ok: true; value: number } | { ok: false; error: string };
+
+// Plain decimal strings only: digits with at most one fractional part.
+// Signs, exponents, thousands separators and blank/garbage are malformed.
+const PLAIN_QUANTITY_PATTERN = /^(?:\d+(?:\.\d*)?|\.\d+)$/;
+
+// Exact significant-fractional-digit count of a plain decimal string,
+// computed on the string so binary floating-point error can never miscount.
+// Trailing zeros do not count: "0.5000" is value-identical to "0.5".
+function significantDecimalPlaces(text: string): number {
+  const fraction = text.includes('.') ? text.slice(text.indexOf('.') + 1) : '';
+  const significant = fraction.replace(/0+$/, '');
+  return significant.length;
+}
+
+// Parse and validate a user-entered trade quantity against the ledger
+// contract: finite, > 0, and no more than TRADE_QUANTITY_MAX_DECIMALS
+// significant fractional digits (excess precision is rejected, NEVER
+// rounded). Returns the quantity as a number safe to submit verbatim.
+export function parseTradeQuantity(raw: string): TradeQuantityParse {
+  const text = raw.trim();
+  if (text === '') return { ok: false, error: 'Enter a quantity greater than 0' };
+  if (!PLAIN_QUANTITY_PATTERN.test(text)) {
+    return { ok: false, error: 'Enter a valid decimal quantity (digits with at most one decimal point)' };
+  }
+  const value = Number(text);
+  if (!Number.isFinite(value) || value <= 0) {
+    return { ok: false, error: 'Enter a quantity greater than 0' };
+  }
+  if (significantDecimalPlaces(text) > TRADE_QUANTITY_MAX_DECIMALS) {
+    return {
+      ok: false,
+      error: `Quantities support up to ${TRADE_QUANTITY_MAX_DECIMALS} decimal places — reduce the precision instead of rounding`
+    };
+  }
+  return { ok: true, value };
+}
+
+// Display a coin quantity exactly as stored: up to 8 fractional digits with
+// trailing zeros stripped, never exponent notation ("0.00000001", never
+// "1e-8"), and never rounded to a whole coin. Safe for any ledger-valid
+// quantity; a float carrying sub-8dp noise displays at 8dp (display only —
+// this is never used to build a trade request).
+export function formatQuantity(quantity: number): string {
+  if (!Number.isFinite(quantity)) return '0';
+  if (quantity === 0) return '0';
+  const fixed = quantity.toFixed(TRADE_QUANTITY_MAX_DECIMALS);
+  if (!fixed.includes('.')) return fixed; // integers render as-is
+  const trimmed = fixed.replace(/0+$/, '').replace(/\.$/, '');
+  return trimmed;
+}
+
 // --- Cycle transitions ----------------------------------------------------------------------
 
 // A cycle change means the previous apocalypse completed. Returns the

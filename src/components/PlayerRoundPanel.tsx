@@ -2,7 +2,7 @@ import { Swords, TrendingUp, Wallet, Package } from 'lucide-react';
 import { useGame } from '../context/GameContext.tsx';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../services/transactionService.ts';
-import { revalueHoldings, livePriceMapFromCoins } from '../utils/gameLogic.ts';
+import { revalueHoldings, livePriceMapFromCoins, formatQuantity } from '../utils/gameLogic.ts';
 import type { Coin } from '../types';
 
 // Player round dashboard: the Core 4 round wallet — ROUND CASH, holdings
@@ -110,7 +110,7 @@ export function PlayerRoundPanel({ coins, onAuthRequest }: { coins: Coin[]; onAu
                     {dead && <span className="ml-2 text-oxblood">DEAD</span>}
                   </span>
                   <span className="font-mono text-xs text-ink-dim tnum">
-                    {holding.quantity} · {dead ? '£0.00' : formatCurrency(holding.quantity * livePrice)}
+                    {formatQuantity(holding.quantity)} · {dead ? '£0.00' : formatCurrency(holding.quantity * livePrice)}
                   </span>
                 </div>
               );
