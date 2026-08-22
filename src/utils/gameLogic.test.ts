@@ -30,7 +30,11 @@ import {
   TRADE_QUANTITY_MAX_DECIMALS,
   parseTradeQuantity,
   minTradeValueError,
-  formatQuantity
+  formatQuantity,
+  HOW_TO_PLAY_TITLE,
+  HOW_TO_PLAY_TAGLINE,
+  HOW_TO_PLAY_STARTING_CASH,
+  HOW_TO_PLAY_STEPS
 } from './gameLogic.ts';
 import type { LeaderboardEntry, RoundParticipant } from '../services/gameService.ts';
 
@@ -368,4 +372,97 @@ test('formatQuantity preserves meaningful fractional digits — never rounds to 
   assert.equal(formatQuantity(0.10000000), '0.1');
   assert.equal(formatQuantity(2500.5), '2500.5');
   assert.equal(formatQuantity(NaN), '0');
+});
+
+// --- How to play (first-time instructions, issue #7) -------------------------
+// These tests pin the ACCURACY RULES of the onboarding copy, not just its
+// shape: late joiners are never short-changed, collapse is permanent and
+// unpredictable, bots know nothing the player doesn't, round cash is not
+// exchange funds, and final cash — not peak wealth — wins.
+
+const ALL_STEPS_TEXT = HOW_TO_PLAY_STEPS.map((step) => `${step.title}\n${step.body}`).join('\n');
+const stepById = (id: string) => {
+  const step = HOW_TO_PLAY_STEPS.find((candidate) => candidate.id === id);
+  assert.ok(step, `missing how-to-play step: ${id}`);
+  return step;
+};
+
+test('how to play has the seven survival steps in order, each with real copy', () => {
+  assert.deepEqual(
+    HOW_TO_PLAY_STEPS.map((step) => step.id),
+    ['join', 'trade', 'clock', 'bag', 'bots', 'cash', 'again']
+  );
+  const ids = new Set(HOW_TO_PLAY_STEPS.map((step) => step.id));
+  assert.equal(ids.size, HOW_TO_PLAY_STEPS.length); // unique ids
+  for (const step of HOW_TO_PLAY_STEPS) {
+    assert.ok(step.title.trim().length > 0, `step ${step.id} has no title`);
+    assert.ok(step.body.trim().length > 20, `step ${step.id} body is too thin to teach anything`);
+  }
+  assert.ok(HOW_TO_PLAY_TITLE.length > 0);
+  assert.ok(HOW_TO_PLAY_TAGLINE.length > 0);
+});
+
+test('joining grants £1,000 round cash, at any time, with no late-entry penalty', () => {
+  const join = stepById('join');
+  assert.match(join.body, /£1,000/);
+  assert.equal(HOW_TO_PLAY_STARTING_CASH, '£1,000'); // single source, never a stray literal
+  assert.match(join.body, /at any time/i);
+  // The same amount whenever you join — explicitly stated, never implied less.
+  assert.match(join.body, /same £1,000/);
+  // No penalty/reduction language anywhere near joining.
+  assert.doesNotMatch(join.body, /penalt|reduc|prorat|less cash|smaller stake|handicap/i);
+});
+
+test('round cash is clearly distinguished from legacy exchange account funds', () => {
+  const join = stepById('join');
+  assert.match(join.body, /round cash/i);
+  assert.match(join.body, /separate from your exchange account funds/i);
+});
+
+test('escalating volatility is explained: instability rises with Apocalypse %', () => {
+  const clock = stepById('clock');
+  assert.match(clock.body, /Apocalypse %/);
+  assert.match(clock.body, /increasingly unstable/i);
+});
+
+test('collapse to £0 is permanent for the round — no recovery language', () => {
+  const bag = stepById('bag');
+  assert.match(bag.body, /£0/);
+  assert.match(bag.body, /permanently/i);
+  assert.match(bag.body, /stay dead/i);
+  // Never suggest a collapsed coin can recover within the same Apocalypse.
+  assert.doesNotMatch(bag.body, /may recover|can recover|might bounce|comes back|will return/i);
+});
+
+test('bots share the player leaderboard and hold no hidden information', () => {
+  const bots = stepById('bots');
+  assert.match(bots.body, /bots/i);
+  assert.match(bots.body, /same leaderboard/i);
+  assert.match(bots.body, /no hidden information/i);
+  // Never imply bots see the future or know the collapse schedule.
+  assert.doesNotMatch(bots.body, /bots (know|see|are told)|insider/i);
+});
+
+test('final cash is the winning score — peak wealth explicitly does not count', () => {
+  const cash = stepById('cash');
+  assert.match(cash.body, /score is the round cash/i);
+  assert.match(cash.body, /final cash decides the winner/i);
+  assert.match(cash.body, /Peak wealth mid-round means nothing/i);
+});
+
+test('the next Apocalypse starts automatically and results are recorded', () => {
+  const again = stepById('again');
+  assert.match(again.body, /begins automatically/i);
+  assert.match(again.body, /[Rr]esults are recorded/);
+});
+
+test('no step exposes future collapse order or timing', () => {
+  // The instructions must never leak which coin collapses next or when —
+  // and the collapse step must say so explicitly.
+  assert.doesNotMatch(ALL_STEPS_TEXT, /collapse order|collapse schedule|next (coin )?to collapse|will collapse (at|first|next)|collapses at \d/i);
+  assert.match(stepById('bag').body, /nobody knows which coin goes next or when/i);
+});
+
+test('planned crime/tax mechanics are never advertised to players', () => {
+  assert.doesNotMatch(ALL_STEPS_TEXT, /crime|tax|heist|launder/i);
 });

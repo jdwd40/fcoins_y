@@ -11,6 +11,7 @@ const gameContext = readFileSync(new URL('../src/context/GameContext.tsx', impor
 const gameLogic = readFileSync(new URL('../src/utils/gameLogic.ts', import.meta.url), 'utf8');
 const roundTrade = readFileSync(new URL('../src/components/RoundTradePanel.tsx', import.meta.url), 'utf8');
 const playerRound = readFileSync(new URL('../src/components/PlayerRoundPanel.tsx', import.meta.url), 'utf8');
+const howToPlay = readFileSync(new URL('../src/components/HowToPlay.tsx', import.meta.url), 'utf8');
 
 // --- Core Crypto Chaos surface ------------------------------------------
 assert.match(app, /Crypto Chaos/);
@@ -82,6 +83,41 @@ assert.match(styles, /apocalypse-meter/);
 assert.match(styles, /prefers-reduced-motion/);
 assert.match(styles, /coin-dead/);
 assert.match(styles, /leaderboard-me/);
+
+// --- HOW TO PLAY (issue #7) -------------------------------------------------
+// Discoverable control in the persistent header; compact accessible dialog,
+// never a forced tutorial. Copy is single-sourced from gameLogic.
+assert.match(header, /HowToPlay/); // mounted in the persistent apocalypse header
+assert.match(howToPlay, /How to play/); // visible, human-readable trigger label
+assert.match(howToPlay, /aria-haspopup="dialog"/);
+assert.match(howToPlay, /aria-expanded=\{open\}/);
+// Dialog semantics + every close route: Escape, backdrop click, close button.
+assert.match(howToPlay, /role="dialog"/);
+assert.match(howToPlay, /aria-modal="true"/);
+assert.match(howToPlay, /aria-labelledby="how-to-play-title"/);
+assert.match(howToPlay, /id="how-to-play-title"/);
+assert.match(howToPlay, /event\.key === 'Escape'/);
+assert.match(howToPlay, /aria-label="Close how to play"/);
+// Focus behaviour: focus enters the dialog on open, returns to the trigger on
+// close, and Tab is trapped while open.
+assert.match(howToPlay, /panel\?\.focus\(\)/);
+assert.match(howToPlay, /triggerRef\.current\?\.focus\(\)/);
+assert.match(howToPlay, /event\.key !== 'Tab'/);
+// Content renders from the single source of truth; step numbers are
+// decorative only (no information communicated purely by visual order).
+assert.match(howToPlay, /HOW_TO_PLAY_STEPS\.map/);
+assert.match(howToPlay, /aria-hidden="true"/);
+assert.match(gameLogic, /export const HOW_TO_PLAY_STEPS/);
+assert.match(gameLogic, /export const HOW_TO_PLAY_TITLE/);
+assert.match(gameLogic, /HOW TO SURVIVE THE APOCALYPSE/);
+// Narrow-layout usability: bottom-sheet on mobile, centred panel from sm up,
+// scrollable with capped height.
+assert.match(howToPlay, /items-end sm:items-center/);
+assert.match(howToPlay, /rounded-t-2xl sm:rounded-2xl/);
+assert.match(howToPlay, /max-h-\[92vh\] overflow-y-auto/);
+// The trigger is styled and keyboard-visible.
+assert.match(styles, /\.how-to-play-trigger/);
+assert.match(styles, /\.how-to-play-trigger:focus-visible/);
 
 assert.match(html, /<title>Crypto Chaos · CoinX Apocalypse Exchange<\/title>/);
 assert.match(html, /family=Inter/);

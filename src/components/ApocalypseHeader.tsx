@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Radiation, WifiOff, RefreshCw, Skull } from 'lucide-react';
 import { useGame } from '../context/GameContext.tsx';
+import { HowToPlay } from './HowToPlay.tsx';
 import {
   displayRemainingMs,
   formatCountdown,
@@ -75,6 +76,7 @@ export function ApocalypseHeader({ coins }: { coins: Coin[] }) {
           </div>
 
           <div className="flex items-center gap-4 sm:gap-6 shrink-0">
+            <HowToPlay />
             <div className="text-right">
               <div className="label">Time left</div>
               <div className="numeral text-ink text-2xl sm:text-3xl tnum" aria-live="off">

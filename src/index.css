@@ -345,6 +345,50 @@
     box-shadow: inset 0 1px rgba(255,255,255,0.25), 0 8px 20px -12px var(--oxblood);
   }
 
+  /* HOW TO PLAY: discoverable accent-outlined control in the apocalypse
+     header; must read as interactive on every phase background. */
+  .how-to-play-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex: none;
+    border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--card-edge));
+    border-radius: 8px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    padding: 0.5rem 0.75rem;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+  }
+  .how-to-play-trigger:hover {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 22%, var(--card));
+  }
+  .how-to-play-trigger:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .how-to-play-step-num {
+    display: grid;
+    place-items: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    flex: none;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--card-edge));
+    color: var(--accent);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
   .leaderboard-me {
     background: var(--accent-soft);
     box-shadow: inset 3px 0 0 var(--accent);

@@ -388,3 +388,63 @@ export function countLivingCoins(
 ): number {
   return coins.filter((coin) => !isCoinCollapsed(coin.current_price)).length;
 }
+
+// --- How to play (first-time instructions) ----------------------------------
+//
+// The single source of truth for the HOW TO PLAY copy. The dialog component
+// renders this verbatim, and the unit tests pin the accuracy rules:
+//   - late joiners get the SAME £1,000 round cash (never less, no penalty)
+//   - collapse is permanent for the round (dead coins never recover)
+//   - collapse order/timing is never revealed
+//   - bots have no hidden information
+//   - ROUND CASH is separate from legacy exchange account funds
+//   - final cash — not peak wealth — decides the winner
+// Keep the tone apocalyptic crypto-bro, but never sacrifice clarity for a joke.
+
+export const HOW_TO_PLAY_TITLE = 'HOW TO SURVIVE THE APOCALYPSE';
+export const HOW_TO_PLAY_TAGLINE = 'CASH WINS. BAGS DIE.';
+export const HOW_TO_PLAY_STARTING_CASH = '£1,000';
+
+export interface HowToPlayStep {
+  id: string;
+  title: string;
+  body: string;
+}
+
+export const HOW_TO_PLAY_STEPS: HowToPlayStep[] = [
+  {
+    id: 'join',
+    title: 'JOIN',
+    body: `Enter the current Apocalypse at any time and receive ${HOW_TO_PLAY_STARTING_CASH} round cash. Turn up in the final minute and it is still the same ${HOW_TO_PLAY_STARTING_CASH} — showing up late costs you nothing. Round cash lives and dies with the Apocalypse; it is completely separate from your exchange account funds.`
+  },
+  {
+    id: 'trade',
+    title: 'TRADE',
+    body: 'Buy and sell the available coins with your round cash. Fractional quantities are supported — 0.004 of a coin is a real position.'
+  },
+  {
+    id: 'clock',
+    title: 'WATCH THE CLOCK',
+    body: 'As Apocalypse % rises, the market becomes increasingly unstable. The calm at the start does not last.'
+  },
+  {
+    id: 'bag',
+    title: "DON'T HOLD THE BAG",
+    body: 'Coins eventually collapse permanently to £0. Dead coins stay dead for the rest of the Apocalypse — no recovery, no resurrection — and nobody knows which coin goes next or when. DEAD COINS STAY DEAD.'
+  },
+  {
+    id: 'bots',
+    title: 'BEAT THE BOTS',
+    body: 'Rule-based bots trade alongside you and fight for places on the same leaderboard. They read the same market you do — no hidden information. THE BOTS WANT YOUR SPOT.'
+  },
+  {
+    id: 'cash',
+    title: 'CASH WINS',
+    body: 'When the Apocalypse ends, your score is the round cash you are still holding. Peak wealth mid-round means nothing — only final cash decides the winner.'
+  },
+  {
+    id: 'again',
+    title: 'DO IT AGAIN',
+    body: 'Results are recorded and the next Apocalypse begins automatically. The world ends again right on schedule.'
+  }
+];
