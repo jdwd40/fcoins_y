@@ -365,6 +365,52 @@ export function participantBelongsToCycle(
   return !!participant && !!apocalypseId && participant.apocalypseId === apocalypseId;
 }
 
+// --- Results overlay auto-dismiss (issue #8) ---------------------------------
+
+// End-of-Apocalypse results appear briefly, then dismiss themselves: Crypto
+// Chaos is a continuous loop and the player must never have to click to
+// continue into the next round. 7s sits in the middle of the ticket's 5–8s
+// "long enough to read" window. The manual close control stays available and
+// always wins over the timer.
+export const RESULTS_AUTO_DISMISS_MS = 7000;
+
+export interface ResultsAutoDismissTimer {
+  /** The specific completed cycle this timer is allowed to dismiss. */
+  readonly cycleId: string;
+  /** True while the dismissal may still fire; false once fired or cancelled. */
+  pending(): boolean;
+  /** Cancel the pending dismissal (unmount, result change, manual close). */
+  cancel(): void;
+}
+
+// Schedule a one-shot auto-dismiss bound to ONE completed cycle id. The
+// callback only ever fires for the cycle it was scheduled with, fires at
+// most once, and cancel() is idempotent — so a stale timer can never dismiss
+// a newer round's result, and duplicate/rerendered timers can never
+// double-dismiss. No state is persisted: a fresh page simply arms a fresh
+// timer for a freshly detected transition.
+export function scheduleResultsAutoDismiss(
+  cycleId: string,
+  onDismiss: (completedCycleId: string) => void,
+  delayMs: number = RESULTS_AUTO_DISMISS_MS
+): ResultsAutoDismissTimer {
+  let settled = false;
+  const timeoutId = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    onDismiss(cycleId);
+  }, delayMs);
+  return {
+    cycleId,
+    pending: () => !settled,
+    cancel: () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+    }
+  };
+}
+
 // --- Presentation ---------------------------------------------------------------------------
 
 export function formatSignedGbp(value: number): string {

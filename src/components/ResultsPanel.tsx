@@ -8,7 +8,11 @@ import {
 } from '../services/gameService.ts';
 import type { CycleResults, RecentLeaderboards, ResultRow } from '../services/gameService.ts';
 import { formatCurrency } from '../services/transactionService.ts';
-import { formatSignedGbp, personalityLabel } from '../utils/gameLogic.ts';
+import {
+  formatSignedGbp,
+  personalityLabel,
+  scheduleResultsAutoDismiss
+} from '../utils/gameLogic.ts';
 
 function ResultRowItem({ row, mine }: { row: ResultRow; mine: boolean }) {
   const profit = row.netProfit >= 0;
@@ -60,6 +64,26 @@ export function ResultsOverlay() {
       });
     return () => { cancelled = true; };
   }, [completedCycleId]);
+
+  // Auto-dismiss (issue #8): the results overlay is a pause, not a wall —
+  // Crypto Chaos never waits for a click. Exactly one timer per completed
+  // cycle, bound to that cycle id; the effect cleanup cancels it on unmount,
+  // on cycle transition and on manual close (acknowledgeCompleted nulls
+  // completedCycleId, re-running this effect). A stale timer therefore can
+  // never dismiss a newer round's result, and dismissal just reveals the
+  // live successor round, which keeps polling underneath the whole time.
+  useEffect(() => {
+    if (!completedCycleId) return;
+    let cancelled = false;
+    const timer = scheduleResultsAutoDismiss(completedCycleId, (cycleId) => {
+      if (cancelled || cycleId !== completedCycleId) return;
+      acknowledgeCompleted();
+    });
+    return () => {
+      cancelled = true;
+      timer.cancel();
+    };
+  }, [completedCycleId, acknowledgeCompleted]);
 
   if (!completedCycleId) return null;
 
@@ -117,6 +141,9 @@ export function ResultsOverlay() {
             <button onClick={acknowledgeCompleted} className="btn-gold w-full">
               Face the next apocalypse
             </button>
+            <p className="mt-3 text-center label text-ink-mute">
+              The next apocalypse is already running — this closes automatically.
+            </p>
           </div>
         </div>
       </div>

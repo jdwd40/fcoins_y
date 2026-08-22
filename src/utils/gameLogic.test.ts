@@ -24,6 +24,8 @@ import {
   livePriceMapFromCoins,
   detectCompletedCycle,
   participantBelongsToCycle,
+  RESULTS_AUTO_DISMISS_MS,
+  scheduleResultsAutoDismiss,
   formatSignedGbp,
   personalityLabel,
   countLivingCoins,
@@ -465,4 +467,89 @@ test('no step exposes future collapse order or timing', () => {
 
 test('planned crime/tax mechanics are never advertised to players', () => {
   assert.doesNotMatch(ALL_STEPS_TEXT, /crime|tax|heist|launder/i);
+});
+
+// --- Results overlay auto-dismiss (issue #8) --------------------------------
+// Deterministic: node:test mock timers, no sleeps. The component delegates
+// the whole lifecycle to scheduleResultsAutoDismiss, so the behaviour-level
+// guarantees (fire at 7s, cancel on close/unmount/transition, stale timers
+// never fire) are pinned here.
+
+test('auto-dismiss duration is 7000ms, inside the ticket 5–8s window', () => {
+  assert.equal(RESULTS_AUTO_DISMISS_MS, 7000);
+  assert.ok(RESULTS_AUTO_DISMISS_MS >= 5000 && RESULTS_AUTO_DISMISS_MS <= 8000);
+});
+
+test('a completed-cycle transition arms the results overlay; nothing else does', () => {
+  // The overlay appears exactly when a completed round is detected.
+  assert.equal(detectCompletedCycle('APOC-0001', 'APOC-0002'), 'APOC-0001');
+  // A normal rerender (same live cycle) and a fresh load (no previous cycle)
+  // never arm it — stale results cannot resurrect as blocking overlays.
+  assert.equal(detectCompletedCycle('APOC-0002', 'APOC-0002'), null);
+  assert.equal(detectCompletedCycle(null, 'APOC-0002'), null);
+  assert.equal(detectCompletedCycle('APOC-0002', null), null);
+});
+
+test('overlay stays visible before the timeout and auto-dismisses at exactly 7s', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const dismissed: string[] = [];
+  const timer = scheduleResultsAutoDismiss('APOC-0001', (id) => dismissed.push(id));
+  assert.equal(timer.cycleId, 'APOC-0001');
+  assert.equal(timer.pending(), true);
+  t.mock.timers.tick(RESULTS_AUTO_DISMISS_MS - 1);
+  assert.deepEqual(dismissed, []); // still visible at 6.999s
+  assert.equal(timer.pending(), true);
+  t.mock.timers.tick(1);
+  assert.deepEqual(dismissed, ['APOC-0001']); // dismissed at 7s, no click needed
+  assert.equal(timer.pending(), false);
+  t.mock.timers.reset();
+});
+
+test('the dismissal fires at most once, however far time advances afterwards', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const dismissed: string[] = [];
+  scheduleResultsAutoDismiss('APOC-0001', (id) => dismissed.push(id));
+  t.mock.timers.tick(RESULTS_AUTO_DISMISS_MS * 3);
+  assert.deepEqual(dismissed, ['APOC-0001']); // never a double dismiss
+  t.mock.timers.reset();
+});
+
+test('manual close cancels the pending timer and it never fires', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const dismissed: string[] = [];
+  const timer = scheduleResultsAutoDismiss('APOC-0001', (id) => dismissed.push(id));
+  timer.cancel(); // the manual-close / unmount / cleanup path
+  assert.equal(timer.pending(), false);
+  t.mock.timers.tick(60_000);
+  assert.deepEqual(dismissed, []); // cancelled timer cannot dismiss later
+  timer.cancel(); // cancel is idempotent — safe on repeated cleanup
+  assert.deepEqual(dismissed, []);
+  t.mock.timers.reset();
+});
+
+test('a cycle transition cancels the old timer; it can never dismiss the newer result', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const dismissed: string[] = [];
+  const oldTimer = scheduleResultsAutoDismiss('APOC-0001', (id) => dismissed.push(id));
+  t.mock.timers.tick(3000); // part-way through the old result's window
+  oldTimer.cancel(); // effect cleanup on result change
+  const newTimer = scheduleResultsAutoDismiss('APOC-0002', (id) => dismissed.push(id));
+  t.mock.timers.tick(60_000); // long past both deadlines
+  assert.deepEqual(dismissed, ['APOC-0002']); // only the current result dismissed
+  assert.equal(oldTimer.pending(), false);
+  assert.equal(newTimer.pending(), false);
+  t.mock.timers.reset();
+});
+
+test('dismissal only clears the overlay — the successor ACTIVE round is untouched', () => {
+  // completedCycleId and lifecycle are independent: acknowledging the result
+  // leaves the live round beneath polling, trading and counting down.
+  assert.equal(lifecycleFromState('ACTIVE', false, false), 'ACTIVE');
+  assert.equal(tradeBlockReason({
+    lifecycle: 'ACTIVE',
+    connection: 'live',
+    joined: true,
+    coinCollapsed: false,
+    authenticated: true
+  }), null); // the new round remains playable immediately after dismissal
 });

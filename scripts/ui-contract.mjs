@@ -12,6 +12,7 @@ const gameLogic = readFileSync(new URL('../src/utils/gameLogic.ts', import.meta.
 const roundTrade = readFileSync(new URL('../src/components/RoundTradePanel.tsx', import.meta.url), 'utf8');
 const playerRound = readFileSync(new URL('../src/components/PlayerRoundPanel.tsx', import.meta.url), 'utf8');
 const howToPlay = readFileSync(new URL('../src/components/HowToPlay.tsx', import.meta.url), 'utf8');
+const resultsPanel = readFileSync(new URL('../src/components/ResultsPanel.tsx', import.meta.url), 'utf8');
 
 // --- Core Crypto Chaos surface ------------------------------------------
 assert.match(app, /Crypto Chaos/);
@@ -118,6 +119,30 @@ assert.match(howToPlay, /max-h-\[92vh\] overflow-y-auto/);
 // The trigger is styled and keyboard-visible.
 assert.match(styles, /\.how-to-play-trigger/);
 assert.match(styles, /\.how-to-play-trigger:focus-visible/);
+
+// --- Results overlay auto-dismiss (issue #8) --------------------------------
+// End-of-Apocalypse results dismiss themselves after 7s — the player never
+// has to click to continue into the next round. The timer lifecycle is
+// delegated to the shared, unit-tested helper and pinned to one cycle id.
+assert.match(gameLogic, /RESULTS_AUTO_DISMISS_MS = 7000/);
+assert.match(gameLogic, /export function scheduleResultsAutoDismiss/);
+assert.match(resultsPanel, /scheduleResultsAutoDismiss\(completedCycleId/);
+// Cleanup cancels the timer on unmount, result change and manual close —
+// a stale timer can never dismiss a newer round's result.
+assert.match(resultsPanel, /cancelled = true;\s*timer\.cancel\(\)/);
+assert.match(resultsPanel, /cycleId !== completedCycleId/); // stale-cycle guard
+// Manual close remains and dismisses immediately (backdrop + button).
+assert.match(resultsPanel, /onClick=\{acknowledgeCompleted\}/);
+assert.match(resultsPanel, /Face the next apocalypse/);
+// The overlay stays an accessible dialog and tells the player no action is
+// needed (plain copy, no animation, reduced-motion behaviour untouched).
+assert.match(resultsPanel, /role="dialog"/);
+assert.match(resultsPanel, /aria-label=\{`Final results for/);
+assert.match(resultsPanel, /closes automatically/);
+// Results + history rendering remain intact.
+assert.match(resultsPanel, /getCycleResults\(completedCycleId\)/);
+assert.match(resultsPanel, /getRecentLeaderboards/);
+assert.match(resultsPanel, /The graveyard/);
 
 assert.match(html, /<title>Crypto Chaos · CoinX Apocalypse Exchange<\/title>/);
 assert.match(html, /family=Inter/);
