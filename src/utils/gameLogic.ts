@@ -273,6 +273,14 @@ export function livePriceMapFromCoins(
 // round a requested quantity into a materially different one.
 export const TRADE_QUANTITY_MAX_DECIMALS = 8;
 
+// Minimum trade consideration (backend gameConstants.GAME_MIN_TRADE_VALUE):
+// money is 2-decimal, so a small fractional quantity can total £0.00 — free
+// holdings on a BUY, destroyed holdings on a SELL, repeatably. The backend
+// rejects these authoritatively; minTradeValueError mirrors the rule here
+// for early feedback. Quantity precision is unaffected: 0.004 of a £2.50+
+// coin is a valid £0.01+ trade.
+export const TRADE_MIN_VALUE = 0.01;
+
 export type TradeQuantityParse = { ok: true; value: number } | { ok: false; error: string };
 
 // Plain decimal strings only: digits with at most one fractional part.
@@ -309,6 +317,17 @@ export function parseTradeQuantity(raw: string): TradeQuantityParse {
     };
   }
   return { ok: true, value };
+}
+
+// Client-side mirror of the backend minimum-notional rule, for early
+// feedback before submission. `total` must be the 2-decimal ROUNDED
+// consideration (the number the ledger would record) and `price` the live
+// coin price. A £0-priced (collapsed) coin is exempt: exiting a dead
+// holding for exactly £0 is legal. Returns the error message or null.
+export function minTradeValueError(total: number, price: number): string | null {
+  if (!(price > 0)) return null;
+  if (!(total < TRADE_MIN_VALUE)) return null;
+  return `Trade value must be at least £${TRADE_MIN_VALUE.toFixed(2)}. This trade totals £${total.toFixed(2)} at the current price.`;
 }
 
 // Display a coin quantity exactly as stored: up to 8 fractional digits with

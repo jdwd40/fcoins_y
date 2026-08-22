@@ -4,7 +4,7 @@ import { useToast } from '../context/ToastContext';
 import { useGame } from '../context/GameContext.tsx';
 import { SessionExpiredError, formatCurrency, parsePrice } from '../services/transactionService.ts';
 import { GameApiError } from '../services/gameService.ts';
-import { isCoinCollapsed, tradeBlockReason, TRADE_BLOCK_LABEL, formatQuantity, parseTradeQuantity } from '../utils/gameLogic.ts';
+import { isCoinCollapsed, tradeBlockReason, TRADE_BLOCK_LABEL, formatQuantity, parseTradeQuantity, minTradeValueError } from '../utils/gameLogic.ts';
 import type { Coin } from '../types';
 import { Check, X } from 'lucide-react';
 
@@ -64,6 +64,10 @@ export function RoundTradePanel({ coin }: RoundTradePanelProps) {
 
   const validationError = (): string | null => {
     if (!parsedQuantity.ok) return parsedQuantity.error;
+    // Sub-penny trades are rejected by the backend (minimum notional);
+    // block the obviously hopeless ones here with the same message.
+    const minValue = minTradeValueError(total, currentPrice);
+    if (minValue) return minValue;
     if (side === 'BUY' && total > roundCash) {
       return `Insufficient round cash. You need ${formatCurrency(total)} but have ${formatCurrency(roundCash)}.`;
     }

@@ -66,6 +66,14 @@ assert.doesNotMatch(roundTrade, /parseInt\(amount/);
 assert.match(playerRound, /formatQuantity\(holding\.quantity\)/);
 assert.doesNotMatch(playerRound, /holding\.quantity\.toFixed\(0\)/);
 
+// Minimum notional (backend GAME_MIN_TRADE_VALUE): sub-penny trades are
+// blocked client-side with the backend's message, and the backend's
+// authoritative rejection still surfaces verbatim via GameApiError.
+assert.match(gameLogic, /TRADE_MIN_VALUE = 0\.01/);
+assert.match(gameLogic, /export function minTradeValueError/);
+assert.match(roundTrade, /minTradeValueError\(total, currentPrice\)/);
+assert.match(roundTrade, /err\.message/); // GameApiError surfaces server text
+
 // Styling: game escalation + reduced-motion respect.
 assert.match(styles, /--accent:\s*#7132f5/);
 assert.match(styles, /font-family:\s*'Inter'/);

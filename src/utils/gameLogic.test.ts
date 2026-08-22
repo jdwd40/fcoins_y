@@ -29,6 +29,7 @@ import {
   countLivingCoins,
   TRADE_QUANTITY_MAX_DECIMALS,
   parseTradeQuantity,
+  minTradeValueError,
   formatQuantity
 } from './gameLogic.ts';
 import type { LeaderboardEntry, RoundParticipant } from '../services/gameService.ts';
@@ -341,6 +342,17 @@ test('parseTradeQuantity rejects precision beyond the ledger contract instead of
     assert.ok(!parsed.ok, `expected ${raw} to be rejected for excessive precision`);
     assert.match(parsed.error, /8 decimal places/);
   }
+});
+
+test('minTradeValueError mirrors the backend £0.01 minimum-notional rule', () => {
+  // Sub-penny live-priced trades are blocked early with the backend message.
+  assert.match(minTradeValueError(0, 1), /Trade value must be at least £0\.01/); // 0.004 @ £1 -> £0.00
+  assert.match(minTradeValueError(0, 0.4), /Trade value must be at least £0\.01/);
+  // The rounded consideration is what is judged: £0.01 exactly is allowed.
+  assert.equal(minTradeValueError(0.01, 1), null); // 0.01 @ £1, 0.004 @ £2.50
+  assert.equal(minTradeValueError(10, 2500), null); // 0.004 @ £2,500
+  // Collapsed-coin exit exemption: a £0-priced sale is legal (credits £0).
+  assert.equal(minTradeValueError(0, 0), null);
 });
 
 test('formatQuantity preserves meaningful fractional digits — never rounds to a whole coin', () => {
