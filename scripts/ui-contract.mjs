@@ -11,6 +11,10 @@ const gameContext = readFileSync(new URL('../src/context/GameContext.tsx', impor
 const gameLogic = readFileSync(new URL('../src/utils/gameLogic.ts', import.meta.url), 'utf8');
 const roundTrade = readFileSync(new URL('../src/components/RoundTradePanel.tsx', import.meta.url), 'utf8');
 const playerRound = readFileSync(new URL('../src/components/PlayerRoundPanel.tsx', import.meta.url), 'utf8');
+const leaderboard = readFileSync(new URL('../src/components/LeaderboardPanel.tsx', import.meta.url), 'utf8');
+const userMenu = readFileSync(new URL('../src/components/UserMenu.tsx', import.meta.url), 'utf8');
+const profile = readFileSync(new URL('../src/components/Profile.tsx', import.meta.url), 'utf8');
+const gameService = readFileSync(new URL('../src/services/gameService.ts', import.meta.url), 'utf8');
 const howToPlay = readFileSync(new URL('../src/components/HowToPlay.tsx', import.meta.url), 'utf8');
 const resultsPanel = readFileSync(new URL('../src/components/ResultsPanel.tsx', import.meta.url), 'utf8');
 
@@ -48,9 +52,47 @@ assert.match(gameContext, /setMyParticipant\(null\)/); // cleared on identity ch
 // Round trading carries the authoritative cycle id and never fakes success.
 assert.match(roundTrade, /trade\(side, coin\.coin_id, amountValue\)/);
 assert.match(roundTrade, /tradeBlockReason/);
-assert.match(roundTrade, /Round cash/);
 assert.match(roundTrade, /isCoinCollapsed/);
 assert.match(roundTrade, /aria-pressed/);
+
+// --- Continuous game, one Cash balance (issue #10) ---------------------------
+// No player-facing JOIN APOCALYPSE control or join-as-gameplay copy anywhere
+// on the game surface; participation is ensured automatically per (user,
+// cycle) through the idempotent endpoint.
+assert.doesNotMatch(playerRound, /JOIN APOCALYPSE/);
+assert.doesNotMatch(playerRound, /joinPending|\bjoin\b/);
+assert.match(playerRound, /Sign in to play/); // logged-out route is sign-in UX, not a join gate
+assert.match(playerRound, /Syncing your position/); // neutral loading, no fabricated Cash
+assert.match(gameContext, /joinGame\(token\)/); // automatic ensure, not a button handler
+assert.match(gameContext, /ensureAttemptRef/); // one attempt per (user, cycle)
+assert.doesNotMatch(gameContext, /joinPending/);
+assert.doesNotMatch(gameContext, /Sign in to join/);
+// Exactly one gameplay balance, labelled Cash, derived ONLY from the
+// server-owned participant / leaderboard row via the shared helper.
+assert.match(gameLogic, /GAME_STARTING_CASH_LABEL = '£10,000'/);
+assert.match(gameLogic, /export function displayRoundCash/);
+assert.match(roundTrade, /displayRoundCash\(myEntry, myParticipant\)/);
+assert.match(playerRound, /displayRoundCash\(myEntry, myParticipant\)/);
+assert.match(playerRound, /Wallet className="w-3 h-3" \/> Cash/);
+assert.doesNotMatch(roundTrade, /Round cash/);
+assert.doesNotMatch(playerRound, /Round cash|round wallet/);
+// No £1,000-era game copy on any player-facing surface.
+for (const [name, text] of Object.entries({ gameLogic, roundTrade, playerRound, leaderboard, howToPlay, resultsPanel, profile, userMenu })) {
+  assert.doesNotMatch(text, /£1,000/, `£1,000-era copy remains in ${name}`);
+}
+// Legacy users.funds is classic account data, never game money: it stays off
+// the main nav and is explicitly quarantined in Profile copy.
+assert.doesNotMatch(userMenu, /user\?\.funds/);
+assert.match(profile, /historical account data only/);
+assert.match(profile, /nothing here is spendable in the game/);
+// Profitable-only completed leaderboards (backend #19): contract fields,
+// win-condition copy and a legitimate empty board.
+assert.match(gameService, /leaderboardEligible/);
+assert.match(gameService, /totalResultCount/);
+assert.match(gameLogic, /LEADERBOARD_RULE_COPY = `Finish above \$\{GAME_STARTING_CASH_LABEL\} to make the leaderboard\.`/);
+assert.match(leaderboard, /LEADERBOARD_RULE_COPY/);
+assert.match(resultsPanel, /leaderboardEligible/);
+assert.match(resultsPanel, /No qualifiers/);
 
 // Fractional coin quantities (backend migration 012, DECIMAL(18,8)): the
 // trade panel validates entry through the shared contract parser (never

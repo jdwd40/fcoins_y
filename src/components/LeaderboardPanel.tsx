@@ -2,12 +2,13 @@ import { Bot, Crown } from 'lucide-react';
 import { useGame } from '../context/GameContext.tsx';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../services/transactionService.ts';
-import { personalityLabel } from '../utils/gameLogic.ts';
+import { personalityLabel, LEADERBOARD_RULE_COPY, LEADERBOARD_BREAKEVEN_COPY } from '../utils/gameLogic.ts';
 
 // Live leaderboard (Core 6): humans and bots ranked together by current
 // wealth. Bots carry a clear marker and their public personality — no
 // strategy internals. The signed-in human's row is highlighted; a bot at #1
-// is simply the leader.
+// is simply the leader. The win condition (backend #19: only a final Cash
+// ABOVE the £10,000 start qualifies) is stated under the board.
 export function LeaderboardPanel() {
   const { user } = useAuth();
   const { leaderboard, settling, lifecycle } = useGame();
@@ -32,7 +33,7 @@ export function LeaderboardPanel() {
       ) : entries.length === 0 ? (
         <div className="px-5 py-8 text-center">
           <p className="text-sm text-ink-mute">
-            No competitors yet. The first to join writes the leaderboard.
+            No competitors on the board yet — the next Apocalypse fills it automatically.
           </p>
         </div>
       ) : (
@@ -68,6 +69,10 @@ export function LeaderboardPanel() {
           })}
         </ol>
       )}
+
+      <p className="px-5 py-3 border-t border-rule text-[0.7rem] font-mono text-ink-mute leading-relaxed">
+        {LEADERBOARD_RULE_COPY} {LEADERBOARD_BREAKEVEN_COPY}
+      </p>
     </div>
   );
 }

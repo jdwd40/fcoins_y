@@ -4,7 +4,7 @@ import { useToast } from '../context/ToastContext';
 import { useGame } from '../context/GameContext.tsx';
 import { SessionExpiredError, formatCurrency, parsePrice } from '../services/transactionService.ts';
 import { GameApiError } from '../services/gameService.ts';
-import { isCoinCollapsed, tradeBlockReason, TRADE_BLOCK_LABEL, formatQuantity, parseTradeQuantity, minTradeValueError } from '../utils/gameLogic.ts';
+import { isCoinCollapsed, tradeBlockReason, TRADE_BLOCK_LABEL, formatQuantity, parseTradeQuantity, minTradeValueError, displayRoundCash } from '../utils/gameLogic.ts';
 import type { Coin } from '../types';
 import { Check, X } from 'lucide-react';
 
@@ -13,11 +13,11 @@ interface RoundTradePanelProps {
 }
 
 // Crypto Chaos round trading (Core 4): buys and sells settle against the
-// participant's ROUND cash/holdings for the current apocalypse — never the
-// legacy account funds. The authoritative cycle id travels with every
-// request; the backend validates cycle/freeze/collapse state again at commit
-// time, and any domain rejection refreshes game state instead of leaving
-// optimistic UI behind.
+// participant's Cash/holdings for the current apocalypse — never the legacy
+// account funds. The authoritative cycle id travels with every request; the
+// backend validates cycle/freeze/collapse state again at commit time, and any
+// domain rejection refreshes game state instead of leaving optimistic UI
+// behind.
 export function RoundTradePanel({ coin }: RoundTradePanelProps) {
   const { user, handleSessionExpired } = useAuth();
   const { showToast } = useToast();
@@ -38,7 +38,7 @@ export function RoundTradePanel({ coin }: RoundTradePanelProps) {
   const amountValue = parsedQuantity.ok ? parsedQuantity.value : 0;
   const total = Math.round(amountValue * currentPrice * 100) / 100;
 
-  const roundCash = myEntry?.currentCash ?? myParticipant?.currentCash ?? 0;
+  const roundCash = displayRoundCash(myEntry, myParticipant);
   const heldQuantity = useMemo(() => {
     const holding = myParticipant?.holdings.find((h) => h.coinId === coin.coin_id);
     return holding?.quantity ?? 0;
@@ -69,7 +69,7 @@ export function RoundTradePanel({ coin }: RoundTradePanelProps) {
     const minValue = minTradeValueError(total, currentPrice);
     if (minValue) return minValue;
     if (side === 'BUY' && total > roundCash) {
-      return `Insufficient round cash. You need ${formatCurrency(total)} but have ${formatCurrency(roundCash)}.`;
+      return `Insufficient Cash. You need ${formatCurrency(total)} but have ${formatCurrency(roundCash)}.`;
     }
     if (side === 'SELL' && amountValue > heldQuantity) {
       return `Insufficient round holdings. You hold ${formatQuantity(heldQuantity)} ${coin.symbol} this round.`;
@@ -181,7 +181,7 @@ export function RoundTradePanel({ coin }: RoundTradePanelProps) {
             <dd className={`tnum font-bold ${side === 'BUY' ? 'text-gold' : 'text-verdigris'}`}>{formatCurrency(total)}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-ink-mute">Round cash after</dt>
+            <dt className="text-ink-mute">Cash after</dt>
             <dd className="text-ink-dim tnum">{formatCurrency(side === 'BUY' ? roundCash - total : roundCash + total)}</dd>
           </div>
         </dl>
@@ -265,7 +265,7 @@ export function RoundTradePanel({ coin }: RoundTradePanelProps) {
           </div>
 
           <div className="label">
-            Round cash · <span className="text-ink-dim">{formatCurrency(roundCash)}</span>
+            Cash · <span className="text-ink-dim">{formatCurrency(roundCash)}</span>
             {side === 'SELL' && <span className="ml-3">Held · <span className="text-ink-dim">{formatQuantity(heldQuantity)} {coin.symbol}</span></span>}
           </div>
 

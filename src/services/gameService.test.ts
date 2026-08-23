@@ -41,11 +41,11 @@ const VALID_PARTICIPANT: RoundParticipant = {
   userId: 1,
   isBot: false,
   joinedAt: '2026-08-20T10:01:00.000Z',
-  startingCash: 1000,
-  currentCash: 1000,
+  startingCash: 10000,
+  currentCash: 10000,
   holdingsValue: 0,
-  wealth: 1000,
-  peakWealth: 1000,
+  wealth: 10000,
+  peakWealth: 10000,
   status: 'ACTIVE',
   finalCash: null,
   holdings: []
@@ -63,12 +63,12 @@ const VALID_BOARD: LiveLeaderboard = {
     {
       rank: 1, participantId: 11, userId: 501, username: 'cool_conservative_bot',
       isBot: true, personality: 'conservative', joinedAt: '2026-08-20T10:00:05.000Z',
-      currentCash: 1000, currentWealth: 1000, peakWealth: 1000
+      currentCash: 10000, currentWealth: 10000, peakWealth: 10000
     },
     {
       rank: 2, participantId: 7, userId: 1, username: 'john_doe',
       isBot: false, personality: null, joinedAt: '2026-08-20T10:01:00.000Z',
-      currentCash: 750.5, currentWealth: 990.25, peakWealth: 1010
+      currentCash: 9750.5, currentWealth: 9990.25, peakWealth: 10010
     }
   ]
 };
@@ -84,14 +84,16 @@ const VALID_RESULTS: CycleResults = {
     {
       rank: 1, participantId: 11, cycleId: 'APOC-0001', userId: 501,
       username: 'cool_conservative_bot', isBot: true, personality: 'conservative',
-      finalCash: 1000, peakWealth: 1000, startingCash: 1000, netProfit: 0,
-      joinedAt: '2026-08-20T10:00:05.000Z', tradeCount: 0, buyCount: 0, sellCount: 0,
+      finalCash: 10500, peakWealth: 11000, startingCash: 10000, netProfit: 500,
+      leaderboardEligible: true, // backend #19: finalCash > startingCash
+      joinedAt: '2026-08-20T10:00:05.000Z', tradeCount: 2, buyCount: 1, sellCount: 1,
       settledAt: '2026-08-20T10:30:00.500Z'
     },
     {
       rank: 2, participantId: 7, cycleId: 'APOC-0001', userId: 1,
       username: 'john_doe', isBot: false, personality: null,
-      finalCash: 750.5, peakWealth: 1010, startingCash: 1000, netProfit: -249.5,
+      finalCash: 9750.5, peakWealth: 10010, startingCash: 10000, netProfit: -249.5,
+      leaderboardEligible: false, // a losing finish is recorded, not ranked on the board
       joinedAt: '2026-08-20T10:01:00.000Z', tradeCount: 1, buyCount: 1, sellCount: 0,
       settledAt: '2026-08-20T10:30:00.500Z'
     }
@@ -265,9 +267,9 @@ test('a network failure rejects with a clear connection error', async () => {
   }
 });
 
-// --- Core 4: join ---------------------------------------------------------
+// --- Core 4: participation ensure (no player-facing join, issue #10) -----------
 
-test('joinGame posts to /game/join with the bearer token and parses £1,000 participant state', async () => {
+test('joinGame posts to /game/join with the bearer token and parses £10,000 participant state', async () => {
   let seen: FetchArgs | undefined;
   const restore = stubFetch(async (args) => {
     seen = args;
@@ -278,8 +280,8 @@ test('joinGame posts to /game/join with the bearer token and parses £1,000 part
     assert.equal(seen?.url, `${API_BASE_URL}/game/join`);
     assert.equal(seen?.init?.method, 'POST');
     assert.equal((seen?.init?.headers as Record<string, string>).Authorization, 'Bearer token-abc');
-    assert.equal(participant.startingCash, 1000);
-    assert.equal(participant.currentCash, 1000);
+    assert.equal(participant.startingCash, 10000);
+    assert.equal(participant.currentCash, 10000);
     assert.equal(participant.apocalypseId, 'APOC-0001');
   } finally {
     restore();
@@ -297,7 +299,7 @@ test('repeated joinGame calls return the same participant (server idempotency co
     const second = await joinGame('token-abc');
     assert.equal(calls, 2);
     assert.equal(first.participantId, second.participantId);
-    assert.equal(second.startingCash, 1000); // never another £1,000
+    assert.equal(second.startingCash, 10000); // never another £10,000
   } finally {
     restore();
   }
@@ -307,8 +309,8 @@ test('repeated joinGame calls return the same participant (server idempotency co
 
 const TRADE_RESULT = {
   transaction: { roundTransactionId: 3, type: 'BUY', coinId: 2, quantity: 5, price: 10, totalAmount: 50 },
-  participant: { ...VALID_PARTICIPANT, currentCash: 950, wealth: 1000, holdingsValue: 50 },
-  peakWealth: 1000
+  participant: { ...VALID_PARTICIPANT, currentCash: 9950, wealth: 10000, holdingsValue: 50 },
+  peakWealth: 10000
 };
 
 for (const [side, fn, path] of [
@@ -326,7 +328,7 @@ for (const [side, fn, path] of [
       assert.equal(seen?.url, `${API_BASE_URL}${path}`);
       assert.deepEqual(JSON.parse(String(seen?.init?.body)), { cycleId: 'APOC-0001', coin_id: 2, amount: 5 });
       assert.equal((seen?.init?.headers as Record<string, string>).Authorization, 'Bearer token-abc');
-      assert.equal(result.participant.currentCash, 950);
+      assert.equal(result.participant.currentCash, 9950);
       assert.equal(result.transaction.coinId, 2);
     } finally {
       restore();
@@ -339,12 +341,12 @@ test('fractional round trades send the exact decimal quantity — never integer-
     transaction: { roundTransactionId: 4, type: 'BUY', coinId: 2, quantity: 0.004, price: 2500, totalAmount: 10 },
     participant: {
       ...VALID_PARTICIPANT,
-      currentCash: 990,
+      currentCash: 9990,
       holdingsValue: 10,
-      wealth: 1000,
+      wealth: 10000,
       holdings: [{ coinId: 2, symbol: 'JDC', quantity: 0.004, currentPrice: 2500, currentValue: 10 }]
     },
-    peakWealth: 1000
+    peakWealth: 10000
   };
   for (const [side, fn, path] of [
     ['buy', buyGameTrade, '/game/trades/buy'],
@@ -477,6 +479,30 @@ test('getCycleResults fetches the immutable snapshot for a completed cycle', asy
     assert.equal(results.results[0].isBot, true); // a bot may genuinely win
     assert.equal(results.results[1].netProfit, -249.5);
     assert.equal(results.results[1].tradeCount, 1);
+    // Backend #19: every row carries its explicit eligibility — the client
+    // never reverse-engineers the profitable-only rule from amounts.
+    assert.equal(results.results[0].leaderboardEligible, true);
+    assert.equal(results.results[1].leaderboardEligible, false);
+  } finally {
+    restore();
+  }
+});
+
+test('an exactly-break-even £10,000 finish parses as NOT leaderboard-eligible', async () => {
+  const breakEven = {
+    ...VALID_RESULTS,
+    resultCount: 1,
+    results: [{
+      ...VALID_RESULTS.results[0],
+      rank: 1, finalCash: 10000, netProfit: 0, leaderboardEligible: false
+    }]
+  };
+  const restore = stubFetch(async () => jsonResponse({ status: 'success', data: breakEven }));
+  try {
+    const results = await getCycleResults('APOC-0001');
+    assert.equal(results.results[0].finalCash, 10000);
+    assert.equal(results.results[0].leaderboardEligible, false); // £10,000 exactly never qualifies
+    assert.equal(results.results.filter((row) => row.leaderboardEligible).length, 0); // legit empty board
   } finally {
     restore();
   }
@@ -514,21 +540,56 @@ test('cycle results parser rejects non-COMPLETED payloads and bad rows', () => {
     () => parseCycleResults({ ...VALID_RESULTS, results: [{ ...VALID_RESULTS.results[0], netProfit: 'up' }] }),
     /netProfit/
   );
+  // Backend #19 contract: the eligibility flag is REQUIRED on every row — a
+  // payload without it (or a non-boolean one) fails loudly at the boundary.
+  const missingFlag = { ...VALID_RESULTS.results[0] } as Record<string, unknown>;
+  delete missingFlag.leaderboardEligible;
+  assert.throws(() => parseCycleResults({ ...VALID_RESULTS, results: [missingFlag] }), /leaderboardEligible/);
+  assert.throws(
+    () => parseCycleResults({ ...VALID_RESULTS, results: [{ ...VALID_RESULTS.results[0], leaderboardEligible: 'yes' }] }),
+    /leaderboardEligible/
+  );
 });
 
 // --- Core 6: recent leaderboards ----------------------------------------------
 
 test('getRecentLeaderboards passes a bounded limit and parses the list', async () => {
   let seen: FetchArgs | undefined;
+  // Backend #19: boards carry only qualifying rows (gapless re-rank) plus
+  // totalResultCount — everyone who finished, including non-qualifiers.
+  const QUALIFIED_BOARD = {
+    ...VALID_RESULTS,
+    resultCount: 1,
+    totalResultCount: 2,
+    results: [VALID_RESULTS.results[0]]
+  };
   const restore = stubFetch(async (args) => {
     seen = args;
-    return jsonResponse({ status: 'success', data: { limit: 5, count: 1, leaderboards: [VALID_RESULTS] } });
+    return jsonResponse({ status: 'success', data: { limit: 5, count: 1, leaderboards: [QUALIFIED_BOARD] } });
   });
   try {
     const recent = await getRecentLeaderboards(5);
     assert.equal(seen?.url, `${API_BASE_URL}/game/leaderboards/recent?limit=5`);
     assert.equal(recent.count, 1);
     assert.equal(recent.leaderboards[0].cycleId, 'APOC-0001');
+    assert.equal(recent.leaderboards[0].resultCount, 1);
+    assert.equal(recent.leaderboards[0].totalResultCount, 2);
+    assert.equal(recent.leaderboards[0].results[0].leaderboardEligible, true);
+  } finally {
+    restore();
+  }
+});
+
+test('a completed apocalypse with zero qualifiers parses as a legitimate empty leaderboard', async () => {
+  const EMPTY_BOARD = { ...VALID_RESULTS, resultCount: 0, totalResultCount: 2, results: [] };
+  const restore = stubFetch(async () =>
+    jsonResponse({ status: 'success', data: { limit: 5, count: 1, leaderboards: [EMPTY_BOARD] } })
+  );
+  try {
+    const recent = await getRecentLeaderboards(5);
+    assert.equal(recent.leaderboards[0].resultCount, 0);
+    assert.equal(recent.leaderboards[0].totalResultCount, 2);
+    assert.deepEqual(recent.leaderboards[0].results, []); // not an error
   } finally {
     restore();
   }
@@ -537,4 +598,10 @@ test('getRecentLeaderboards passes a bounded limit and parses the list', async (
 test('recent leaderboards parser rejects malformed payloads', () => {
   assert.throws(() => parseRecentLeaderboards({}), /limit/);
   assert.throws(() => parseRecentLeaderboards({ limit: 5, count: 0, leaderboards: {} }), /leaderboards/);
+  // totalResultCount is optional (absent from the per-cycle results
+  // endpoint) but must be a finite number when present.
+  assert.throws(
+    () => parseRecentLeaderboards({ limit: 5, count: 1, leaderboards: [{ ...VALID_RESULTS, totalResultCount: 'two' }] }),
+    /totalResultCount/
+  );
 });

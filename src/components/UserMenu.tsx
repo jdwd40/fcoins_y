@@ -36,8 +36,11 @@ export function UserMenu({ onAuthClick, isDark, onThemeToggle }: UserMenuProps) 
         <span className="label-ink group-hover:text-gold transition-colors">
           {user?.username || 'User'}
         </span>
-        <span className="font-mono text-xs text-ink-dim tnum">
-          £{(user?.funds || 0).toLocaleString('en-GB', { minimumFractionDigits: 2 })}
+        {/* Issue #10: no legacy funds figure on the game surface — the main
+            page shows exactly ONE spendable balance (Apocalypse Cash).
+            Classic exchange funds remain visible inside Profile only. */}
+        <span className="font-mono text-xs text-ink-mute tnum">
+          Classic account →
         </span>
       </button>
       <div className="flex items-center gap-2">

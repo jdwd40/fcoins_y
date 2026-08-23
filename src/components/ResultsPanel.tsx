@@ -11,15 +11,17 @@ import { formatCurrency } from '../services/transactionService.ts';
 import {
   formatSignedGbp,
   personalityLabel,
-  scheduleResultsAutoDismiss
+  scheduleResultsAutoDismiss,
+  LEADERBOARD_RULE_COPY,
+  LEADERBOARD_BREAKEVEN_COPY
 } from '../utils/gameLogic.ts';
 
-function ResultRowItem({ row, mine }: { row: ResultRow; mine: boolean }) {
+function ResultRowItem({ row, mine, displayRank }: { row: ResultRow; mine: boolean; displayRank: number }) {
   const profit = row.netProfit >= 0;
   return (
     <li className={`flex items-center gap-3 px-4 py-2.5 ${mine ? 'leaderboard-me' : ''}`}>
       <span className="font-mono text-sm font-bold text-ink tnum w-8 shrink-0">
-        {row.rank === 1 ? <Crown className="w-4 h-4 text-gold inline" aria-label="Winner" /> : `#${row.rank}`}
+        {displayRank === 1 ? <Crown className="w-4 h-4 text-gold inline" aria-label="Winner" /> : `#${displayRank}`}
       </span>
       <div className="min-w-0 flex-1 flex items-center gap-2">
         <span className="font-display font-semibold text-ink truncate">{row.username}</span>
@@ -46,6 +48,13 @@ function ResultRowItem({ row, mine }: { row: ResultRow; mine: boolean }) {
 // End-of-round results experience: shown when the live cycle id changes
 // (Core 6 transition detection). Reads the immutable snapshot from
 // GET /api/game/results/:cycleId — never recalculated client-side.
+//
+// Issue #10 / backend #19: the displayed board is the profitable-only
+// leaderboard — rows flagged leaderboardEligible (final Cash above that
+// round's £10,000 start), re-ranked gapless for display exactly like the
+// backend's recent-leaderboards endpoint. A completed Apocalypse with zero
+// qualifiers is a legitimate empty leaderboard, not an error. The player's
+// own finish is still reported from the full results set.
 export function ResultsOverlay() {
   const { user } = useAuth();
   const { completedCycleId, acknowledgeCompleted } = useGame();
@@ -88,6 +97,9 @@ export function ResultsOverlay() {
   if (!completedCycleId) return null;
 
   const myResult = results?.results.find((row) => user && row.userId === user.id) ?? null;
+  // The profitable-only leaderboard: rows arrive ranked across ALL results,
+  // so display ranks are recomputed gapless among the qualifiers.
+  const qualified = results?.results.filter((row) => row.leaderboardEligible) ?? [];
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-label={`Final results for ${completedCycleId}`}>
@@ -101,7 +113,9 @@ export function ResultsOverlay() {
               <h2 className="font-display text-3xl sm:text-4xl font-bold text-ink">
                 {completedCycleId.replace('APOC-', 'APOCALYPSE ')} has ended
               </h2>
-              <p className="text-sm text-ink-mute mt-2">Immutable results. The ledger does not lie.</p>
+              <p className="text-sm text-ink-mute mt-2">
+                Immutable results. {LEADERBOARD_RULE_COPY} {LEADERBOARD_BREAKEVEN_COPY}
+              </p>
             </div>
 
             {error && (
@@ -120,21 +134,31 @@ export function ResultsOverlay() {
               </p>
             )}
 
-            {results && results.results.length > 0 && (
-              <ol className="divide-rule border border-rule rounded-xl overflow-hidden mb-5" aria-label="Final results">
-                {results.results.map((row) => (
-                  <ResultRowItem key={row.participantId} row={row} mine={!!user && row.userId === user.id} />
+            {results && results.results.length > 0 && qualified.length === 0 && (
+              <p className="text-center text-sm text-ink-mute py-6">
+                No qualifiers — nobody finished above the {formatCurrency(myResult?.startingCash ?? results.results[0].startingCash)} start.
+                The ledger remembers, but the board stays empty.
+              </p>
+            )}
+
+            {qualified.length > 0 && (
+              <ol className="divide-rule border border-rule rounded-xl overflow-hidden mb-5" aria-label="Final leaderboard">
+                {qualified.map((row, index) => (
+                  <ResultRowItem key={row.participantId} row={row} mine={!!user && row.userId === user.id} displayRank={index + 1} />
                 ))}
               </ol>
             )}
 
             {myResult && (
               <p className="text-center text-sm text-ink-dim mb-5">
-                You finished <strong className="text-ink">#{myResult.rank}</strong> with{' '}
+                You finished <strong className="text-ink">#{myResult.rank}</strong> of {results?.resultCount} with{' '}
                 <strong className="text-ink">{formatCurrency(myResult.finalCash)}</strong>{' '}
                 (<span className={myResult.netProfit >= 0 ? 'text-verdigris' : 'text-oxblood'}>
                   {formatSignedGbp(myResult.netProfit)}
                 </span>).
+                {!myResult.leaderboardEligible && (
+                  <span className="block mt-1 text-ink-mute">Outside the leaderboard — only a finish above the starting Cash qualifies.</span>
+                )}
               </p>
             )}
 
@@ -152,7 +176,9 @@ export function ResultsOverlay() {
 }
 
 // Lightweight recent-rounds history (GET /api/game/leaderboards/recent).
-// Small panel, not a statistics platform.
+// Boards are profitable-only (backend #19): resultCount counts qualifiers,
+// totalResultCount counts everyone who finished. Small panel, not a
+// statistics platform.
 export function RecentResultsPanel() {
   const { user } = useAuth();
   const { resultsVersion } = useGame();
@@ -202,11 +228,12 @@ export function RecentResultsPanel() {
                 <div className="min-w-0 flex-1">
                   <div className="font-mono text-xs font-bold text-ink">{board.cycleId}</div>
                   <div className="font-mono text-[0.66rem] text-ink-mute">
-                    {board.resultCount} competitor{board.resultCount === 1 ? '' : 's'}
+                    {board.resultCount} qualifier{board.resultCount === 1 ? '' : 's'}
+                    {typeof board.totalResultCount === 'number' && ` of ${board.totalResultCount} competitor${board.totalResultCount === 1 ? '' : 's'}`}
                     {board.settledAt && ` · settled ${new Date(board.settledAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`}
                   </div>
                 </div>
-                {winner && (
+                {winner ? (
                   <div className="text-right shrink-0">
                     <div className="font-mono text-xs text-ink">
                       <Crown className="w-3 h-3 text-gold inline mr-1" />
@@ -215,6 +242,8 @@ export function RecentResultsPanel() {
                     </div>
                     <div className="font-mono text-[0.66rem] text-ink-mute tnum">{formatCurrency(winner.finalCash)}</div>
                   </div>
+                ) : (
+                  <span className="font-mono text-[0.66rem] text-ink-mute shrink-0">No qualifiers</span>
                 )}
                 {mine && (
                   <span className="chip shrink-0">You #{mine.rank}</span>

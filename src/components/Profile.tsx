@@ -119,9 +119,9 @@ export function Profile() {
           <div className="mb-6 border border-rule rounded-xl px-4 py-3 bg-paper-alt">
             <span className="label">Legacy exchange account</span>
             <p className="text-xs text-ink-mute mt-1">
-              These are account-level virtual funds and holdings from the classic CoinX exchange.
-              Crypto Chaos rounds use a separate £1,000.00 round wallet shown on the main page —
-              nothing here is playable apocalypse cash.
+              These are account-level virtual funds and holdings from the classic CoinX exchange —
+              historical account data only. Crypto Chaos uses a separate £10,000.00 Cash balance on the
+              main page, owned by the current Apocalypse — nothing here is spendable in the game.
             </p>
           </div>
           <div className="flex items-start gap-6 mb-8">

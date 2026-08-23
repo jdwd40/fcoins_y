@@ -60,14 +60,14 @@ interface GameContextValue {
   completedCycleId: string | null;
   /** Bumped on every detected cycle transition so listeners can react. */
   resultsVersion: number;
-  /** Cached authoritative participant for the LIVE cycle (join/trade
-   *  responses), or null when the player has not joined this apocalypse. */
+  /** Cached authoritative participant for the LIVE cycle (ensure/trade
+   *  responses). Participation is server-owned (backend #17), so an
+   *  authenticated player always has one — null here means "still syncing",
+   *  never "needs to join". */
   myParticipant: RoundParticipant | null;
-  /** The player's live leaderboard row for the current cycle, if joined. */
+  /** The player's live leaderboard row for the current cycle, if synced. */
   myEntry: LeaderboardEntry | null;
   joined: boolean;
-  joinPending: boolean;
-  join: () => Promise<void>;
   trade: (side: TradeSide, coinId: number, amount: number) => Promise<void>;
   /** Force an immediate resync (focus/visibility/post-trade/error recovery). */
   syncNow: () => Promise<void>;
@@ -94,12 +94,15 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [completedCycleId, setCompletedCycleId] = useState<string | null>(null);
   const [resultsVersion, setResultsVersion] = useState(0);
   const [myParticipant, setMyParticipant] = useState<RoundParticipant | null>(null);
-  const [joinPending, setJoinPending] = useState(false);
   // Tick that only drives DERIVED display state (staleness); never a clock.
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   const inFlight = useRef(false);
   const previousCycleRef = useRef<string | null>(null);
+  // One participation-ensure attempt per (user, cycle); a separate latch for
+  // the error toast so retries stay quiet.
+  const ensureAttemptRef = useRef<string | null>(null);
+  const ensureToastRef = useRef<string | null>(null);
 
   const syncNow = useCallback(async () => {
     if (inFlight.current) return; // never stack polls
@@ -184,6 +187,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   // transition effect above.)
   useEffect(() => {
     setMyParticipant(null);
+    ensureAttemptRef.current = null; // a new identity re-ensures from scratch
+    ensureToastRef.current = null;
   }, [user?.id]);
 
   // Restore the cached participant when the live cycle becomes known —
@@ -207,32 +212,50 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   );
   const joined = myEntry !== null || participantBelongsToCycle(myParticipant, gameState?.apocalypseId ?? null);
 
-  const join = useCallback(async () => {
-    if (joinPending) return; // idempotent UI: one request in flight at most
+  // Issue #10: participation is automatic and server-owned. When an
+  // authenticated player has no authoritative participant for the LIVE cycle
+  // yet (fresh login, page reload, successor rollover), ensure it once via
+  // the idempotent POST /game/join ensure+read endpoint — no JOIN button, no
+  // client-side cash fabrication. Failures retry on the next successful poll
+  // (the endpoint is idempotent); the error toast fires once per (user,
+  // cycle) so a settling window or offline stretch never spams.
+  useEffect(() => {
+    const currentId = gameState?.apocalypseId ?? null;
+    const userId = user?.id ?? null;
+    if (!currentId || userId === null) return;
+    if (participantBelongsToCycle(myParticipant, currentId)) return; // synced
+    const key = `${userId}:${currentId}`;
+    if (ensureAttemptRef.current === key) return; // one in-flight attempt
     const token = getAuthToken();
-    if (!token) {
-      showToast('Sign in to join the apocalypse', 'info');
-      return;
-    }
-    setJoinPending(true);
-    try {
-      const participant = await joinGame(token);
-      writeCachedParticipant(localStorage, participant);
-      setMyParticipant(participant);
-      await syncNow();
-    } catch (err) {
-      if (err instanceof SessionExpiredError) {
-        handleSessionExpired();
-        showToast('Your session has expired. Please log in again.', 'error');
-        return;
-      }
-      showToast(err instanceof Error ? err.message : 'Could not join the apocalypse', 'error');
-      // Reconcile: the server may already consider us joined.
-      await syncNow();
-    } finally {
-      setJoinPending(false);
-    }
-  }, [joinPending, getAuthToken, showToast, syncNow, handleSessionExpired]);
+    if (!token) return;
+    ensureAttemptRef.current = key;
+    let cancelled = false;
+    joinGame(token)
+      .then((participant) => {
+        if (cancelled) return;
+        writeCachedParticipant(localStorage, participant);
+        setMyParticipant(participant);
+        void syncNow();
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        ensureAttemptRef.current = null; // allow the next poll to retry
+        if (err instanceof SessionExpiredError) {
+          handleSessionExpired();
+          showToast('Your session has expired. Please log in again.', 'error');
+          ensureAttemptRef.current = key; // never retry a dead session
+          return;
+        }
+        if (ensureToastRef.current !== key) {
+          ensureToastRef.current = key;
+          showToast(
+            err instanceof Error ? err.message : 'Could not sync your position for this apocalypse',
+            'error'
+          );
+        }
+      });
+    return () => { cancelled = true; };
+  }, [gameState?.apocalypseId, user?.id, myParticipant, lastSyncAt, getAuthToken, syncNow, showToast, handleSessionExpired]);
 
   const trade = useCallback(
     async (side: TradeSide, coinId: number, amount: number) => {
@@ -277,8 +300,6 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     myParticipant,
     myEntry,
     joined,
-    joinPending,
-    join,
     trade,
     syncNow,
     acknowledgeCompleted

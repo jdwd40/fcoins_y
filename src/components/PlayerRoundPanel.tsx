@@ -1,25 +1,36 @@
-import { Swords, TrendingUp, Wallet, Package } from 'lucide-react';
+import { TrendingUp, Wallet, Package } from 'lucide-react';
 import { useGame } from '../context/GameContext.tsx';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../services/transactionService.ts';
-import { revalueHoldings, livePriceMapFromCoins, formatQuantity } from '../utils/gameLogic.ts';
+import {
+  revalueHoldings,
+  livePriceMapFromCoins,
+  formatQuantity,
+  displayRoundCash,
+  GAME_STARTING_CASH_LABEL
+} from '../utils/gameLogic.ts';
 import type { Coin } from '../types';
 
-// Player round dashboard: the Core 4 round wallet — ROUND CASH, holdings
-// value, live wealth and peak for the CURRENT apocalypse only. Legacy
-// account funds (users.funds) are never presented here; they belong to the
-// legacy exchange profile and are not playable apocalypse money.
+// Player round dashboard (issue #10): the ONE gameplay balance — Cash — plus
+// holdings value, live wealth and peak for the CURRENT apocalypse only. Cash
+// comes only from the server-owned participant / live leaderboard row
+// (displayRoundCash); legacy account funds (users.funds) are never presented
+// here — they belong to the classic exchange profile and are not playable
+// apocalypse money. Participation is automatic: there is no JOIN control,
+// and while the participant syncs the panel says so instead of fabricating
+// the £10,000 start.
 export function PlayerRoundPanel({ coins, onAuthRequest }: { coins: Coin[]; onAuthRequest: () => void }) {
   const { user } = useAuth();
-  const { joined, myEntry, myParticipant, join, joinPending, lifecycle, gameState } = useGame();
+  const { joined, myEntry, myParticipant, lifecycle, gameState } = useGame();
 
   if (!user) {
     return (
       <div className="paper-card p-6 text-center">
         <div className="label mb-2">This round</div>
-        <h3 className="font-display text-2xl font-bold text-ink mb-3">Join the apocalypse</h3>
+        <h3 className="font-display text-2xl font-bold text-ink mb-3">Sign in to play</h3>
         <p className="text-sm text-ink-dim mb-5">
-          Sign in and enter the current round with £1,000.00 round cash.
+          An Apocalypse is always running. Sign in and your {GAME_STARTING_CASH_LABEL} Cash
+          is waiting in the current round — no entry button, no lobby.
         </p>
         <button onClick={onAuthRequest} className="btn-gold w-full">
           Sign in to play
@@ -29,24 +40,23 @@ export function PlayerRoundPanel({ coins, onAuthRequest }: { coins: Coin[]; onAu
   }
 
   if (!joined) {
+    // Authenticated but the server-owned participant for this cycle has not
+    // synced yet (initial load, rollover hand-off, settling window). Neutral
+    // loading state: never fabricate Cash, never show a previous cycle.
     return (
       <div className="paper-card p-6 text-center">
         <div className="label mb-2 text-gold">This round · {gameState?.apocalypseId ?? '…'}</div>
-        <h3 className="font-display text-2xl font-bold text-ink mb-3">Join apocalypse</h3>
+        <h3 className="font-display text-2xl font-bold text-ink mb-3">
+          {lifecycle === 'SETTLING' ? 'Market frozen…' : 'Syncing your position…'}
+        </h3>
         <p className="text-sm text-ink-dim mb-1">
-          Every competitor starts with <strong className="text-ink">£1,000.00</strong> round cash.
+          {lifecycle === 'SETTLING'
+            ? 'Calculating the damage — the next Apocalypse starts automatically.'
+            : `Reading your ${GAME_STARTING_CASH_LABEL} starting Cash from the server.`}
         </p>
-        <p className="text-xs text-ink-mute mb-5">
-          Join at any point in the round — late entry is full entry. Same stake, same leaderboard.
+        <p className="text-xs text-ink-mute">
+          Participation is automatic — there is nothing to press.
         </p>
-        <button
-          onClick={() => void join()}
-          disabled={joinPending || lifecycle === 'SETTLING'}
-          className="btn-gold w-full"
-        >
-          <Swords className="w-3.5 h-3.5" />
-          {joinPending ? 'Joining…' : lifecycle === 'SETTLING' ? 'Market frozen…' : 'JOIN APOCALYPSE'}
-        </button>
       </div>
     );
   }
@@ -57,7 +67,7 @@ export function PlayerRoundPanel({ coins, onAuthRequest }: { coins: Coin[]; onAu
   const livePrices = livePriceMapFromCoins(coins);
   const holdings = myParticipant?.holdings ?? [];
   const holdingsValue = revalueHoldings(holdings, livePrices);
-  const roundCash = myEntry?.currentCash ?? myParticipant?.currentCash ?? 0;
+  const roundCash = displayRoundCash(myEntry, myParticipant);
   const wealth = myEntry?.currentWealth ?? roundCash + holdingsValue;
   const peak = myEntry?.peakWealth ?? myParticipant?.peakWealth ?? wealth;
 
@@ -77,7 +87,7 @@ export function PlayerRoundPanel({ coins, onAuthRequest }: { coins: Coin[]; onAu
 
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div>
-          <div className="label mb-1 flex items-center gap-1"><Wallet className="w-3 h-3" /> Round cash</div>
+          <div className="label mb-1 flex items-center gap-1"><Wallet className="w-3 h-3" /> Cash</div>
           <div className="numeral text-ink text-2xl tnum">{formatCurrency(roundCash)}</div>
         </div>
         <div>

@@ -153,6 +153,11 @@ export type TradeBlockReason =
 
 // The single gate every BUY/SELL control in the UI must pass. Order matters:
 // the first blocking reason is the one surfaced to the player.
+//
+// Issue #10: there is no manual join step any more — the backend owns
+// participation for every authenticated player (back_coins_x#17). 'not-joined'
+// therefore means "the server-owned participant for the current Apocalypse is
+// still syncing", never "press JOIN".
 export function tradeBlockReason(gate: TradeGate): TradeBlockReason {
   if (!gate.authenticated) return 'not-authenticated';
   if (!gate.joined) return 'not-joined';
@@ -166,13 +171,33 @@ export function tradeBlockReason(gate: TradeGate): TradeBlockReason {
 
 export const TRADE_BLOCK_LABEL: Record<Exclude<TradeBlockReason, null>, string> = {
   'not-authenticated': 'Sign in to trade the apocalypse',
-  'not-joined': 'Join the apocalypse to trade this round',
+  'not-joined': 'Syncing your position for this apocalypse — one moment',
   settling: 'Market frozen — calculating the damage',
   completed: 'This apocalypse has ended',
   loading: 'Syncing game state…',
   stale: 'Connection stale — refusing to trade on old data',
   'coin-collapsed': 'This coin has collapsed to £0 and cannot be bought'
 };
+
+// --- The one gameplay balance: Cash ---------------------------------------------
+
+// Issue #10: Crypto Chaos has exactly ONE player-facing spendable balance —
+// Cash — and it is sourced ONLY from the server-owned apocalypse participant
+// (or the live leaderboard row derived from it). Legacy users.funds is classic
+// exchange account data and NEVER enters this derivation; passing it anywhere
+// near the game surface is the regression this helper exists to prevent.
+export const GAME_STARTING_CASH_LABEL = '£10,000';
+
+// The authoritative Cash figure for the current Apocalypse. The live
+// leaderboard row (server truth, refreshed every poll) wins; the cached
+// join/trade participant response is the fallback. 0 only when neither has
+// synced yet — a loading state, never a fabricated balance.
+export function displayRoundCash(
+  myEntry: Pick<LeaderboardEntry, 'currentCash'> | null,
+  myParticipant: Pick<RoundParticipant, 'currentCash'> | null
+): number {
+  return myEntry?.currentCash ?? myParticipant?.currentCash ?? 0;
+}
 
 // --- Leaderboard helpers ---------------------------------------------------------------------
 
@@ -439,17 +464,27 @@ export function countLivingCoins(
 //
 // The single source of truth for the HOW TO PLAY copy. The dialog component
 // renders this verbatim, and the unit tests pin the accuracy rules:
-//   - late joiners get the SAME £1,000 round cash (never less, no penalty)
+//   - there is ALWAYS a current Apocalypse; signing in enters it automatically
+//     (no lobby, no JOIN gate — back_coins_x#17 / fcoins_y#10)
+//   - every Apocalypse starts the player at £10,000 Cash
 //   - collapse is permanent for the round (dead coins never recover)
 //   - collapse order/timing is never revealed
+//   - passive fees/taxes/events drain Cash; trading is how you beat them
 //   - bots have no hidden information
-//   - ROUND CASH is separate from legacy exchange account funds
-//   - final cash — not peak wealth — decides the winner
+//   - Cash is separate from legacy exchange account funds
+//   - final cash — not peak wealth — decides the winner, and only finishing
+//     ABOVE £10,000 qualifies for the leaderboard (£10,000 exactly does not)
 // Keep the tone apocalyptic crypto-bro, but never sacrifice clarity for a joke.
 
 export const HOW_TO_PLAY_TITLE = 'HOW TO SURVIVE THE APOCALYPSE';
 export const HOW_TO_PLAY_TAGLINE = 'CASH WINS. BAGS DIE.';
-export const HOW_TO_PLAY_STARTING_CASH = '£1,000';
+export const HOW_TO_PLAY_STARTING_CASH = GAME_STARTING_CASH_LABEL;
+
+// The win-condition copy, single-sourced for the leaderboard, results overlay
+// and history panels. Exactly £10,000 is break-even and does NOT qualify
+// (backend #19: leaderboard_eligible = final_cash > starting_cash).
+export const LEADERBOARD_RULE_COPY = `Finish above ${GAME_STARTING_CASH_LABEL} to make the leaderboard.`;
+export const LEADERBOARD_BREAKEVEN_COPY = `Exactly ${GAME_STARTING_CASH_LABEL} is break-even and does not qualify.`;
 
 export interface HowToPlayStep {
   id: string;
@@ -459,14 +494,14 @@ export interface HowToPlayStep {
 
 export const HOW_TO_PLAY_STEPS: HowToPlayStep[] = [
   {
-    id: 'join',
-    title: 'JOIN',
-    body: `Enter the current Apocalypse at any time and receive ${HOW_TO_PLAY_STARTING_CASH} round cash. Turn up in the final minute and it is still the same ${HOW_TO_PLAY_STARTING_CASH} — showing up late costs you nothing. Round cash lives and dies with the Apocalypse; it is completely separate from your exchange account funds.`
+    id: 'enter',
+    title: "YOU'RE IN",
+    body: `There is always an Apocalypse running. Sign in and you are entered into the current one automatically — no lobby, no entry button, nothing to press. Your Cash starts at ${HOW_TO_PLAY_STARTING_CASH}, owned and kept by the server. Cash lives and dies with the Apocalypse; it is completely separate from your exchange account funds.`
   },
   {
     id: 'trade',
     title: 'TRADE',
-    body: 'Buy and sell the available coins with your round cash. Fractional quantities are supported — 0.004 of a coin is a real position.'
+    body: 'Buy and sell the available coins with your Cash. Fractional quantities are supported — 0.004 of a coin is a real position. Trading is how you try to beat the drains.'
   },
   {
     id: 'clock',
@@ -479,6 +514,11 @@ export const HOW_TO_PLAY_STEPS: HowToPlayStep[] = [
     body: 'Coins eventually collapse permanently to £0. Dead coins stay dead for the rest of the Apocalypse — no recovery, no resurrection — and nobody knows which coin goes next or when. DEAD COINS STAY DEAD.'
   },
   {
+    id: 'drain',
+    title: 'MIND THE DRAINS',
+    body: 'Fees, taxes and market events can drain your Cash even if you do nothing. Standing still is a strategy for going backwards — trade to stay ahead of them.'
+  },
+  {
     id: 'bots',
     title: 'BEAT THE BOTS',
     body: 'Rule-based bots trade alongside you and fight for places on the same leaderboard. They read the same market you do — no hidden information. THE BOTS WANT YOUR SPOT.'
@@ -486,11 +526,11 @@ export const HOW_TO_PLAY_STEPS: HowToPlayStep[] = [
   {
     id: 'cash',
     title: 'CASH WINS',
-    body: 'When the Apocalypse ends, your score is the round cash you are still holding. Peak wealth mid-round means nothing — only final cash decides the winner.'
+    body: `When the Apocalypse ends, your score is the Cash you are still holding. Peak wealth mid-round means nothing — only final Cash decides the winner. ${LEADERBOARD_RULE_COPY} ${LEADERBOARD_BREAKEVEN_COPY}`
   },
   {
     id: 'again',
     title: 'DO IT AGAIN',
-    body: 'Results are recorded and the next Apocalypse begins automatically. The world ends again right on schedule.'
+    body: `Results are recorded and the next Apocalypse begins automatically — fresh ${HOW_TO_PLAY_STARTING_CASH} Cash, no sign-up, no button. The world ends again right on schedule.`
   }
 ];

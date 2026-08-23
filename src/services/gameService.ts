@@ -107,6 +107,9 @@ export interface ResultRow {
   peakWealth: number;
   startingCash: number;
   netProfit: number;
+  /** Backend #19: finalCash > that round's startingCash. Only eligible rows
+   *  are leaderboard entries; exactly break-even does not qualify. */
+  leaderboardEligible: boolean;
   joinedAt: string;
   tradeCount: number;
   buyCount: number;
@@ -120,7 +123,13 @@ export interface CycleResults {
   startTime: string;
   endTime: string;
   settledAt: string | null;
+  /** Rows in THIS payload (eligible-only on the recent-leaderboards
+   *  endpoint; all results on the per-cycle results endpoint). */
   resultCount: number;
+  /** Backend #19, recent-leaderboards only: total results recorded for the
+   *  cycle, including non-qualifying finishes. Absent from GET
+   *  /game/results/:cycleId. */
+  totalResultCount?: number;
   results: ResultRow[];
 }
 
@@ -316,6 +325,7 @@ function parseResultRow(payload: unknown, contract: string): ResultRow {
   for (const field of ['finalCash', 'peakWealth', 'startingCash', 'netProfit'] as const) {
     requireFiniteNumber(payload, field, contract);
   }
+  requireBoolean(payload, 'leaderboardEligible', contract);
   requireString(payload, 'joinedAt', contract);
   for (const field of ['tradeCount', 'buyCount', 'sellCount'] as const) {
     requireFiniteNumber(payload, field, contract);
@@ -337,6 +347,9 @@ export function parseCycleResults(payload: unknown): CycleResults {
     throw new Error(`Invalid ${contract} response: settledAt must be null or a string`);
   }
   requireFiniteNumber(payload, 'resultCount', contract);
+  if (payload.totalResultCount !== undefined) {
+    requireFiniteNumber(payload, 'totalResultCount', contract);
+  }
   if (!Array.isArray(payload.results)) {
     throw new Error(`Invalid ${contract} response: results must be an array`);
   }
@@ -420,8 +433,14 @@ export async function getGameState(signal?: AbortSignal): Promise<GameState> {
   return gameFetch('/game/state', { signal }, parseGameState);
 }
 
-// --- Core 4: join + round trades ------------------------------------------------
+// --- Core 4: participation ensure + round trades -------------------------------
 
+// Backend #17: participation is server-owned and automatic — every registered
+// user is swept into each new Apocalypse at £10,000 Cash. POST /game/join
+// survives as the idempotent ensure+read endpoint: the client calls it ONCE
+// per (user, cycle) from GameContext to fetch the authoritative participant
+// immediately rather than waiting for the next reconcile sweep. There is no
+// player-facing join control.
 export async function joinGame(token: string, signal?: AbortSignal): Promise<RoundParticipant> {
   return gameFetch('/game/join', { token, method: 'POST', signal }, (payload) => {
     if (!isRecord(payload)) throw new Error('Invalid join response: expected a JSON object');
