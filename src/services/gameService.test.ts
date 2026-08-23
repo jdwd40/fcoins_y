@@ -15,9 +15,12 @@ import {
   getLiveLeaderboard,
   getCycleResults,
   getRecentLeaderboards,
+  getMyRoundEconomy,
   parseLiveLeaderboard,
   parseCycleResults,
   parseRecentLeaderboards,
+  parseCashEvent,
+  parsePlayerRoundEconomy,
   isSettlementBusyError
 } from './gameService.ts';
 import type { GameState, RoundParticipant, LiveLeaderboard, CycleResults } from './gameService.ts';
@@ -604,4 +607,151 @@ test('recent leaderboards parser rejects malformed payloads', () => {
     () => parseRecentLeaderboards({ limit: 5, count: 1, leaderboards: [{ ...VALID_RESULTS, totalResultCount: 'two' }] }),
     /totalResultCount/
   );
+});
+
+// --- Backend #18 / fcoins_y #11: player round economy (Cash + cash events) ----
+
+const VALID_CASH_EVENTS = [
+  {
+    cashEventId: 42, type: 'FEE', amount: 2.5,
+    balanceBefore: 10000, balanceAfter: 9997.5,
+    description: 'Market upkeep fee', eventKey: 'fee:tick:12',
+    createdAt: '2026-08-20T10:12:00.000Z'
+  },
+  {
+    cashEventId: 41, type: 'TAX', amount: 5,
+    balanceBefore: 10005, balanceAfter: 10000,
+    description: 'Idle wealth tax', eventKey: 'tax:tick:4',
+    createdAt: '2026-08-20T10:08:00.000Z'
+  },
+  {
+    cashEventId: 40, type: 'EVENT', amount: 25,
+    balanceBefore: 10030, balanceAfter: 10005,
+    description: 'Exchange hack hits every balance', eventKey: 'event:3',
+    createdAt: '2026-08-20T10:05:00.000Z'
+  }
+] as const;
+
+test('getMyRoundEconomy fetches /game/participant with the bearer token + limit and parses participant + cash events', async () => {
+  let seen: FetchArgs | undefined;
+  const restore = stubFetch(async (args) => {
+    seen = args;
+    return jsonResponse({ status: 'success', data: { participant: VALID_PARTICIPANT, cashEvents: VALID_CASH_EVENTS } });
+  });
+  try {
+    const economy = await getMyRoundEconomy('token-abc', { limit: 20 });
+    assert.equal(seen?.url, `${API_BASE_URL}/game/participant?limit=20`);
+    assert.equal(seen?.init?.method, 'GET');
+    assert.equal((seen?.init?.headers as Record<string, string>).Authorization, 'Bearer token-abc');
+    // Authoritative participant comes through untouched.
+    assert.equal(economy.participant.participantId, VALID_PARTICIPANT.participantId);
+    assert.equal(economy.participant.currentCash, 10000);
+    // All three drain sources parse with their full ledger shape.
+    assert.deepEqual(economy.cashEvents.map((event) => event.type), ['FEE', 'TAX', 'EVENT']);
+    assert.equal(economy.cashEvents[0].amount, 2.5);
+    assert.equal(economy.cashEvents[0].balanceAfter, 9997.5);
+    assert.equal(economy.cashEvents[0].description, 'Market upkeep fee');
+    assert.equal(economy.cashEvents[2].createdAt, '2026-08-20T10:05:00.000Z');
+  } finally {
+    restore();
+  }
+});
+
+test('getMyRoundEconomy without a limit sends no query string (server default applies)', async () => {
+  let seen: FetchArgs | undefined;
+  const restore = stubFetch(async (args) => {
+    seen = args;
+    return jsonResponse({ status: 'success', data: { participant: VALID_PARTICIPANT, cashEvents: [] } });
+  });
+  try {
+    const economy = await getMyRoundEconomy('token-abc');
+    assert.equal(seen?.url, `${API_BASE_URL}/game/participant`);
+    assert.deepEqual(economy.cashEvents, []); // empty feed is legitimate, not an error
+  } finally {
+    restore();
+  }
+});
+
+test('an offline-return economy payload parses: lower authoritative Cash plus the historical debits that explain it', async () => {
+  // The browser was closed while the server drained Cash from 10,000 to
+  // 8,432.10. On return ONE response carries both the authoritative figure
+  // and the executed FEE/TAX/EVENT rows explaining the loss.
+  const drainedParticipant = { ...VALID_PARTICIPANT, currentCash: 8432.1, wealth: 8432.1 };
+  const drains = [
+    { cashEventId: 91, type: 'FEE', amount: 500, balanceBefore: 10000, balanceAfter: 9500, description: 'Market upkeep fee', eventKey: 'fee:tick:1', createdAt: '2026-08-20T09:00:00.000Z' },
+    { cashEventId: 92, type: 'TAX', amount: 1000, balanceBefore: 9500, balanceAfter: 8500, description: 'Idle wealth tax', eventKey: 'tax:tick:1', createdAt: '2026-08-20T09:30:00.000Z' },
+    { cashEventId: 93, type: 'EVENT', amount: 67.9, balanceBefore: 8500, balanceAfter: 8432.1, description: 'Liquidity crisis', eventKey: 'event:9', createdAt: '2026-08-20T09:45:00.000Z' }
+  ];
+  const restore = stubFetch(async () =>
+    jsonResponse({ status: 'success', data: { participant: drainedParticipant, cashEvents: drains } })
+  );
+  try {
+    const economy = await getMyRoundEconomy('token-abc');
+    assert.equal(economy.participant.currentCash, 8432.1); // server truth, not a feed sum
+    assert.equal(economy.cashEvents.length, 3);
+    assert.equal(economy.cashEvents[2].balanceAfter, 8432.1); // ledger explains the landing figure
+  } finally {
+    restore();
+  }
+});
+
+test('cash event parser rejects non-ledger types, malformed rows and snake_case payloads', () => {
+  assert.throws(() => parseCashEvent(null), /JSON object/);
+  // Only executed FEE/TAX/EVENT rows exist; anything else fails loudly.
+  assert.throws(() => parseCashEvent({ ...VALID_CASH_EVENTS[0], type: 'ADJUSTMENT' }), /unknown type/);
+  assert.throws(() => parseCashEvent({ ...VALID_CASH_EVENTS[0], type: 'BUY' }), /unknown type/);
+  assert.throws(() => parseCashEvent({ ...VALID_CASH_EVENTS[0], amount: '2.50' }), /amount/);
+  assert.throws(() => parseCashEvent({ ...VALID_CASH_EVENTS[0], balanceAfter: Number.NaN }), /balanceAfter/);
+  assert.throws(() => parseCashEvent({ ...VALID_CASH_EVENTS[0], description: '' }), /description/);
+  assert.throws(() => parseCashEvent({ ...VALID_CASH_EVENTS[0], createdAt: 12345 }), /createdAt/);
+  // snake_case legacy shape is not the contract.
+  assert.throws(() => parseCashEvent({ cash_event_id: 1, type: 'FEE' }), /cashEventId/);
+});
+
+test('player round economy parser rejects malformed envelopes', () => {
+  assert.throws(() => parsePlayerRoundEconomy(null), /JSON object/);
+  assert.throws(
+    () => parsePlayerRoundEconomy({ participant: VALID_PARTICIPANT, cashEvents: 'nope' }),
+    /cashEvents/
+  );
+  assert.throws(
+    () => parsePlayerRoundEconomy({ participant: { participantId: 7 }, cashEvents: [] }),
+    /participant/
+  );
+  // A single bad row fails the whole read — no partial feed.
+  assert.throws(
+    () => parsePlayerRoundEconomy({ participant: VALID_PARTICIPANT, cashEvents: [{ cashEventId: 1 }] }),
+    /cash event/
+  );
+});
+
+test('an invalid-limit 400 carries the backend message verbatim', async () => {
+  const restore = stubFetch(async () =>
+    jsonResponse({ status: 'error', message: 'Invalid limit. Please provide an integer between 1 and 100.' }, 400)
+  );
+  try {
+    await assert.rejects(
+      () => getMyRoundEconomy('token-abc', { limit: 500 }),
+      (err: unknown) => {
+        assert.ok(err instanceof GameApiError);
+        assert.equal(err.status, 400);
+        assert.match(err.message, /Invalid limit/);
+        return true;
+      }
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('an expired session on the economy endpoint maps 401 to SessionExpiredError', async () => {
+  const restore = stubFetch(async () => jsonResponse({ msg: 'Token expired' }, 401));
+  try {
+    await assert.rejects(
+      () => getMyRoundEconomy('dead-token'),
+      (err: unknown) => err instanceof SessionExpiredError
+    );
+  } finally {
+    restore();
+  }
 });

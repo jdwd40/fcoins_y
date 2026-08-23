@@ -40,9 +40,16 @@ import {
   GAME_STARTING_CASH_LABEL,
   displayRoundCash,
   LEADERBOARD_RULE_COPY,
-  LEADERBOARD_BREAKEVEN_COPY
+  LEADERBOARD_BREAKEVEN_COPY,
+  CASH_EVENT_TYPE_LABEL,
+  formatCashEventAmount,
+  formatAbsoluteTimestamp,
+  formatActivityTimestamp,
+  normalizeCashEvents,
+  findNewCashEvents,
+  summariseDrainToast
 } from './gameLogic.ts';
-import type { LeaderboardEntry, RoundParticipant } from '../services/gameService.ts';
+import type { CashEvent, LeaderboardEntry, RoundParticipant } from '../services/gameService.ts';
 
 // --- Countdown authority (sections 2) --------------------------------------
 
@@ -501,6 +508,18 @@ test('passive drains are explained: fees, taxes and events erode idle Cash; trad
   assert.match(stepById('trade').body, /beat the drains/i);
 });
 
+test('issue #11: the drain step reinforces the core rule and points at the activity feed', () => {
+  // The strategic rule is stated verbatim: idling is a losing strategy and
+  // trading is the counter. The feed is named so players know WHERE the
+  // explanation of every Cash drop lives.
+  const drain = stepById('drain');
+  assert.match(drain.body, /doing nothing costs money/i);
+  assert.match(drain.body, /beat the drain/i);
+  assert.match(drain.body, /activity feed/i);
+  // Copy stays accurate: debits carry source, amount and time.
+  assert.match(drain.body, /source, amount and time/i);
+});
+
 test('bots share the player leaderboard and hold no hidden information', () => {
   const bots = stepById('bots');
   assert.match(bots.body, /bots/i);
@@ -623,4 +642,152 @@ test('dismissal only clears the overlay — the successor ACTIVE round is untouc
     coinCollapsed: false,
     authenticated: true
   }), null); // the new round remains playable immediately after dismissal
+});
+
+// --- Passive drain activity feed (backend #18 / issue #11) --------------------
+// The feed explains Cash; it never computes it. These tests pin the rendering,
+// ordering, dedupe, offline-return and notification behaviour of the ledger
+// rows, plus the rule that authoritative Cash is never touched by the feed.
+
+function cashEvent(overrides: Partial<CashEvent>): CashEvent {
+  return {
+    cashEventId: 1,
+    type: 'FEE',
+    amount: 2.5,
+    balanceBefore: 10000,
+    balanceAfter: 9997.5,
+    description: 'Market upkeep fee',
+    eventKey: 'fee:tick:1',
+    createdAt: '2026-08-20T10:00:00.000Z',
+    ...overrides
+  };
+}
+
+test('every drain source has a plain player-facing label (no internal keys)', () => {
+  assert.equal(CASH_EVENT_TYPE_LABEL.FEE, 'Fee');
+  assert.equal(CASH_EVENT_TYPE_LABEL.TAX, 'Tax');
+  assert.equal(CASH_EVENT_TYPE_LABEL.EVENT, 'Event');
+  // Exactly the three backend ledger types — nothing else can reach the UI.
+  assert.deepEqual(Object.keys(CASH_EVENT_TYPE_LABEL).sort(), ['EVENT', 'FEE', 'TAX']);
+});
+
+test('drain amounts always render as money out, 2-decimal GBP, never a credit', () => {
+  assert.equal(formatCashEventAmount(2.5), '-£2.50');
+  assert.equal(formatCashEventAmount(0), '-£0.00');
+  assert.equal(formatCashEventAmount(1567.9), '-£1,567.90');
+  // Even a malformed negative wire amount can never display as a gain.
+  assert.equal(formatCashEventAmount(-2.5), '-£2.50');
+});
+
+test('activity timestamps are compact and relative, absolute beyond a week', () => {
+  const now = Date.parse('2026-08-20T10:10:00.000Z');
+  assert.equal(formatActivityTimestamp('2026-08-20T10:09:30.000Z', now), 'just now');
+  assert.equal(formatActivityTimestamp('2026-08-20T10:05:00.000Z', now), '5m ago');
+  assert.equal(formatActivityTimestamp('2026-08-20T10:09:59.000Z', now), 'just now');
+  assert.equal(formatActivityTimestamp('2026-08-20T07:10:00.000Z', now), '3h ago');
+  assert.equal(formatActivityTimestamp('2026-08-18T10:10:00.000Z', now), '2d ago');
+  // Clock skew: a slightly-future server timestamp clamps, never "-1m ago".
+  assert.equal(formatActivityTimestamp('2026-08-20T10:11:00.000Z', now), 'just now');
+  const absolute = formatActivityTimestamp('2026-08-01T10:10:00.000Z', now);
+  assert.match(absolute, /Aug/);
+  assert.match(absolute, /2026/);
+  // Invalid input never crashes a render.
+  assert.equal(formatActivityTimestamp('not-a-date', now), '');
+  assert.equal(formatAbsoluteTimestamp('not-a-date'), '');
+});
+
+test('feed ordering is newest-first by ledger id, regardless of payload order', () => {
+  const events = normalizeCashEvents([
+    cashEvent({ cashEventId: 40, type: 'EVENT', createdAt: '2026-08-20T10:05:00.000Z' }),
+    cashEvent({ cashEventId: 42, type: 'FEE', createdAt: '2026-08-20T10:12:00.000Z' }),
+    cashEvent({ cashEventId: 41, type: 'TAX', createdAt: '2026-08-20T10:08:00.000Z' })
+  ]);
+  assert.deepEqual(events.map((event) => event.cashEventId), [42, 41, 40]);
+  assert.deepEqual(events.map((event) => event.type), ['FEE', 'TAX', 'EVENT']);
+});
+
+test('overlapping polls never duplicate a displayed debit', () => {
+  const first = [cashEvent({ cashEventId: 42 }), cashEvent({ cashEventId: 41 })];
+  const second = [cashEvent({ cashEventId: 43 }), cashEvent({ cashEventId: 42 }), cashEvent({ cashEventId: 41 })];
+  // A buggy/duplicated payload carrying the same id twice collapses to one row.
+  const merged = normalizeCashEvents([...second, ...first]);
+  assert.deepEqual(merged.map((event) => event.cashEventId), [43, 42, 41]);
+  assert.equal(new Set(merged.map((event) => event.cashEventId)).size, merged.length);
+});
+
+test('normalizeCashEvents is pure: the input array is neither mutated nor reordered', () => {
+  const input = [cashEvent({ cashEventId: 2 }), cashEvent({ cashEventId: 1 }), cashEvent({ cashEventId: 2 })];
+  const snapshot = JSON.parse(JSON.stringify(input));
+  normalizeCashEvents(input);
+  assert.deepEqual(input, snapshot);
+  assert.deepEqual(input.map((event) => event.cashEventId), [2, 1, 2]);
+});
+
+test('only genuinely new debits are reported between syncs (offline return is silent)', () => {
+  // First sync baselines every existing event — nothing is "new".
+  const baseline = normalizeCashEvents([cashEvent({ cashEventId: 42 }), cashEvent({ cashEventId: 41 })]);
+  const seen = new Set(baseline.map((event) => event.cashEventId));
+  assert.deepEqual(findNewCashEvents(baseline, seen), []);
+  // The next poll carries one fresh debit; only that one is reported.
+  const next = normalizeCashEvents([
+    cashEvent({ cashEventId: 43, type: 'TAX', amount: 5 }),
+    cashEvent({ cashEventId: 42 }),
+    cashEvent({ cashEventId: 41 })
+  ]);
+  const fresh = findNewCashEvents(next, seen);
+  assert.deepEqual(fresh.map((event) => event.cashEventId), [43]);
+});
+
+test('one combined toast per sync — a batch never becomes a notification stack', () => {
+  assert.equal(summariseDrainToast([]), '');
+  assert.equal(
+    summariseDrainToast([cashEvent({ type: 'FEE', amount: 2.5 })]),
+    'Fee drained £2.50 from your Cash'
+  );
+  assert.equal(
+    summariseDrainToast([cashEvent({ type: 'TAX', amount: 12 })]),
+    'Tax drained £12.00 from your Cash'
+  );
+  assert.equal(
+    summariseDrainToast([cashEvent({ type: 'EVENT', amount: 25 })]),
+    'Event drained £25.00 from your Cash'
+  );
+  // Several debits landing together: one sentence, total + source breakdown.
+  assert.equal(
+    summariseDrainToast([
+      cashEvent({ cashEventId: 1, type: 'FEE', amount: 2.5 }),
+      cashEvent({ cashEventId: 2, type: 'FEE', amount: 2.5 }),
+      cashEvent({ cashEventId: 3, type: 'TAX', amount: 2.5 })
+    ]),
+    'New drains: £7.50 across 3 charges (2 fees, 1 tax)'
+  );
+  assert.equal(
+    summariseDrainToast([
+      cashEvent({ cashEventId: 1, type: 'EVENT', amount: 10 }),
+      cashEvent({ cashEventId: 2, type: 'EVENT', amount: 10 })
+    ]),
+    'New drains: £20.00 across 2 charges (2 events)'
+  );
+});
+
+test('offline return: the feed explains the loss but Cash is never derived from it', () => {
+  // The browser was closed while the server debited £1,567.90 in three rows.
+  // On return the authoritative participant says £8,432.10 — and even though
+  // the feed rows happen to sum to exactly the difference, the Cash figure
+  // comes ONLY from the participant/leaderboard, never from the feed.
+  const events = normalizeCashEvents([
+    cashEvent({ cashEventId: 91, type: 'FEE', amount: 500 }),
+    cashEvent({ cashEventId: 92, type: 'TAX', amount: 1000 }),
+    cashEvent({ cashEventId: 93, type: 'EVENT', amount: 67.9 })
+  ]);
+  const feedSum = events.reduce((sum, event) => sum + event.amount, 0);
+  assert.equal(Math.round(feedSum * 100) / 100, 1567.9);
+  const participant = { currentCash: 8432.1 };
+  assert.equal(displayRoundCash(null, participant), 8432.1);
+  // And when the authoritative figure DISAGREES with any feed arithmetic
+  // (trades also move Cash, so it usually does), the feed still loses.
+  assert.equal(displayRoundCash(null, { currentCash: 9000 }), 9000);
+  assert.notEqual(displayRoundCash(null, { currentCash: 9000 }), 10000 - feedSum);
+  // The leaderboard row stays the preferred authoritative source.
+  assert.equal(displayRoundCash({ currentCash: 8432.1 }, { currentCash: 9999 }), 8432.1);
 });

@@ -118,6 +118,55 @@ assert.match(gameLogic, /export function minTradeValueError/);
 assert.match(roundTrade, /minTradeValueError\(total, currentPrice\)/);
 assert.match(roundTrade, /err\.message/); // GameApiError surfaces server text
 
+// --- Passive drain activity feed (backend #18, issue #11) -------------------
+// The authenticated #18 player endpoint is consumed through the shared poll;
+// the operator diagnostics API (#21) is never touched by the client.
+assert.match(gameService, /export async function getMyRoundEconomy/);
+assert.match(gameService, /\/game\/participant/);
+assert.match(gameService, /export function parseCashEvent/);
+assert.match(gameService, /export function parsePlayerRoundEconomy/);
+assert.match(gameService, /'FEE' \| 'TAX' \| 'EVENT'/);
+assert.doesNotMatch(gameService, /\/game\/diagnostics/);
+// GameContext: economy sync rides the ONE existing poll (inFlight guard), the
+// seen-set baselines on first sync so offline drains never re-toast, and a
+// batch of new debits collapses into ONE combined toast.
+assert.match(gameContext, /getMyRoundEconomy\(token, \{ limit: CASH_EVENT_FEED_LIMIT \}\)/);
+assert.match(gameContext, /economySeenRef/);
+assert.match(gameContext, /normalizeCashEvents\(events\)/);
+assert.match(gameContext, /findNewCashEvents\(normalized, seen\)/);
+assert.match(gameContext, /summariseDrainToast\(fresh\)/);
+assert.match(gameContext, /setCashEventsError/);
+// Only a participant for the LIVE apocalypse is adopted from the economy read.
+assert.match(gameContext, /participantBelongsToCycle\(participant, liveId\)/);
+// Shared pure helpers single-source the feed behaviour.
+assert.match(gameLogic, /export const CASH_EVENT_TYPE_LABEL/);
+assert.match(gameLogic, /export function normalizeCashEvents/);
+assert.match(gameLogic, /export function formatCashEventAmount/);
+assert.match(gameLogic, /export function findNewCashEvents/);
+assert.match(gameLogic, /export function summariseDrainToast/);
+assert.match(gameLogic, /export function formatActivityTimestamp/);
+// The activity surface: source/type label, amount, human description and
+// timestamp per row; trades are distinguished from passive drains in copy.
+assert.match(playerRound, /Round activity/);
+assert.match(playerRound, /CASH_EVENT_TYPE_LABEL\[event\.type\]/);
+assert.match(playerRound, /formatCashEventAmount\(event\.amount\)/);
+assert.match(playerRound, /event\.description/);
+assert.match(playerRound, /formatActivityTimestamp\(event\.createdAt/);
+assert.match(playerRound, /aria-live="polite"/);
+assert.match(playerRound, /aria-label="Recent Cash drains"/);
+assert.match(playerRound, /No drains yet this round/); // clean empty state
+assert.match(playerRound, /Syncing round activity/); // neutral loading state
+assert.match(playerRound, /Activity update failed/); // stale state keeps last good feed
+assert.match(playerRound, /still authoritative/); // a feed failure never shakes Cash
+assert.match(playerRound, /confirmed in the trade panel/); // drains ≠ trades
+// Internal identifiers and ledger internals stay out of the primary UX.
+assert.doesNotMatch(playerRound, /eventKey|event_key/);
+assert.doesNotMatch(playerRound, /balanceBefore|balanceAfter/);
+// How to Play reinforces the strategic rule: idling bleeds, trading counters.
+assert.match(gameLogic, /doing nothing costs money/i);
+assert.match(gameLogic, /beat the drain/i);
+assert.match(gameLogic, /activity feed/i);
+
 // Styling: game escalation + reduced-motion respect.
 assert.match(styles, /--accent:\s*#7132f5/);
 assert.match(styles, /font-family:\s*'Inter'/);

@@ -139,6 +139,36 @@ export interface RecentLeaderboards {
   leaderboards: CycleResults[];
 }
 
+// --- Backend #18 / fcoins_y #11: player round economy ------------------------
+//
+// Authenticated GET /game/participant returns the caller's authoritative
+// current-round participant (currentCash always wins — the UI never derives
+// Cash from the feed) plus their recent EXECUTED FEE/TAX/EVENT ledger rows.
+// Only executed debits are exposed: no future schedule, no seed, and the
+// operator diagnostics API (#21) is never consumed by this client.
+
+export type CashEventType = 'FEE' | 'TAX' | 'EVENT';
+
+export interface CashEvent {
+  cashEventId: number;
+  type: CashEventType;
+  /** Positive debit amount in GBP — the ledger only records deductions. */
+  amount: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  /** Human-readable public explanation supplied by the backend. */
+  description: string;
+  /** Internal idempotency key — validated at the boundary but never primary UX. */
+  eventKey: string;
+  /** ISO 8601 execution timestamp. */
+  createdAt: string;
+}
+
+export interface PlayerRoundEconomy {
+  participant: RoundParticipant;
+  cashEvents: CashEvent[];
+}
+
 // --- Errors -----------------------------------------------------------------
 
 // Domain/API error carrying the backend's HTTP status and user-facing
@@ -369,6 +399,36 @@ export function parseRecentLeaderboards(payload: unknown): RecentLeaderboards {
   return payload as unknown as RecentLeaderboards;
 }
 
+// Validate one FEE/TAX/EVENT ledger row at the boundary. The row keeps its
+// full contract (balance before/after, internal eventKey) for completeness,
+// but the activity UI renders only type/description/amount/time.
+export function parseCashEvent(payload: unknown): CashEvent {
+  const contract = 'cash event';
+  if (!isRecord(payload)) throw new Error(`Invalid ${contract} response: expected a JSON object`);
+  requireFiniteNumber(payload, 'cashEventId', contract);
+  if (payload.type !== 'FEE' && payload.type !== 'TAX' && payload.type !== 'EVENT') {
+    throw new Error(`Invalid ${contract} response: unknown type ${JSON.stringify(payload.type)}`);
+  }
+  for (const field of ['amount', 'balanceBefore', 'balanceAfter'] as const) {
+    requireFiniteNumber(payload, field, contract);
+  }
+  requireString(payload, 'description', contract);
+  requireString(payload, 'eventKey', contract);
+  requireString(payload, 'createdAt', contract);
+  return payload as unknown as CashEvent;
+}
+
+export function parsePlayerRoundEconomy(payload: unknown): PlayerRoundEconomy {
+  const contract = 'player round economy';
+  if (!isRecord(payload)) throw new Error(`Invalid ${contract} response: expected a JSON object`);
+  if (!Array.isArray(payload.cashEvents)) {
+    throw new Error(`Invalid ${contract} response: cashEvents must be an array`);
+  }
+  const participant = parseRoundParticipant(payload.participant);
+  const cashEvents = (payload.cashEvents as unknown[]).map((row) => parseCashEvent(row));
+  return { participant, cashEvents };
+}
+
 // --- HTTP plumbing ------------------------------------------------------------
 
 async function parseJsonSafe(response: Response): Promise<unknown> {
@@ -485,4 +545,19 @@ export async function getCycleResults(cycleId: string, signal?: AbortSignal): Pr
 export async function getRecentLeaderboards(limit?: number, signal?: AbortSignal): Promise<RecentLeaderboards> {
   const query = typeof limit === 'number' ? `?limit=${encodeURIComponent(String(limit))}` : '';
   return gameFetch(`/game/leaderboards/recent${query}`, { signal }, parseRecentLeaderboards);
+}
+
+// --- Backend #18 / fcoins_y #11: player round economy -------------------------
+
+// Authenticated read of the caller's authoritative participant plus their
+// recent executed FEE/TAX/EVENT cash events. The server reconciles the
+// lifecycle first and falls back to the most recent participant during the
+// settlement hand-off — the caller is responsible for only adopting a
+// participant that belongs to the live apocalypse.
+export async function getMyRoundEconomy(
+  token: string,
+  { limit, signal }: { limit?: number; signal?: AbortSignal } = {}
+): Promise<PlayerRoundEconomy> {
+  const query = typeof limit === 'number' ? `?limit=${encodeURIComponent(String(limit))}` : '';
+  return gameFetch(`/game/participant${query}`, { token, signal }, parsePlayerRoundEconomy);
 }

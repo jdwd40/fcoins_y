@@ -11,11 +11,13 @@ import {
   GameApiError,
   getGameState,
   getLiveLeaderboard,
+  getMyRoundEconomy,
   joinGame,
   buyGameTrade,
   sellGameTrade
 } from '../services/gameService.ts';
 import type {
+  CashEvent,
   GameState,
   LeaderboardEntry,
   LiveLeaderboard,
@@ -29,9 +31,12 @@ import {
   connectionState,
   detectCompletedCycle,
   findMyEntry,
+  findNewCashEvents,
   lifecycleFromState,
+  normalizeCashEvents,
   participantBelongsToCycle,
   readCachedParticipant,
+  summariseDrainToast,
   writeCachedParticipant
 } from '../utils/gameLogic.ts';
 import type { ConnectionState, CountdownAnchor, LifecyclePhase } from '../utils/gameLogic.ts';
@@ -39,6 +44,10 @@ import type { ConnectionState, CountdownAnchor, LifecyclePhase } from '../utils/
 // Central polling cadence for game state + leaderboard. One shared fetch
 // feeds every consumer (header, dashboard, leaderboard, trade forms).
 export const GAME_POLL_INTERVAL_MS = 5000;
+
+// How many recent FEE/TAX/EVENT ledger rows the activity feed keeps (backend
+// #18 default is 20; pinned explicitly so the feed depth is a UI decision).
+export const CASH_EVENT_FEED_LIMIT = 20;
 
 export type TradeSide = 'BUY' | 'SELL';
 
@@ -67,6 +76,12 @@ interface GameContextValue {
   myParticipant: RoundParticipant | null;
   /** The player's live leaderboard row for the current cycle, if synced. */
   myEntry: LeaderboardEntry | null;
+  /** Issue #11: recent executed FEE/TAX/EVENT debits for the LIVE cycle,
+   *  newest first, deduplicated. Explanatory only — Cash is NEVER derived
+   *  from these rows. null = not synced yet (or no live-cycle participant). */
+  cashEvents: CashEvent[] | null;
+  /** Last activity-feed failure message; the last good feed is kept. */
+  cashEventsError: string | null;
   joined: boolean;
   trade: (side: TradeSide, coinId: number, amount: number) => Promise<void>;
   /** Force an immediate resync (focus/visibility/post-trade/error recovery). */
@@ -94,11 +109,18 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [completedCycleId, setCompletedCycleId] = useState<string | null>(null);
   const [resultsVersion, setResultsVersion] = useState(0);
   const [myParticipant, setMyParticipant] = useState<RoundParticipant | null>(null);
+  const [cashEvents, setCashEvents] = useState<CashEvent[] | null>(null);
+  const [cashEventsError, setCashEventsError] = useState<string | null>(null);
   // Tick that only drives DERIVED display state (staleness); never a clock.
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   const inFlight = useRef(false);
   const previousCycleRef = useRef<string | null>(null);
+  // Issue #11: ids of cash events already accounted for. null = the first
+  // successful economy sync of this (user, cycle) has not happened yet — on
+  // that first sync the whole feed is baselined so offline-applied drains are
+  // explained by the feed itself, never re-announced as if they just landed.
+  const economySeenRef = useRef<Set<number> | null>(null);
   // One participation-ensure attempt per (user, cycle); a separate latch for
   // the error toast so retries stay quiet.
   const ensureAttemptRef = useRef<string | null>(null);
@@ -108,9 +130,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     if (inFlight.current) return; // never stack polls
     inFlight.current = true;
     try {
-      const [stateResult, boardResult] = await Promise.allSettled([
+      const token = getAuthToken();
+      const [stateResult, boardResult, economyResult] = await Promise.allSettled([
         getGameState(),
-        getLiveLeaderboard()
+        getLiveLeaderboard(),
+        // Backend #18 player economy: authoritative participant Cash + recent
+        // FEE/TAX/EVENT ledger rows. Authenticated — skipped when logged out.
+        token ? getMyRoundEconomy(token, { limit: CASH_EVENT_FEED_LIMIT }) : Promise.resolve(null)
       ]);
 
       if (stateResult.status === 'fulfilled') {
@@ -134,10 +160,61 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       }
       // Other leaderboard failures: keep the last good board, the state
       // error/staleness machinery reports the connection problem.
+
+      if (economyResult.status === 'fulfilled' && economyResult.value !== null) {
+        const { participant, cashEvents: events } = economyResult.value;
+        const liveId = stateResult.status === 'fulfilled'
+          ? stateResult.value.apocalypseId
+          : previousCycleRef.current;
+        // Only a participant for the LIVE apocalypse is adopted: the endpoint
+        // falls back to the most recent participant during the settlement
+        // hand-off, and round state never carries across apocalypses.
+        if (liveId && participantBelongsToCycle(participant, liveId)) {
+          writeCachedParticipant(localStorage, participant);
+          setMyParticipant(participant);
+          const normalized = normalizeCashEvents(events);
+          setCashEvents(normalized);
+          setCashEventsError(null);
+          const seen = economySeenRef.current;
+          if (seen === null) {
+            economySeenRef.current = new Set(normalized.map((event) => event.cashEventId));
+          } else {
+            const fresh = findNewCashEvents(normalized, seen);
+            if (fresh.length > 0) {
+              for (const event of fresh) seen.add(event.cashEventId);
+              // One combined notice per sync — several debits landing together
+              // never stack into a notification storm.
+              showToast(summariseDrainToast(fresh), 'info');
+            }
+          }
+        }
+      } else if (economyResult.status === 'rejected') {
+        const reason = economyResult.reason;
+        if (reason instanceof SessionExpiredError) {
+          handleSessionExpired();
+          showToast('Your session has expired. Please log in again.', 'error');
+          setCashEvents(null);
+          setCashEventsError(null);
+          economySeenRef.current = null;
+        } else if (reason instanceof GameApiError && reason.status === 409) {
+          // Deliberate Core 6 settlement window: the feed resumes after
+          // rollover; the lifecycle UI already explains the pause.
+        } else if (reason instanceof GameApiError && reason.status === 404) {
+          // No participant yet — the ensure effect owns creation; neutral.
+          setCashEvents(null);
+          setCashEventsError(null);
+        } else {
+          // A history read failure NEVER overwrites or fabricates Cash and
+          // never wipes the last good feed — it only marks the feed stale.
+          setCashEventsError(
+            reason instanceof Error ? reason.message : 'Round activity unavailable'
+          );
+        }
+      }
     } finally {
       inFlight.current = false;
     }
-  }, []);
+  }, [getAuthToken, showToast, handleSessionExpired]);
 
   // Central poll: one interval for the whole game surface.
   useEffect(() => {
@@ -176,6 +253,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       setCompletedCycleId(completed);
       setResultsVersion((v) => v + 1);
       setMyParticipant(null); // round state never carries across apocalypses
+      setCashEvents(null); // drain history is per-cycle too
+      setCashEventsError(null);
+      economySeenRef.current = null; // the new round re-baselines the feed
     }
     previousCycleRef.current = currentId;
   }, [gameState?.apocalypseId]);
@@ -187,6 +267,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   // transition effect above.)
   useEffect(() => {
     setMyParticipant(null);
+    setCashEvents(null); // another user's drains are never surfaced
+    setCashEventsError(null);
+    economySeenRef.current = null;
     ensureAttemptRef.current = null; // a new identity re-ensures from scratch
     ensureToastRef.current = null;
   }, [user?.id]);
@@ -299,6 +382,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     resultsVersion,
     myParticipant,
     myEntry,
+    cashEvents,
+    cashEventsError,
     joined,
     trade,
     syncNow,

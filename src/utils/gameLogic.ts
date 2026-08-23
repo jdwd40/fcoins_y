@@ -7,13 +7,15 @@
 // polls, then re-anchored (drift correction) on every successful response.
 
 import type {
+  CashEvent,
+  CashEventType,
   GameState,
   GameCycleStatus,
   LeaderboardEntry,
   RoundHolding,
   RoundParticipant
 } from '../services/gameService.ts';
-import { parsePrice } from '../services/transactionService.ts';
+import { formatCurrency, parsePrice } from '../services/transactionService.ts';
 
 // --- Server-anchored countdown ------------------------------------------------
 
@@ -197,6 +199,109 @@ export function displayRoundCash(
   myParticipant: Pick<RoundParticipant, 'currentCash'> | null
 ): number {
   return myEntry?.currentCash ?? myParticipant?.currentCash ?? 0;
+}
+
+// --- Passive drain activity (backend #18 / issue #11) -------------------------
+//
+// The activity feed EXPLAINS Cash; it never computes it. Everything here is a
+// pure function over the authoritative server payload so polling, reconnects
+// and offline-return can be unit-tested without a DOM.
+
+// Player-facing source labels. Internal ledger types map to plain words; the
+// internal eventKey never appears as primary UX.
+export const CASH_EVENT_TYPE_LABEL: Record<CashEventType, string> = {
+  FEE: 'Fee',
+  TAX: 'Tax',
+  EVENT: 'Event'
+};
+
+// Ledger rows are positive deduction amounts; the feed always renders them as
+// money OUT (a leading minus), even if a malformed payload ever carried a
+// negative — a drain is never displayed as a credit.
+export function formatCashEventAmount(amount: number): string {
+  return `-${formatCurrency(Math.abs(amount))}`;
+}
+
+// Absolute timestamp for tooltips/fallbacks, e.g. "23 Aug 2026, 14:32".
+export function formatAbsoluteTimestamp(iso: string): string {
+  const time = Date.parse(iso);
+  if (!Number.isFinite(time)) return '';
+  return new Date(time).toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+// Compact relative age for feed rows: "just now", "5m ago", "3h ago",
+// "2d ago", then the absolute date beyond a week. Future/skewed timestamps
+// clamp to "just now" (the server clock is authoritative; a slightly-ahead
+// row is not an error worth surfacing).
+export function formatActivityTimestamp(createdAt: string, nowMs: number): string {
+  const then = Date.parse(createdAt);
+  if (!Number.isFinite(then)) return '';
+  const diffMs = nowMs - then;
+  if (diffMs < 45_000) return 'just now';
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return formatAbsoluteTimestamp(createdAt);
+}
+
+// Canonical feed order: newest ledger row first (cashEventId is the server's
+// own ordering — ORDER BY cash_event_id DESC). Duplicated rows (overlapping
+// polls, reconnect replays) collapse to a single entry keyed by cashEventId,
+// so re-syncing can never double-display a debit. Pure: the input array is
+// neither mutated nor reordered.
+export function normalizeCashEvents(events: CashEvent[]): CashEvent[] {
+  const seen = new Set<number>();
+  const normalized: CashEvent[] = [];
+  for (const event of [...events].sort((a, b) => b.cashEventId - a.cashEventId)) {
+    if (seen.has(event.cashEventId)) continue;
+    seen.add(event.cashEventId);
+    normalized.push(event);
+  }
+  return normalized;
+}
+
+// Rows whose ids are not yet in the seen set — i.e. debits that landed SINCE
+// the previous successful sync. Callers baseline the seen set on the first
+// sync so offline-applied drains are explained by the feed, not re-announced.
+export function findNewCashEvents(events: CashEvent[], seenIds: ReadonlySet<number>): CashEvent[] {
+  return events.filter((event) => !seenIds.has(event.cashEventId));
+}
+
+const CASH_EVENT_TYPE_PLURAL: Record<CashEventType, [string, string]> = {
+  FEE: ['fee', 'fees'],
+  TAX: ['tax', 'taxes'],
+  EVENT: ['event', 'events']
+};
+
+// ONE restrained toast per sync, no matter how many debits arrived together.
+// A single drain names its source; a batch summarises the total and the
+// source breakdown — never a stack of per-fee notifications.
+export function summariseDrainToast(events: CashEvent[]): string {
+  if (events.length === 0) return '';
+  const total = events.reduce((sum, event) => sum + Math.abs(event.amount), 0);
+  const totalLabel = formatCurrency(total);
+  if (events.length === 1) {
+    return `${CASH_EVENT_TYPE_LABEL[events[0].type]} drained ${totalLabel} from your Cash`;
+  }
+  const breakdown = (Object.keys(CASH_EVENT_TYPE_PLURAL) as CashEventType[])
+    .map((type) => {
+      const count = events.filter((event) => event.type === type).length;
+      if (count === 0) return null;
+      const [singular, plural] = CASH_EVENT_TYPE_PLURAL[type];
+      return `${count} ${count === 1 ? singular : plural}`;
+    })
+    .filter((part): part is string => part !== null)
+    .join(', ');
+  return `New drains: ${totalLabel} across ${events.length} charges (${breakdown})`;
 }
 
 // --- Leaderboard helpers ---------------------------------------------------------------------
@@ -516,7 +621,7 @@ export const HOW_TO_PLAY_STEPS: HowToPlayStep[] = [
   {
     id: 'drain',
     title: 'MIND THE DRAINS',
-    body: 'Fees, taxes and market events can drain your Cash even if you do nothing. Standing still is a strategy for going backwards — trade to stay ahead of them.'
+    body: 'Fees, taxes and market events drain your Cash even if you do nothing — doing nothing costs money. Every deduction lands in your round activity feed with its source, amount and time, so Cash never drops without an explanation. Trade well enough to beat the drain.'
   },
   {
     id: 'bots',
