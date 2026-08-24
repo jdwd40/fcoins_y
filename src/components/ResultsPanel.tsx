@@ -30,6 +30,11 @@ function ResultRowItem({ row, mine, displayRank }: { row: ResultRow; mine: boole
             <Bot className="w-3 h-3" /> BOT{row.personality ? ` · ${personalityLabel(row.personality)}` : ''}
           </span>
         )}
+        {!row.leaderboardEligible && (
+          <span className="chip shrink-0" title={`Finished below the ${formatCurrency(row.startingCash)} start — not a leaderboard entry`}>
+            Off board
+          </span>
+        )}
         {mine && <span className="label text-gold shrink-0">You</span>}
       </div>
       <div className="text-right shrink-0">
@@ -49,12 +54,14 @@ function ResultRowItem({ row, mine, displayRank }: { row: ResultRow; mine: boole
 // (Core 6 transition detection). Reads the immutable snapshot from
 // GET /api/game/results/:cycleId — never recalculated client-side.
 //
-// Issue #10 / backend #19: the displayed board is the profitable-only
-// leaderboard — rows flagged leaderboardEligible (final Cash above that
-// round's £10,000 start), re-ranked gapless for display exactly like the
-// backend's recent-leaderboards endpoint. A completed Apocalypse with zero
-// qualifiers is a legitimate empty leaderboard, not an error. The player's
-// own finish is still reported from the full results set.
+// Core 7 final-results contract: the overlay displays EVERY immutable final
+// result row in backend rank order. Settlement writes rank as ROW_NUMBER
+// over ALL participants (final_cash DESC, participant_id ASC) and the
+// per-cycle results endpoint is authoritative — the frontend never
+// recomputes a final rank. Non-qualifying rows (leaderboardEligible=false,
+// issue #10 / backend #19) stay visible with an off-board marker; only the
+// recent-history boards are profitable-only. A completed Apocalypse with
+// zero qualifiers is a legitimate outcome, not an error.
 export function ResultsOverlay() {
   const { user } = useAuth();
   const { completedCycleId, acknowledgeCompleted } = useGame();
@@ -97,9 +104,10 @@ export function ResultsOverlay() {
   if (!completedCycleId) return null;
 
   const myResult = results?.results.find((row) => user && row.userId === user.id) ?? null;
-  // The profitable-only leaderboard: rows arrive ranked across ALL results,
-  // so display ranks are recomputed gapless among the qualifiers.
-  const qualified = results?.results.filter((row) => row.leaderboardEligible) ?? [];
+  // Rows arrive from GET /api/game/results/:cycleId already sorted by the
+  // immutable backend rank across ALL participants — display them as-is.
+  const finalRows = results?.results ?? [];
+  const qualifiedCount = finalRows.filter((row) => row.leaderboardEligible).length;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-label={`Final results for ${completedCycleId}`}>
@@ -134,17 +142,17 @@ export function ResultsOverlay() {
               </p>
             )}
 
-            {results && results.results.length > 0 && qualified.length === 0 && (
+            {results && finalRows.length > 0 && qualifiedCount === 0 && (
               <p className="text-center text-sm text-ink-mute py-6">
-                No qualifiers — nobody finished above the {formatCurrency(myResult?.startingCash ?? results.results[0].startingCash)} start.
-                The ledger remembers, but the board stays empty.
+                No qualifiers — nobody finished above the {formatCurrency(myResult?.startingCash ?? finalRows[0].startingCash)} start.
+                Every final rank below is the immutable settlement order; nobody made the profitable-only leaderboard.
               </p>
             )}
 
-            {qualified.length > 0 && (
-              <ol className="divide-rule border border-rule rounded-xl overflow-hidden mb-5" aria-label="Final leaderboard">
-                {qualified.map((row, index) => (
-                  <ResultRowItem key={row.participantId} row={row} mine={!!user && row.userId === user.id} displayRank={index + 1} />
+            {finalRows.length > 0 && (
+              <ol className="divide-rule border border-rule rounded-xl overflow-hidden mb-5" aria-label="Final results">
+                {finalRows.map((row) => (
+                  <ResultRowItem key={row.participantId} row={row} mine={!!user && row.userId === user.id} displayRank={row.rank} />
                 ))}
               </ol>
             )}

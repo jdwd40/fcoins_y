@@ -247,14 +247,18 @@ export function parseGameState(payload: unknown): GameState {
     }
   }
   const status = requireStatus(payload, 'game state');
+  // The wire contract is clamped at the boundary (the interface documents
+  // remainingMs >= 0 and apocalypsePercent in 0..100): a transiently
+  // out-of-range server value can never drive the countdown negative or blow
+  // the meter width / aria-valuenow past 100%.
   return {
     apocalypseId: payload.apocalypseId as string,
     status,
     startTime: payload.startTime as string,
     endTime: payload.endTime as string,
     durationMs: payload.durationMs as number,
-    remainingMs: payload.remainingMs as number,
-    apocalypsePercent: payload.apocalypsePercent as number,
+    remainingMs: Math.max(0, payload.remainingMs as number),
+    apocalypsePercent: Math.min(100, Math.max(0, payload.apocalypsePercent as number)),
     serverTime: payload.serverTime as string
   };
 }

@@ -402,5 +402,14 @@
   @media (prefers-reduced-motion: reduce) {
     .apocalypse-meter-fill { animation: none !important; transition: none; }
     .apocalypse-header { transition: none; }
+    /* The restraint is surface-wide, not just the meter: the continuously
+       scrolling ticker, reveal entrances, flicker pulses, spinner rotation
+       and smooth-scroll all stand down. Content stays fully visible — every
+       reveal uses a 'both' fill only for the entrance, never to hide. */
+    .animate-ticker, .animate-ticker-slow, .animate-flicker,
+    .animate-reveal, .animate-reveal-fast, .animate-fade-in-down,
+    .animate-fade-out-up, .animate-draw-line, .animate-spin,
+    .live-dot { animation: none !important; }
+    html { scroll-behavior: auto; }
   }
 }

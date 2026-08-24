@@ -223,16 +223,21 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(intervalId);
   }, [syncNow]);
 
-  // Resync on focus/visibility return (sleep, backgrounding, tab switch).
+  // Resync on focus/visibility return (sleep, backgrounding, tab switch) and
+  // on network recovery (the browser's online event) — every route back to a
+  // trustworthy connection re-anchors the server state immediately rather
+  // than waiting out the rest of the poll interval.
   useEffect(() => {
     const resync = () => void syncNow();
     const onVisibility = () => {
       if (document.visibilityState === 'visible') resync();
     };
     window.addEventListener('focus', resync);
+    window.addEventListener('online', resync);
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
       window.removeEventListener('focus', resync);
+      window.removeEventListener('online', resync);
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [syncNow]);

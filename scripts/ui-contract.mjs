@@ -41,6 +41,10 @@ assert.match(header, /meterPhase/);
 assert.match(gameContext, /GAME_POLL_INTERVAL_MS/);
 assert.match(gameContext, /visibilitychange/);
 assert.match(gameContext, /window\.addEventListener\('focus'/);
+// Network recovery: the browser's online event re-anchors server state
+// immediately instead of waiting out the rest of the poll interval.
+assert.match(gameContext, /window\.addEventListener\('online'/);
+assert.match(gameContext, /window\.removeEventListener\('online'/);
 assert.match(gameContext, /localStorage/); // participant cache
 // Milestone 1: the participant cache key carries the authenticated user
 // identity AND the apocalypse id — no cross-account round-state leakage.
@@ -173,6 +177,15 @@ assert.match(styles, /font-family:\s*'Inter'/);
 assert.doesNotMatch(styles, /fractalNoise/);
 assert.match(styles, /apocalypse-meter/);
 assert.match(styles, /prefers-reduced-motion/);
+// Reduced-motion restraint is surface-wide: the infinite ticker scroll,
+// flicker pulses, reveal entrances and spinner rotation all stand down,
+// not just the apocalypse meter pulse.
+const reducedMotion = styles.slice(styles.indexOf('prefers-reduced-motion'));
+assert.match(reducedMotion, /\.animate-ticker[^{]*\{ animation: none !important;/);
+assert.match(reducedMotion, /\.animate-flicker/);
+assert.match(reducedMotion, /\.animate-reveal/);
+assert.match(reducedMotion, /\.animate-spin/);
+assert.match(reducedMotion, /scroll-behavior: auto/);
 assert.match(styles, /coin-dead/);
 assert.match(styles, /leaderboard-me/);
 
@@ -234,6 +247,25 @@ assert.match(resultsPanel, /closes automatically/);
 assert.match(resultsPanel, /getCycleResults\(completedCycleId\)/);
 assert.match(resultsPanel, /getRecentLeaderboards/);
 assert.match(resultsPanel, /The graveyard/);
+
+// --- Core 7 final-results rank contract -------------------------------------
+// GET /api/game/results/:cycleId returns the immutable settlement snapshot
+// with backend-authoritative ranks over ALL participants (final_cash DESC,
+// participant_id ASC). The overlay displays those ranks verbatim and never
+// recomputes a final rank client-side (no gapless re-rank of qualifiers).
+assert.match(resultsPanel, /displayRank=\{row\.rank\}/);
+assert.doesNotMatch(resultsPanel, /index \+ 1/);
+// Every immutable final row is shown in backend rank order — including
+// non-qualifiers, which carry a clear off-board marker. Only the recent
+// history boards are profitable-only.
+assert.match(resultsPanel, /aria-label="Final results"/);
+assert.match(resultsPanel, /Off board/);
+assert.match(resultsPanel, /finalRows\.map\(\(row\) =>/);
+// The legitimate zero-qualifier outcome keeps its own messaging.
+assert.match(resultsPanel, /No qualifiers — nobody finished above the/);
+// The player's own finish summary also reads the backend rank, not a
+// recomputed position.
+assert.match(resultsPanel, /#\{myResult\.rank\}/);
 
 assert.match(html, /<title>Crypto Chaos · CoinX Apocalypse Exchange<\/title>/);
 assert.match(html, /family=Inter/);

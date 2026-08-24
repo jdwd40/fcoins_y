@@ -176,6 +176,20 @@ test('accepts the Core 6 lifecycle statuses on game state', () => {
   assert.equal(parseGameState({ ...VALID_STATE, status: 'COMPLETED' }).status, 'COMPLETED');
 });
 
+test('clamps out-of-range timing fields to the documented contract at the boundary', () => {
+  // remainingMs is documented as clamped >= 0: a server that has just rolled
+  // past endTime can never push the countdown negative.
+  assert.equal(parseGameState({ ...VALID_STATE, remainingMs: -5_000 }).remainingMs, 0);
+  // apocalypsePercent is documented as clamped to 0..100: a transient
+  // out-of-range value can never blow the meter width / aria-valuenow.
+  assert.equal(parseGameState({ ...VALID_STATE, apocalypsePercent: 104.7 }).apocalypsePercent, 100);
+  assert.equal(parseGameState({ ...VALID_STATE, apocalypsePercent: -1 }).apocalypsePercent, 0);
+  // In-range values pass through untouched.
+  const inRange = parseGameState(VALID_STATE);
+  assert.equal(inRange.remainingMs, VALID_STATE.remainingMs);
+  assert.equal(inRange.apocalypsePercent, VALID_STATE.apocalypsePercent);
+});
+
 test('rejects on non-2xx responses with the backend message surfaced', async () => {
   for (const status of [400, 404, 500, 503]) {
     const restore = stubFetch(async () => jsonResponse({ msg: 'nope' }, status));
