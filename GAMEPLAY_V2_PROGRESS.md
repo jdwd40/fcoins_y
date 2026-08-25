@@ -134,6 +134,17 @@ The backend progress file is authoritative for the complete V2-3 file list, risk
 - `npm run build`: passed.
 - `git diff --check`: passed; generated artifacts ignored.
 
-## V2-6 — NOT STARTED
+## V2-6 — COMPLETE / OVERNIGHT RUN COMPLETE
 
-Before V2-6, read the complete plan, both progress files and both repository states again. Run final backend/frontend verification, final large simulations against final gameplay code, regression checks and the complete morning report. Do not merge or deploy.
+- Backend final HEAD: `3670f2578a6af458c38d3219178a21a1d5a0b185`
+- Frontend final HEAD: `b189d6927819c4e6178377bfab5df27ccfe94574`
+- Both `gameplay-v2-20260824` branches are pushed and synchronized with origin.
+- V2-1 through V2-6 complete; no stage stopped, no merge/deploy/production mutation.
+- Final frontend evidence: 130/130 unit tests, UI contract passed, lint 0 errors with six existing warnings, TypeScript passed, build passed, diff check passed.
+- Final backend evidence: 74/75 suites and 710/711 tests; one documented pre-existing suite-order settlement/worker deadlock flake, schema verification passed, isolated worker 5/5.
+- Final simulations: V2-1 gate 2,000 rounds passed; Power 40×24 passed; V2-3 30×24 passed; bot 24×16 passed.
+- Final V2-1 DIP_BOOM/RANDOM paired win rate 99.55%; DIP_BOOM median ROI 271.37%, RANDOM -53.76%; perfect-information median 454.25%.
+- V2 reached UI and is ready for local human play-testing on the V2 branch. No browser/device screenshot or deployment is claimed.
+- Unresolved: baseline backend deadlock flake, existing frontend warnings/build advisories; no new V2 gate failures.
+
+The backend progress file is the authoritative complete morning report and contains final parameters, all strategy/bot metrics, regression evidence and readiness assessment. Do not merge, deploy or begin another milestone.
