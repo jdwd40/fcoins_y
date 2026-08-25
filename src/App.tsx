@@ -131,7 +131,6 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
           </h2>
           <p className="text-ink-mute text-sm mb-5 max-w-2xl">
             The original exchange view: market statistics, charts and the full asset table.
-            Gameplay above never depends on reading a chart.
           </p>
 
           {classicNotice !== null ? (

@@ -139,7 +139,7 @@ export function CoinSignalCard({ coin, holding }: CoinSignalCardProps) {
       {formatTypicalProfile(coin) !== '' && (
         <div className="flex items-center justify-between gap-2">
           <span className="label">Typical</span>
-          <span className="font-mono text-[0.7rem] text-ink-dim text-right tnum">{formatTypicalProfile(coin)}</span>
+          <span className="font-mono text-xs text-ink-dim text-right tnum">{formatTypicalProfile(coin)}</span>
         </div>
       )}
       <div className="flex items-center justify-between gap-2">
@@ -273,9 +273,9 @@ export function CoinSignalCard({ coin, holding }: CoinSignalCardProps) {
             <div className="border border-rule rounded-lg p-3 bg-paper-alt">
               <div className="label text-oxblood mb-2">Confirm sale</div>
               <dl className="font-mono text-xs space-y-1 mb-3">
-                <div className="flex justify-between"><dt className="text-ink-mute">Quantity</dt><dd className="text-ink tnum">{formatQuantity(holding.quantity)} {coin.symbol}</dd></div>
-                <div className="flex justify-between"><dt className="text-ink-mute">Est. proceeds</dt><dd className="text-ink tnum">{formatCurrency(holding.currentValue)}</dd></div>
-                <div className="flex justify-between"><dt className="text-ink-mute">Power cost</dt><dd className="text-verdigris tnum">0 — selling is always free</dd></div>
+                <div className="flex justify-between gap-2"><dt className="text-ink-mute">Quantity</dt><dd className="text-ink tnum text-right">{formatQuantity(holding.quantity)} {coin.symbol}</dd></div>
+                <div className="flex justify-between gap-2"><dt className="text-ink-mute">Est. proceeds</dt><dd className="text-ink tnum text-right">{formatCurrency(holding.currentValue)}</dd></div>
+                <div className="flex justify-between gap-2"><dt className="text-ink-mute">Power cost</dt><dd className="text-verdigris tnum text-right">0 — selling is always free</dd></div>
               </dl>
               <div className="flex gap-2">
                 <button type="button" className="btn-ink flex-1 tap-target" disabled={pending} onClick={() => setConfirmSell(false)}>
@@ -340,7 +340,7 @@ export function CoinSignalCard({ coin, holding }: CoinSignalCardProps) {
       <div className="mt-3">
         <div className="flex items-center justify-between mb-1.5">
           <span className="label">Quick buy</span>
-          <span className="text-[0.66rem] text-ink-mute">⚡ = estimated Power cost</span>
+          <span className="text-xs text-ink-mute">⚡ = estimated Power cost</span>
         </div>
         {confirmNotional === null ? (
           <div className="quick-buy-grid" role="group" aria-label={`Quick buy ${coin.symbol}`}>
@@ -375,11 +375,11 @@ export function CoinSignalCard({ coin, holding }: CoinSignalCardProps) {
               const estTotal = quantity === null ? 0 : Math.round(quantity * coin.currentPrice * 100) / 100;
               return (
                 <dl className="font-mono text-xs space-y-1 mb-3">
-                  <div className="flex justify-between"><dt className="text-ink-mute">Spend (requested)</dt><dd className="text-ink tnum">{quickBuyLabel(confirmNotional)}</dd></div>
-                  <div className="flex justify-between"><dt className="text-ink-mute">Quantity</dt><dd className="text-ink tnum">{quantity === null ? '—' : `${formatQuantity(quantity)} ${coin.symbol}`}</dd></div>
-                  <div className="flex justify-between"><dt className="text-ink-mute">At displayed price</dt><dd className="text-ink tnum">{formatCurrency(coin.currentPrice)}</dd></div>
-                  <div className="flex justify-between"><dt className="text-ink-mute">Est. total</dt><dd className="text-gold font-bold tnum">{formatCurrency(estTotal)}</dd></div>
-                  <div className="flex justify-between"><dt className="text-ink-mute">Power (estimate)</dt><dd className="text-ink tnum">⚡{estimateBuyPowerCost(confirmNotional)} — server confirms the final cost</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-ink-mute">Spend (requested)</dt><dd className="text-ink tnum text-right">{quickBuyLabel(confirmNotional)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-ink-mute">Quantity</dt><dd className="text-ink tnum text-right">{quantity === null ? '—' : `${formatQuantity(quantity)} ${coin.symbol}`}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-ink-mute">At displayed price</dt><dd className="text-ink tnum text-right">{formatCurrency(coin.currentPrice)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-ink-mute">Est. total</dt><dd className="text-gold font-bold tnum text-right">{formatCurrency(estTotal)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-ink-mute">Power (estimate)</dt><dd className="text-ink tnum text-right">⚡{estimateBuyPowerCost(confirmNotional)} — server confirms the final cost</dd></div>
                 </dl>
               );
             })()}
@@ -399,7 +399,7 @@ export function CoinSignalCard({ coin, holding }: CoinSignalCardProps) {
           </div>
         )}
         {sharedBlock !== null && confirmNotional === null && (
-          <p className="text-[0.7rem] text-ink-dim mt-1.5" role="status">{QUICK_BUY_BLOCK_LABEL[sharedBlock]}</p>
+          <p className="text-xs text-ink-dim mt-1.5" role="status">{QUICK_BUY_BLOCK_LABEL[sharedBlock]}</p>
         )}
         {error && <div className="font-mono text-xs text-oxblood mt-2" role="alert">{error}</div>}
       </div>

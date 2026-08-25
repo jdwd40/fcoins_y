@@ -74,11 +74,13 @@ export function PlayerStatusStrip({ onAuthRequest }: { onAuthRequest: () => void
 
   return (
     <section aria-label="Your round" className="paper-card p-4 sm:p-5">
-      <div className="flex items-end justify-between gap-3 mb-3">
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
         <div className="min-w-0">
           <div className="label mb-1 flex items-center gap-1"><Wallet className="w-3 h-3" /> Cash</div>
-          {/* The dominant money figure: current round Cash. */}
-          <div className="numeral text-ink text-4xl sm:text-5xl tnum" aria-label={`Cash ${formatCurrency(roundCash)}`}>
+          {/* The dominant money figure: current round Cash. Fluid on narrow
+              phones (player-cash-figure) so a large balance never pushes
+              Wealth off the strip; full size from sm up. */}
+          <div className="numeral player-cash-figure text-ink sm:text-5xl tnum" aria-label={`Cash ${formatCurrency(roundCash)}`}>
             {formatCurrency(roundCash)}
           </div>
         </div>
@@ -96,8 +98,8 @@ export function PlayerStatusStrip({ onAuthRequest }: { onAuthRequest: () => void
               <div className="font-mono text-base font-bold text-ink tnum">
                 {power.current}<span className="text-ink-mute font-normal">/{power.max}</span>
               </div>
-              <div className="text-[0.68rem] text-ink-mute tnum">{formatPowerRegenRate(power)}</div>
-              <div className="text-[0.68rem] text-ink-dim tnum" aria-live="off">
+              <div className="text-xs text-ink-mute tnum">{formatPowerRegenRate(power)}</div>
+              <div className="text-xs text-ink-dim tnum" aria-live="off">
                 {formatPowerNextHint(power, now)}
               </div>
             </>
@@ -111,7 +113,7 @@ export function PlayerStatusStrip({ onAuthRequest }: { onAuthRequest: () => void
           {myEntry ? (
             <>
               <div className="font-mono text-base font-bold text-ink tnum">#{myEntry.rank}</div>
-              <div className="text-[0.68rem] text-ink-mute tnum">live board</div>
+              <div className="text-xs text-ink-mute tnum">live board</div>
             </>
           ) : (
             <div className="text-xs text-ink-mute">Syncing rank…</div>
@@ -123,7 +125,7 @@ export function PlayerStatusStrip({ onAuthRequest }: { onAuthRequest: () => void
           <div className="font-mono text-base font-bold text-ink tnum">
             {openPositions}<span className="text-ink-mute font-normal">/{MAX_OPEN_POSITIONS}</span>
           </div>
-          <div className="text-[0.68rem] text-ink-mute">open</div>
+          <div className="text-xs text-ink-mute">open</div>
         </div>
       </div>
     </section>

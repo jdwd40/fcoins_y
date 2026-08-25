@@ -36,18 +36,19 @@ export function GameMarketGrid() {
 
   return (
     <section aria-label="Market">
-      <div className="flex items-end justify-between mb-3">
-        <div>
+      <div className="flex items-end justify-between gap-3 mb-3">
+        <div className="min-w-0">
           <div className="label mb-1">Market</div>
           <h2 className="font-display text-2xl font-bold tracking-tight text-ink">
             {active.length} coins in play
           </h2>
         </div>
-        <span className="chip">Refreshes every poll</span>
+        {/* Secondary chrome yields to the primary scan on narrow phones. */}
+        <span className="chip hidden sm:inline-flex">Refreshes every poll</span>
       </div>
 
       {signalsError && (
-        <p className="text-[0.7rem] text-oxblood mb-3" role="status">
+        <p className="text-xs text-oxblood mb-3" role="status">
           Market update failed — showing the last synced signals. {signalsError}
         </p>
       )}

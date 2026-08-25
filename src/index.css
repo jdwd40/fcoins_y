@@ -538,4 +538,31 @@
   /* Comfortable primary-action tap targets (>=44px). */
   .tap-target { min-height: 44px; }
   .tap-target-lg { min-height: 48px; font-size: 0.85rem; }
+
+  /* Issue #14 narrow-phone readability (360–430px portrait): metadata and
+     trade controls step UP to comfortable mobile sizes below the sm
+     breakpoint — hierarchy and spacing do the work, not shrinking. Every
+     rule is scoped under 640px, so desktop/tablet rendering is unchanged. */
+  @media (max-width: 639.98px) {
+    /* Metadata labels: 11px -> 12px, with slightly looser tracking so the
+       uppercase text stays legible on a phone. */
+    .label, .label-ink { font-size: 0.75rem; letter-spacing: 0.08em; }
+    /* Phase/risk/bot chips carry the trading signal in words — readable. */
+    .chip { font-size: 0.72rem; }
+    .signal-chip { font-size: 0.72rem; padding: 0.28rem 0.55rem; }
+    /* Stat cells breathe so the Power/rank/positions hints wrap cleanly. */
+    .stat-cell { padding: 0.65rem 0.6rem; }
+    /* Quick-buy ladder: notional louder, Power estimate readable (was
+       9.9px), and the whole button a more forgiving tap target. */
+    .quick-buy-amount { font-size: 0.95rem; }
+    .quick-buy-power { font-size: 0.72rem; }
+    .quick-buy-btn { min-height: 56px; }
+    /* Every action button is a comfortable >=44px target with readable text,
+       including the custom-trade panel that reuses the shared btn classes. */
+    .btn-gold, .btn-ink, .btn-oxblood { min-height: 44px; font-size: 0.85rem; }
+    .how-to-play-trigger { min-height: 44px; font-size: 0.72rem; padding-inline: 0.85rem; }
+    /* The dominant Cash figure scales fluidly with the viewport so a large
+       balance can never squeeze the Wealth figure off the strip. */
+    .player-cash-figure { font-size: clamp(1.9rem, 8.5vw, 2.25rem); }
+  }
 }

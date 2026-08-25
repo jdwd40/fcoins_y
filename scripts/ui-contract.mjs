@@ -436,6 +436,36 @@ const v25Css = styles.slice(styles.indexOf('V2-5 mobile-first game surface'));
 assert.doesNotMatch(v25Css, /@keyframes/);
 assert.doesNotMatch(v25Css, /animation:/);
 
+// --- Issue #14: narrow-phone readability (360–430px portrait) ----------------
+// Metadata and controls step UP below the sm breakpoint — never shrunk to
+// fit. Every rule lives in one narrow-only media block so desktop/tablet
+// rendering is byte-identical.
+assert.match(styles, /@media \(max-width: 639\.98px\)/);
+const narrowCss = styles.slice(styles.indexOf('@media (max-width: 639.98px)'));
+assert.match(narrowCss, /\.label, \.label-ink \{ font-size: 0\.75rem;/);
+assert.match(narrowCss, /\.signal-chip \{ font-size: 0\.72rem;/);
+assert.match(narrowCss, /\.quick-buy-power \{ font-size: 0\.72rem;/); // was 9.9px
+assert.match(narrowCss, /\.quick-buy-btn \{ min-height: 56px;/);
+assert.match(narrowCss, /\.btn-gold, \.btn-ink, \.btn-oxblood \{ min-height: 44px;/);
+assert.match(narrowCss, /\.how-to-play-trigger \{ min-height: 44px;/);
+// The dominant Cash figure is fluid on phones so it can never push Wealth
+// off the strip; the row may wrap instead of overflowing.
+assert.match(narrowCss, /\.player-cash-figure \{ font-size: clamp\(/);
+assert.match(playerStatusStrip, /player-cash-figure/);
+assert.match(playerStatusStrip, /flex flex-wrap items-end justify-between/);
+// No sub-12px metadata survives on the V2 game surface components.
+for (const [name, text] of Object.entries({ coinSignalCard, playerStatusStrip, gameMarketGrid, header })) {
+  assert.doesNotMatch(text, /text-\[0\.[0-6][0-9]rem\]/, `${name} still has sub-0.7rem metadata text`);
+}
+// Header metadata rows wrap onto extra lines instead of overflowing.
+assert.match(header, /flex flex-wrap items-center justify-between mt-1\.5 gap-x-3 gap-y-1/);
+assert.match(header, /flex flex-wrap items-center gap-x-4 gap-y-2/);
+// Secondary grid chrome yields to the primary scan at narrow widths.
+assert.match(gameMarketGrid, /chip hidden sm:inline-flex/);
+// Confirmation rows keep label/value separated at narrow widths.
+assert.match(coinSignalCard, /flex justify-between gap-2/);
+assert.match(roundTrade, /flex justify-between gap-2/);
+
 assert.match(html, /<title>Crypto Chaos · CoinX Apocalypse Exchange<\/title>/);
 assert.match(html, /family=Inter/);
 

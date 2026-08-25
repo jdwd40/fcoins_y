@@ -66,7 +66,7 @@ export function ApocalypseHeader({ coins }: { coins: Coin[] }) {
             >
               <div className="apocalypse-meter-fill" style={{ width: `${percent}%` }} />
             </div>
-            <div className="flex items-center justify-between mt-1.5 gap-3">
+            <div className="flex flex-wrap items-center justify-between mt-1.5 gap-x-3 gap-y-1">
               <span className="label">
                 Apocalypse <strong className="text-ink ml-1 tnum">{percent.toFixed(1)}%</strong>
               </span>
@@ -77,7 +77,9 @@ export function ApocalypseHeader({ coins }: { coins: Coin[] }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-4 sm:gap-6 shrink-0">
+          {/* How-to-play, countdown and lifecycle stay together but may wrap
+              onto a second line rather than overflow a narrow phone. */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:gap-6 shrink-0">
             <HowToPlay />
             <div className="text-right">
               <div className="label">Time left</div>
@@ -111,7 +113,7 @@ export function ApocalypseHeader({ coins }: { coins: Coin[] }) {
             <span className="font-mono text-xs text-oxblood font-semibold tracking-caps uppercase">
               {connection === 'offline' ? 'Backend unavailable' : 'Connection stale · reconnecting…'}
             </span>
-            {stateError && <span className="font-mono text-[0.68rem] text-ink-mute truncate">{stateError}</span>}
+            {stateError && <span className="font-mono text-xs text-ink-mute truncate">{stateError}</span>}
             {lastSyncSeconds !== null && connection === 'stale' && (
               <span className="label ml-auto">last sync {lastSyncSeconds}s ago</span>
             )}

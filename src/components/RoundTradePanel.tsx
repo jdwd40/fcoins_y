@@ -168,21 +168,21 @@ export function RoundTradePanel({ coin }: RoundTradePanelProps) {
           </button>
         </div>
         <dl className="space-y-2 mb-5 font-mono text-sm">
-          <div className="flex justify-between">
+          <div className="flex justify-between gap-2">
             <dt className="text-ink-mute">Quantity</dt>
-            <dd className="text-ink tnum">{formatQuantity(amountValue)} {coin.symbol}</dd>
+            <dd className="text-ink tnum text-right">{formatQuantity(amountValue)} {coin.symbol}</dd>
           </div>
-          <div className="flex justify-between">
+          <div className="flex justify-between gap-2">
             <dt className="text-ink-mute">Unit price</dt>
-            <dd className="text-ink tnum">{formatCurrency(currentPrice)}</dd>
+            <dd className="text-ink tnum text-right">{formatCurrency(currentPrice)}</dd>
           </div>
-          <div className="flex justify-between border-t border-rule pt-2 mt-2">
+          <div className="flex justify-between gap-2 border-t border-rule pt-2 mt-2">
             <dt className="text-ink font-bold">{side === 'BUY' ? 'Total' : 'Proceeds'}</dt>
-            <dd className={`tnum font-bold ${side === 'BUY' ? 'text-gold' : 'text-verdigris'}`}>{formatCurrency(total)}</dd>
+            <dd className={`tnum font-bold text-right ${side === 'BUY' ? 'text-gold' : 'text-verdigris'}`}>{formatCurrency(total)}</dd>
           </div>
-          <div className="flex justify-between">
+          <div className="flex justify-between gap-2">
             <dt className="text-ink-mute">Cash after</dt>
-            <dd className="text-ink-dim tnum">{formatCurrency(side === 'BUY' ? roundCash - total : roundCash + total)}</dd>
+            <dd className="text-ink-dim tnum text-right">{formatCurrency(side === 'BUY' ? roundCash - total : roundCash + total)}</dd>
           </div>
         </dl>
         <div className="flex gap-3">
