@@ -19,11 +19,23 @@
 - Inspected the current `ResultsOverlay`, `scheduleResultsAutoDismiss`, and related unit coverage. The current implementation visibly contains 7-second automatic dismissal, cycle-bound stale-timer protection, manual-close/unmount cancellation, and successor-round preservation. Focused test execution remains to be recorded before reconciling issue `#8`.
 - Inspected current V2 market cards, `CoinDetail`, `PriceChart`, `GameMarketGrid`, `GameContext` contracts, and the existing classic secondary surface. Current cards already expose phase, momentum, archetype, collapse risk, and owned P&L, but the primary cards do not yet open the existing detail flow and the detail chart defaults to long windows.
 
+## Checkpoint: issue #8 reconciliation
+
+- **Issue:** `jdwd40/fcoins_y#8`
+- **Branch / SHA:** current production baseline `master` `0fe1b23`; UI branch checkpoint `bd394638a91c545ef9245faecc1a64ed098d5a70`
+- **Files changed:** no production files; existing `src/components/ResultsPanel.tsx`, `src/utils/gameLogic.ts`, and `src/utils/gameLogic.test.ts` inspected.
+- **Verification:** `npm run test:unit` passed **130/130**; `npm run test:ui` passed; current implementation inspected for 7-second auto-dismiss, cycle binding, stale timer cleanup, manual-close/unmount cancellation, and successor-round preservation.
+- **Result:** `#8` commented with evidence and closed as **COMPLETED**. `#23` updated so its #8 row is **COMPLETED**, with a tracker comment.
+- **Deployment state:** unchanged; no production deployment.
+- **Unresolved:** none for #8. Remaining UI stages are still open and must not be closed before human Pixel 8 Pro acceptance.
+- **Exact next action:** launch one fresh Kimi K3 implementation task for `fcoins_y#14` on this branch, with no competing writer.
+
 ## Result
 
 - Production code remains unchanged so far except for this progress checkpoint file on the UI-polish branch.
-- No K3 implementation task has been launched yet.
-- No commits, pushes, merges, deployments, production-data changes, migrations, or gameplay-engine changes have been made.
+- Issue #8 reconciliation is complete without a K3 implementation stage.
+- No UI-polish implementation task has been launched yet.
+- No pushes, merges, deployments, production-data changes, migrations, or gameplay-engine changes have been made.
 
 ## Unresolved problems / safety notes
 
