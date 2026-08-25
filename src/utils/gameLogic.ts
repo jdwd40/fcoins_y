@@ -12,6 +12,8 @@ import type {
   GameState,
   GameCycleStatus,
   LeaderboardEntry,
+  MarketSignalCoin,
+  PowerState,
   RoundHolding,
   RoundParticipant
 } from '../services/gameService.ts';
@@ -639,3 +641,235 @@ export const HOW_TO_PLAY_STEPS: HowToPlayStep[] = [
     body: `Results are recorded and the next Apocalypse begins automatically — fresh ${HOW_TO_PLAY_STARTING_CASH} Cash, no sign-up, no button. The world ends again right on schedule.`
   }
 ];
+
+// --- V2-5: escalation bands (backend apocalypseVolatility vocabulary) --------
+//
+// The backend's centralized V2-3 reporting bands (apocalypseVolatility.js):
+// NORMAL 0–40, ELEVATED 40–70, HIGH 70–90, EXTREME 90–100. These are the
+// shared escalation labels the UI shows; malformed progress resolves to
+// NORMAL exactly like the backend's safe default.
+
+export type EscalationBand = 'NORMAL' | 'ELEVATED' | 'HIGH' | 'EXTREME';
+
+export function escalationBand(apocalypsePercent: number): EscalationBand {
+  let p = 0;
+  if (typeof apocalypsePercent === 'number' && Number.isFinite(apocalypsePercent)) {
+    p = Math.min(100, Math.max(0, apocalypsePercent));
+  }
+  if (p < 40) return 'NORMAL';
+  if (p < 70) return 'ELEVATED';
+  if (p < 90) return 'HIGH';
+  return 'EXTREME';
+}
+
+export const ESCALATION_BAND_LABEL: Record<EscalationBand, string> = {
+  NORMAL: 'Escalation NORMAL · steady trading',
+  ELEVATED: 'Escalation ELEVATED · activity rising',
+  HIGH: 'Escalation HIGH · big swings, collapse window open',
+  EXTREME: 'Escalation EXTREME · maximum opportunity and danger'
+};
+
+// --- V2-2/V2-5: Power display + buy-cost preview ------------------------------
+//
+// The preview formula mirrors the backend powerDomain default
+// (buyPowerCost = 1 + floor(total / £125), GAME_POWER_BUY_COST_DIVISOR). It is
+// an INFORMATIONAL estimate only: the server recomputes the cost against the
+// locked trade total at commit time and its rejection is shown verbatim.
+
+export const BUY_POWER_COST_DIVISOR = 125;
+
+// Estimated Power cost of deploying `notional` GBP in ONE buy order. Matches
+// the backend formula for the resolved default divisor; a non-positive or
+// malformed notional has no meaningful preview (0).
+export function estimateBuyPowerCost(notional: number): number {
+  if (!(typeof notional === 'number' && Number.isFinite(notional)) || notional <= 0) return 0;
+  return 1 + Math.floor(notional / BUY_POWER_COST_DIVISOR);
+}
+
+// The fixed quick-buy ladder (V2-5 design). Labels are display-only; the
+// numeric notional drives the quantity calculation and the Power preview.
+export const QUICK_BUY_NOTIONALS: readonly number[] = [250, 500, 1000, 2500];
+
+export function quickBuyLabel(notional: number): string {
+  if (notional === 1000) return '£1K';
+  if (notional === 2500) return '£2.5K';
+  return `£${notional}`;
+}
+
+// Convert a requested notional into a trade quantity at the displayed price,
+// rounded DOWN to the ledger precision (8dp) so the estimated total never
+// exceeds the notional the player asked for. Returns null when no legal
+// quantity exists (dead/zero price, or a sub-precision result). The server
+// remains authoritative — this only builds the request payload.
+export function quantityForNotional(notional: number, price: number): number | null {
+  if (!Number.isFinite(notional) || notional <= 0) return null;
+  if (!Number.isFinite(price) || price <= 0) return null;
+  const raw = notional / price;
+  const quantity = Math.floor(raw * 1e8) / 1e8;
+  return quantity > 0 ? quantity : null;
+}
+
+// "+1 Power / 30s" from the server's own regen configuration — never a
+// hard-coded rate.
+export function formatPowerRegenRate(power: Pick<PowerState, 'secondsPerPoint'>): string {
+  const seconds = Math.round(power.secondsPerPoint);
+  return `+1 Power / ${seconds}s`;
+}
+
+// Seconds until the next regeneration point, derived from the server's
+// nextPointAt. Returns null when Power is full (no next point) or the hint is
+// unavailable; clamps clock skew to 0.
+export function powerSecondsToNextPoint(
+  power: Pick<PowerState, 'current' | 'max' | 'nextPointAt'>,
+  nowMs: number
+): number | null {
+  if (power.current >= power.max) return null;
+  if (power.nextPointAt === null) return null;
+  const target = Date.parse(power.nextPointAt);
+  if (!Number.isFinite(target)) return null;
+  return Math.max(0, Math.ceil((target - nowMs) / 1000));
+}
+
+// Player-facing regeneration hint: "next +1 in 12s" while charging, "Power
+// full" at max, "" when unknown.
+export function formatPowerNextHint(
+  power: Pick<PowerState, 'current' | 'max' | 'nextPointAt'>,
+  nowMs: number
+): string {
+  if (power.current >= power.max) return 'Power full';
+  const seconds = powerSecondsToNextPoint(power, nowMs);
+  return seconds === null ? '' : `next +1 in ${seconds}s`;
+}
+
+// --- V2-2/V2-5: open positions ------------------------------------------------
+
+// The backend position limit (V2-2 gate): at most 3 distinct LIVE positions.
+export const MAX_OPEN_POSITIONS = 3;
+
+// Live positions are holdings with quantity > 0 whose coin has NOT collapsed
+// (a collapsed holding prices at exactly £0 and frees its slot, matching the
+// backend evaluatePositionLimit rule).
+export function openLivePositionCount(
+  holdings: ReadonlyArray<Pick<RoundHolding, 'quantity' | 'currentPrice'>>
+): number {
+  return holdings.filter((holding) => holding.quantity > 0 && holding.currentPrice > 0).length;
+}
+
+// --- V2-5: quick-buy gating -----------------------------------------------------
+//
+// Every quick-buy control passes this pure gate before it can fire. The first
+// blocking reason is surfaced verbatim on the disabled control; a null result
+// means the buy may proceed to confirmation. The server still validates
+// everything authoritatively at commit time — this gate exists so a player is
+// never offered a tap that can only fail.
+
+export interface QuickBuyGate {
+  authenticated: boolean;
+  /** Server-owned participant for the live cycle has synced. */
+  joined: boolean;
+  lifecycle: LifecyclePhase;
+  connection: ConnectionState;
+  /** The coin being bought is collapsed (dead coins can never be bought). */
+  collapsed: boolean;
+  /** Authoritative round Cash (displayRoundCash). */
+  cash: number;
+  /** Effective Power, or null when the Power view has not synced. */
+  power: number | null;
+  /** Live open-position count (openLivePositionCount). */
+  openPositions: number;
+  /** The player already holds this coin live (adding is allowed). */
+  alreadyOwned: boolean;
+  notional: number;
+  price: number;
+}
+
+export type QuickBuyBlockReason =
+  | 'not-authenticated'
+  | 'syncing'
+  | 'settling'
+  | 'completed'
+  | 'loading'
+  | 'stale'
+  | 'collapsed'
+  | 'power-unknown'
+  | 'insufficient-cash'
+  | 'insufficient-power'
+  | 'position-limit'
+  | null;
+
+export function quickBuyBlockReason(gate: QuickBuyGate): QuickBuyBlockReason {
+  if (!gate.authenticated) return 'not-authenticated';
+  if (!gate.joined) return 'syncing';
+  if (gate.lifecycle === 'SETTLING') return 'settling';
+  if (gate.lifecycle === 'COMPLETED') return 'completed';
+  if (gate.lifecycle === 'LOADING') return 'loading';
+  if (gate.connection !== 'live') return 'stale';
+  if (gate.collapsed) return 'collapsed';
+  if (quantityForNotional(gate.notional, gate.price) === null) return 'collapsed';
+  if (gate.power === null) return 'power-unknown';
+  if (gate.notional > gate.cash) return 'insufficient-cash';
+  if (estimateBuyPowerCost(gate.notional) > gate.power) return 'insufficient-power';
+  if (!gate.alreadyOwned && gate.openPositions >= MAX_OPEN_POSITIONS) return 'position-limit';
+  return null;
+}
+
+export const QUICK_BUY_BLOCK_LABEL: Record<Exclude<QuickBuyBlockReason, null>, string> = {
+  'not-authenticated': 'Sign in to trade',
+  syncing: 'Syncing your position — one moment',
+  settling: 'Market frozen — calculating the damage',
+  completed: 'This apocalypse has ended',
+  loading: 'Syncing game state…',
+  stale: 'Connection stale — refusing to trade on old data',
+  collapsed: 'Coin collapsed to £0 — cannot be bought',
+  'power-unknown': 'Syncing Power — one moment',
+  'insufficient-cash': 'Not enough Cash',
+  'insufficient-power': 'Not enough Power',
+  'position-limit': `Position limit reached (${MAX_OPEN_POSITIONS} open) — sell one first`
+};
+
+// --- V2-5: signal presentation -------------------------------------------------
+//
+// Phase, momentum, movement and risk are ALWAYS conveyed by explicit text;
+// colour only reinforces. These helpers single-source the words.
+
+export function formatRecentChangePct(pct: number | null): string {
+  if (pct === null || !Number.isFinite(pct)) return '—';
+  return `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`;
+}
+
+// A text direction marker so movement never depends on colour alone.
+export function momentumArrow(momentum: 'UP' | 'DOWN' | 'FLAT'): string {
+  if (momentum === 'UP') return '▲ UP';
+  if (momentum === 'DOWN') return '▼ DOWN';
+  return '◆ FLAT';
+}
+
+// Short personality line per gameplay archetype (the public roster ids).
+export const ARCHETYPE_PERSONALITY: Record<string, string> = {
+  ZIP: 'fast, small swings',
+  MOON: 'steady bread-and-butter cycles',
+  BULL: 'medium swing trading',
+  HODL: 'slow cycles, big swings',
+  DEGEN: 'wild and unpredictable',
+  RUG: 'extreme opportunity and risk'
+};
+
+export function archetypePersonality(archetype: string): string {
+  return ARCHETYPE_PERSONALITY[archetype] ?? 'cyclical trader';
+}
+
+// "~3–5 min cycles · ±8–15% swings" from the public typical ranges.
+export function formatTypicalProfile(
+  coin: Pick<MarketSignalCoin, 'typicalCycleMinutes' | 'typicalSwingPct'>
+): string {
+  if (!coin.typicalCycleMinutes || !coin.typicalSwingPct) return '';
+  const [cycleMin, cycleMax] = coin.typicalCycleMinutes;
+  const [swingMin, swingMax] = coin.typicalSwingPct;
+  return `~${cycleMin}–${cycleMax} min cycles · ±${swingMin}–${swingMax}% swings`;
+}
+
+// Signed percentage with an explicit sign, e.g. "+13.6%" / "-2.4%".
+export function formatSignedPct(pct: number | null): string {
+  if (pct === null || !Number.isFinite(pct)) return '—';
+  return `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+}

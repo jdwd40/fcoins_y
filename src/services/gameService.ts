@@ -29,12 +29,38 @@ export interface GameState {
 
 // --- Core 4 round-state contracts ------------------------------------------
 
+// V2-2 persistent Power view (backend gameRoundService.getParticipantRoundState
+// — the single participant builder behind join, trade and participant reads).
+// `current` is the lazily reconciled effective Power at `asOf`; `nextPointAt`
+// is the server-computed instant the next regeneration point lands (null when
+// Power is full). The UI previews costs and regen from these fields but the
+// server remains authoritative for every spend.
+export interface PowerState {
+  current: number;
+  max: number;
+  regenMsPerPoint: number;
+  secondsPerPoint: number;
+  /** ISO 8601 instant the next +1 lands, or null when Power is full. */
+  nextPointAt: string | null;
+  storedPower: number;
+  powerUpdatedAt: string;
+  asOf: string;
+}
+
 export interface RoundHolding {
   coinId: number;
   symbol: string;
   quantity: number;
+  /** V2-2: total remaining cost basis (GBP) for the open quantity. */
+  costBasis: number;
+  /** V2-2: weighted average entry price; null for a zero-quantity row. */
+  averageEntryPrice: number | null;
   currentPrice: number;
   currentValue: number;
+  /** V2-2: currentValue - costBasis, server-rounded to 2dp. */
+  unrealizedPnl: number;
+  /** V2-2: P&L as a percentage of cost basis; null when basis is £0. */
+  unrealizedPnlPct: number | null;
 }
 
 export interface RoundParticipant {
@@ -51,6 +77,8 @@ export interface RoundParticipant {
   peakWealth: number;
   status: 'ACTIVE' | 'FINALIZED';
   finalCash: number | null;
+  /** V2-2 persistent Power, reconciled by the server at read time. */
+  power: PowerState;
   holdings: RoundHolding[];
 }
 
@@ -169,6 +197,48 @@ export interface PlayerRoundEconomy {
   cashEvents: CashEvent[];
 }
 
+// --- V2-1/V2-3: public market signals ----------------------------------------
+//
+// Public GET /game/market-signals (backend marketSignalsService): the coarse,
+// imperfect signal set for every active catalogue coin — the exact same shape
+// the bots and the simulator's legal strategies act on. No seed, no anchors,
+// no future phase/peak/collapse information can be present; the backend builds
+// this payload from the redacted public-signal allowlist.
+//
+// Dead (collapsed) coins carry a reduced payload: currentPrice 0, phase DEAD,
+// recentChangePct/typical ranges null and collapseRisk DEAD.
+
+export type MarketPhase = 'DIP' | 'RISE' | 'BOOM' | 'FALL' | 'DEAD';
+export type MarketMomentum = 'UP' | 'DOWN' | 'FLAT';
+export type CollapseRiskLevel = 'STABLE' | 'SHAKY' | 'DANGER' | 'CRITICAL' | 'DEAD';
+
+export interface MarketSignalCoin {
+  coinId: number;
+  name: string;
+  symbol: string;
+  /** Gameplay archetype id: ZIP | MOON | BULL | HODL | DEGEN | RUG. */
+  archetype: string;
+  currentPrice: number;
+  /** Percentage move over the backend's public 60s lookback; null when DEAD. */
+  recentChangePct: number | null;
+  phase: MarketPhase;
+  momentum: MarketMomentum;
+  /** Approximate [min, max] minutes per cycle for this archetype; null when DEAD. */
+  typicalCycleMinutes: [number, number] | null;
+  /** Approximate [min, max] typical swing percent; null when DEAD. */
+  typicalSwingPct: [number, number] | null;
+  /** V2-3 coarse, imperfect collapse-risk level. */
+  collapseRisk: CollapseRiskLevel;
+  dead: boolean;
+}
+
+export interface MarketSignals {
+  apocalypseId: string;
+  apocalypsePercent: number;
+  serverTime: string;
+  coins: MarketSignalCoin[];
+}
+
 // --- Errors -----------------------------------------------------------------
 
 // Domain/API error carrying the backend's HTTP status and user-facing
@@ -263,6 +333,28 @@ export function parseGameState(payload: unknown): GameState {
   };
 }
 
+function requireNullableFiniteNumber(payload: Record<string, unknown>, field: string, contract: string): void {
+  if (payload[field] !== null && (typeof payload[field] !== 'number' || !Number.isFinite(payload[field] as number))) {
+    throw new Error(`Invalid ${contract} response: ${field} must be null or a finite number`);
+  }
+}
+
+// V2-2 Power view: every participant payload (join, trade, economy read) is
+// built by the same backend getParticipantRoundState, so the power block is a
+// hard contract — a payload without it is not a V2 participant.
+function parsePowerState(payload: unknown, contract: string): PowerState {
+  if (!isRecord(payload)) throw new Error(`Invalid ${contract} response: power must be an object`);
+  for (const field of ['current', 'max', 'regenMsPerPoint', 'secondsPerPoint', 'storedPower'] as const) {
+    requireFiniteNumber(payload, field, contract);
+  }
+  if (payload.nextPointAt !== null && typeof payload.nextPointAt !== 'string') {
+    throw new Error(`Invalid ${contract} response: power.nextPointAt must be null or a string`);
+  }
+  requireString(payload, 'powerUpdatedAt', contract);
+  requireString(payload, 'asOf', contract);
+  return payload as unknown as PowerState;
+}
+
 export function parseRoundParticipant(payload: unknown): RoundParticipant {
   const contract = 'participant';
   if (!isRecord(payload)) throw new Error(`Invalid ${contract} response: expected a JSON object`);
@@ -281,6 +373,7 @@ export function parseRoundParticipant(payload: unknown): RoundParticipant {
   if (payload.finalCash !== null && typeof payload.finalCash !== 'number') {
     throw new Error(`Invalid ${contract} response: finalCash must be null or a number`);
   }
+  parsePowerState(payload.power, contract);
   if (!Array.isArray(payload.holdings)) {
     throw new Error(`Invalid ${contract} response: holdings must be an array`);
   }
@@ -288,9 +381,11 @@ export function parseRoundParticipant(payload: unknown): RoundParticipant {
     if (!isRecord(holding)) throw new Error(`Invalid ${contract} response: holding must be an object`);
     requireFiniteNumber(holding, 'coinId', contract);
     requireString(holding, 'symbol', contract);
-    for (const field of ['quantity', 'currentPrice', 'currentValue'] as const) {
+    for (const field of ['quantity', 'costBasis', 'currentPrice', 'currentValue', 'unrealizedPnl'] as const) {
       requireFiniteNumber(holding, field, contract);
     }
+    requireNullableFiniteNumber(holding, 'averageEntryPrice', contract);
+    requireNullableFiniteNumber(holding, 'unrealizedPnlPct', contract);
   }
   return payload as unknown as RoundParticipant;
 }
@@ -433,6 +528,90 @@ export function parsePlayerRoundEconomy(payload: unknown): PlayerRoundEconomy {
   return { participant, cashEvents };
 }
 
+// --- V2-1/V2-3 market signals parser -------------------------------------------
+
+const MARKET_PHASES: readonly MarketPhase[] = ['DIP', 'RISE', 'BOOM', 'FALL', 'DEAD'];
+const MARKET_MOMENTA: readonly MarketMomentum[] = ['UP', 'DOWN', 'FLAT'];
+const COLLAPSE_RISK_LEVELS: readonly CollapseRiskLevel[] = ['STABLE', 'SHAKY', 'DANGER', 'CRITICAL', 'DEAD'];
+
+function parseTypicalRange(value: unknown, field: string, contract: string): void {
+  if (value === null) return;
+  if (!Array.isArray(value) || value.length !== 2) {
+    throw new Error(`Invalid ${contract} response: ${field} must be null or a [min, max] pair`);
+  }
+  for (const bound of value) {
+    if (typeof bound !== 'number' || !Number.isFinite(bound)) {
+      throw new Error(`Invalid ${contract} response: ${field} bounds must be finite numbers`);
+    }
+  }
+}
+
+function parseMarketSignalCoin(payload: unknown, contract: string): MarketSignalCoin {
+  if (!isRecord(payload)) throw new Error(`Invalid ${contract} response: coin must be an object`);
+  requireFiniteNumber(payload, 'coinId', contract);
+  requireString(payload, 'name', contract);
+  requireString(payload, 'symbol', contract);
+  requireString(payload, 'archetype', contract);
+  requireFiniteNumber(payload, 'currentPrice', contract);
+  requireNullableFiniteNumber(payload, 'recentChangePct', contract);
+  if (!MARKET_PHASES.includes(payload.phase as MarketPhase)) {
+    throw new Error(`Invalid ${contract} response: unknown phase ${JSON.stringify(payload.phase)}`);
+  }
+  if (!MARKET_MOMENTA.includes(payload.momentum as MarketMomentum)) {
+    throw new Error(`Invalid ${contract} response: unknown momentum ${JSON.stringify(payload.momentum)}`);
+  }
+  parseTypicalRange(payload.typicalCycleMinutes, 'typicalCycleMinutes', contract);
+  parseTypicalRange(payload.typicalSwingPct, 'typicalSwingPct', contract);
+  if (!COLLAPSE_RISK_LEVELS.includes(payload.collapseRisk as CollapseRiskLevel)) {
+    throw new Error(`Invalid ${contract} response: unknown collapseRisk ${JSON.stringify(payload.collapseRisk)}`);
+  }
+  requireBoolean(payload, 'dead', contract);
+  // Dead-coin reduced-payload consistency (backend marketSignalsService): a
+  // collapsed coin is exactly £0 with the DEAD phase/risk markers; a live
+  // coin never carries them.
+  if (payload.dead === true && (payload.phase !== 'DEAD' || payload.collapseRisk !== 'DEAD')) {
+    throw new Error(`Invalid ${contract} response: a dead coin must carry the DEAD phase and risk markers`);
+  }
+  if (payload.dead === false && (payload.phase === 'DEAD' || payload.collapseRisk === 'DEAD')) {
+    throw new Error(`Invalid ${contract} response: a live coin cannot carry the DEAD phase or risk markers`);
+  }
+  // Build the result from contract fields only: any legacy/extra keys — a
+  // seed, future phase timing, collapse schedule hints — are stripped at the
+  // boundary and can never reach the UI.
+  return {
+    coinId: payload.coinId as number,
+    name: payload.name as string,
+    symbol: payload.symbol as string,
+    archetype: payload.archetype as string,
+    currentPrice: payload.currentPrice as number,
+    recentChangePct: payload.recentChangePct as number | null,
+    phase: payload.phase as MarketPhase,
+    momentum: payload.momentum as MarketMomentum,
+    typicalCycleMinutes: payload.typicalCycleMinutes as [number, number] | null,
+    typicalSwingPct: payload.typicalSwingPct as [number, number] | null,
+    collapseRisk: payload.collapseRisk as CollapseRiskLevel,
+    dead: payload.dead as boolean
+  };
+}
+
+export function parseMarketSignals(payload: unknown): MarketSignals {
+  const contract = 'market signals';
+  if (!isRecord(payload)) throw new Error(`Invalid ${contract} response: expected a JSON object`);
+  requireString(payload, 'apocalypseId', contract);
+  requireFiniteNumber(payload, 'apocalypsePercent', contract);
+  requireString(payload, 'serverTime', contract);
+  if (!Array.isArray(payload.coins)) {
+    throw new Error(`Invalid ${contract} response: coins must be an array`);
+  }
+  const coins = (payload.coins as unknown[]).map((coin) => parseMarketSignalCoin(coin, contract));
+  return {
+    apocalypseId: payload.apocalypseId as string,
+    apocalypsePercent: Math.min(100, Math.max(0, payload.apocalypsePercent as number)),
+    serverTime: payload.serverTime as string,
+    coins
+  };
+}
+
 // --- HTTP plumbing ------------------------------------------------------------
 
 async function parseJsonSafe(response: Response): Promise<unknown> {
@@ -564,4 +743,13 @@ export async function getMyRoundEconomy(
 ): Promise<PlayerRoundEconomy> {
   const query = typeof limit === 'number' ? `?limit=${encodeURIComponent(String(limit))}` : '';
   return gameFetch(`/game/participant${query}`, { token, signal }, parsePlayerRoundEconomy);
+}
+
+// --- V2-1/V2-3: public market signals ------------------------------------------
+
+// Public coarse market signals for the live round. The payload belongs to one
+// apocalypse (apocalypseId) — callers adopt it only for the live cycle so a
+// settlement hand-off can never show the previous round's market as current.
+export async function getMarketSignals(signal?: AbortSignal): Promise<MarketSignals> {
+  return gameFetch('/game/market-signals', { signal }, parseMarketSignals);
 }

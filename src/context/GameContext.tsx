@@ -11,6 +11,7 @@ import {
   GameApiError,
   getGameState,
   getLiveLeaderboard,
+  getMarketSignals,
   getMyRoundEconomy,
   joinGame,
   buyGameTrade,
@@ -21,6 +22,7 @@ import type {
   GameState,
   LeaderboardEntry,
   LiveLeaderboard,
+  MarketSignals,
   RoundParticipant
 } from '../services/gameService.ts';
 import { SessionExpiredError } from '../services/transactionService.ts';
@@ -82,6 +84,12 @@ interface GameContextValue {
   cashEvents: CashEvent[] | null;
   /** Last activity-feed failure message; the last good feed is kept. */
   cashEventsError: string | null;
+  /** V2-1/V2-3 public market signals for the LIVE cycle (phase, momentum,
+   *  archetype, typical ranges, collapse risk). null = not synced yet; the
+   *  previous round's signals are never adopted across a rollover. */
+  signals: MarketSignals | null;
+  /** Last market-signals failure message; the last good payload is kept. */
+  signalsError: string | null;
   joined: boolean;
   trade: (side: TradeSide, coinId: number, amount: number) => Promise<void>;
   /** Force an immediate resync (focus/visibility/post-trade/error recovery). */
@@ -111,6 +119,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [myParticipant, setMyParticipant] = useState<RoundParticipant | null>(null);
   const [cashEvents, setCashEvents] = useState<CashEvent[] | null>(null);
   const [cashEventsError, setCashEventsError] = useState<string | null>(null);
+  const [signals, setSignals] = useState<MarketSignals | null>(null);
+  const [signalsError, setSignalsError] = useState<string | null>(null);
   // Tick that only drives DERIVED display state (staleness); never a clock.
   const [nowTick, setNowTick] = useState(() => Date.now());
 
@@ -131,12 +141,14 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     inFlight.current = true;
     try {
       const token = getAuthToken();
-      const [stateResult, boardResult, economyResult] = await Promise.allSettled([
+      const [stateResult, boardResult, economyResult, signalsResult] = await Promise.allSettled([
         getGameState(),
         getLiveLeaderboard(),
         // Backend #18 player economy: authoritative participant Cash + recent
         // FEE/TAX/EVENT ledger rows. Authenticated — skipped when logged out.
-        token ? getMyRoundEconomy(token, { limit: CASH_EVENT_FEED_LIMIT }) : Promise.resolve(null)
+        token ? getMyRoundEconomy(token, { limit: CASH_EVENT_FEED_LIMIT }) : Promise.resolve(null),
+        // V2-1/V2-3 public market signals: same shared poll, no auth required.
+        getMarketSignals()
       ]);
 
       if (stateResult.status === 'fulfilled') {
@@ -211,6 +223,26 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           );
         }
       }
+
+      if (signalsResult.status === 'fulfilled') {
+        const payload = signalsResult.value;
+        const liveId = stateResult.status === 'fulfilled'
+          ? stateResult.value.apocalypseId
+          : previousCycleRef.current;
+        // Adopt signals only for the LIVE apocalypse — during the settlement
+        // hand-off a freshly rolled payload can briefly precede the state
+        // read, and the previous round's market must never render as current.
+        if (liveId && payload.apocalypseId === liveId) {
+          setSignals(payload);
+          setSignalsError(null);
+        }
+      } else {
+        // Keep the last good signals; the connection/stale machinery and this
+        // message report the problem. No fake market data is ever fabricated.
+        setSignalsError(
+          signalsResult.reason instanceof Error ? signalsResult.reason.message : 'Market signals unavailable'
+        );
+      }
     } finally {
       inFlight.current = false;
     }
@@ -260,6 +292,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       setMyParticipant(null); // round state never carries across apocalypses
       setCashEvents(null); // drain history is per-cycle too
       setCashEventsError(null);
+      setSignals(null); // market signals belong to the completed round
+      setSignalsError(null);
       economySeenRef.current = null; // the new round re-baselines the feed
     }
     previousCycleRef.current = currentId;
@@ -389,6 +423,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     myEntry,
     cashEvents,
     cashEventsError,
+    signals,
+    signalsError,
     joined,
     trade,
     syncNow,
