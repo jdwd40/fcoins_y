@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useGame } from '../context/GameContext.tsx';
 import { RoundTradePanel } from './RoundTradePanel.tsx';
+import { CoinSparkline, DeadCoinSparkline } from './CoinSparkline.tsx';
 import { SessionExpiredError, formatCurrency } from '../services/transactionService.ts';
 import { GameApiError } from '../services/gameService.ts';
 import type { MarketSignalCoin, RoundHolding } from '../services/gameService.ts';
@@ -44,7 +45,7 @@ interface CoinSignalCardProps {
 export function CoinSignalCard({ coin, holding }: CoinSignalCardProps) {
   const { user, handleSessionExpired } = useAuth();
   const { showToast } = useToast();
-  const { joined, myEntry, myParticipant, lifecycle, connection, trade } = useGame();
+  const { joined, myEntry, myParticipant, lifecycle, connection, trade, gameState } = useGame();
 
   const [confirmNotional, setConfirmNotional] = useState<number | null>(null);
   const [confirmSell, setConfirmSell] = useState(false);
@@ -178,6 +179,7 @@ export function CoinSignalCard({ coin, holding }: CoinSignalCardProps) {
         <p className="text-xs text-ink-dim mb-3">
           This coin collapsed to £0.00 and stays dead for the rest of the apocalypse. It cannot be bought.
         </p>
+        <DeadCoinSparkline symbol={coin.symbol} />
         {owned && holding && (
           <div className="border border-oxblood rounded-lg p-3 bg-paper-alt">
             <div className="label text-oxblood mb-1">Position destroyed</div>
@@ -229,6 +231,7 @@ export function CoinSignalCard({ coin, holding }: CoinSignalCardProps) {
     return (
       <article className="game-card owned-card" aria-label={`${coin.name} — your position`}>
         {cardHeader}
+        <CoinSparkline coin={coin} averageEntryPrice={holding.averageEntryPrice} cycleStartTime={gameState?.startTime ?? null} />
         <div className="position-economics" aria-label={`Position ${pnlWord}`}>
           <div className="grid grid-cols-2 gap-2 mb-2">
             <div>
@@ -335,6 +338,7 @@ export function CoinSignalCard({ coin, holding }: CoinSignalCardProps) {
   return (
     <article className="game-card" aria-label={`${coin.name} — available to buy`}>
       {cardHeader}
+      <CoinSparkline coin={coin} cycleStartTime={gameState?.startTime ?? null} />
       {signalBlock}
 
       <div className="mt-3">

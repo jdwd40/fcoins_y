@@ -22,6 +22,10 @@ const playerStatusStrip = readFileSync(new URL('../src/components/PlayerStatusSt
 const leaderboardPressure = readFileSync(new URL('../src/components/LeaderboardPressure.tsx', import.meta.url), 'utf8');
 const gameMarketGrid = readFileSync(new URL('../src/components/GameMarketGrid.tsx', import.meta.url), 'utf8');
 const coinSignalCard = readFileSync(new URL('../src/components/CoinSignalCard.tsx', import.meta.url), 'utf8');
+const sparklineUtil = readFileSync(new URL('../src/utils/sparkline.ts', import.meta.url), 'utf8');
+const priceHistoryService = readFileSync(new URL('../src/services/priceHistoryService.ts', import.meta.url), 'utf8');
+const coinSparkline = readFileSync(new URL('../src/components/CoinSparkline.tsx', import.meta.url), 'utf8');
+const useCoinSparkline = readFileSync(new URL('../src/hooks/useCoinSparkline.ts', import.meta.url), 'utf8');
 
 // --- Core Crypto Chaos surface ------------------------------------------
 // V2-5: the primary screen is the mobile-first game — compact top bar,
@@ -475,6 +479,73 @@ assert.match(chart, /30D/);
 assert.match(chart, /ALL/);
 assert.match(chart, /aria-pressed/);
 assert.match(chart, /role="group"/);
+
+// --- Issue #12: compact dip→boom→dip sparklines on the V2 cards ----------------
+// Every card variant carries the sparkline: live cards fetch through the
+// shared service; dead cards get a deterministic flatline and never fetch.
+assert.match(coinSignalCard, /<CoinSparkline coin=\{coin\} cycleStartTime=\{gameState\?\.startTime \?\? null\} \/>/);
+assert.match(coinSignalCard, /<CoinSparkline coin=\{coin\} averageEntryPrice=\{holding\.averageEntryPrice\} cycleStartTime=\{gameState\?\.startTime \?\? null\} \/>/);
+assert.match(coinSignalCard, /<DeadCoinSparkline symbol=\{coin\.symbol\} \/>/);
+// No heavyweight chart library is instantiated on compact cards.
+assert.doesNotMatch(coinSparkline, /chart\.js|react-chartjs-2/);
+assert.doesNotMatch(coinSignalCard, /chart\.js|react-chartjs-2/);
+// Tiny SVG implementation with an accessible text equivalent; no axes,
+// legend or technical-analysis clutter.
+assert.match(coinSparkline, /<svg/);
+assert.match(coinSparkline, /role="img"/);
+assert.match(coinSparkline, /aria-label=\{ariaLabel\}/);
+assert.match(coinSparkline, /describeSparkline/);
+assert.match(coinSparkline, /preserveAspectRatio="none"/);
+assert.match(coinSparkline, /vectorEffect="non-scaling-stroke"/);
+assert.doesNotMatch(coinSparkline, /<(XAxis|YAxis|Legend|Axis)\b/);
+// Loading/empty/error states are compact text rows — trading stays visible.
+assert.match(coinSparkline, /Loading price history/);
+assert.match(coinSparkline, /Price history unavailable — trading is unaffected/);
+assert.match(coinSparkline, /No recent history yet/);
+// Dead presentation never implies recovery or buyability.
+assert.match(coinSparkline, /flatlined at £0\.00 — collapsed and cannot be bought/);
+assert.match(coinSparkline, /deadFlatlinePath/);
+// The window mapping and geometry are pure, documented helpers.
+assert.match(sparklineUtil, /export function sparklineRangeForCoin/);
+assert.match(sparklineUtil, /SPARKLINE_CYCLES_TARGET = 3/);
+assert.match(sparklineUtil, /ARCHETYPE_MAX_CYCLE_MINUTES/);
+assert.match(sparklineUtil, /export function toSparklineSeries/);
+assert.match(sparklineUtil, /export function clipPointsSince/);
+assert.match(sparklineUtil, /export function buildSparklinePath/);
+assert.match(sparklineUtil, /export function entryMarkerY/);
+assert.match(sparklineUtil, /export function deadFlatlinePath/);
+assert.match(sparklineUtil, /export function describeSparkline/);
+// The central service uses the authoritative per-coin endpoint only (never
+// the aggregate market history), dedupes concurrent requests, caches for the
+// backend's 10s TTL, refreshes on one shared ~12s cadence, aborts on
+// unmount, and keeps the last good line on refresh failures.
+assert.match(priceHistoryService, /\/coins\/\$\{entry\.coinId\}\/price-history\?range=\$\{entry\.range\}/);
+assert.match(priceHistoryService, /HISTORY_CACHE_TTL_MS = 10_000/);
+assert.match(priceHistoryService, /HISTORY_REFRESH_MS = 12_000/);
+assert.match(priceHistoryService, /entry\.inflight !== null/); // dedupe guard
+assert.match(priceHistoryService, /entry\.inflight\?\.abort\(\)/); // unmount safety
+assert.match(priceHistoryService, /Stale-response guard/);
+assert.match(priceHistoryService, /stale-while-revalidate/);
+assert.doesNotMatch(priceHistoryService, /market\/price-history/);
+// Cards bind through the hook — no per-card fetch or timer anywhere.
+assert.match(useCoinSparkline, /useSyncExternalStore/);
+assert.match(useCoinSparkline, /coinPriceHistory\.subscribe/);
+assert.doesNotMatch(coinSparkline, /\bfetch\(|setInterval/);
+assert.doesNotMatch(useCoinSparkline, /\bfetch\(|setInterval/);
+// Sparkline styles: fixed compact height, full width, direction colours and
+// the dashed average-entry marker; no new animation on the V2-5 surface.
+assert.match(styles, /\.coin-sparkline/);
+assert.match(styles, /\.sparkline-svg \{[\s\S]*?height: 44px/);
+assert.match(styles, /\.sparkline-up path \{ stroke: var\(--verdigris\)/);
+assert.match(styles, /\.sparkline-down path \{ stroke: var\(--oxblood\)/);
+assert.match(styles, /\.sparkline-entry \{/);
+assert.match(styles, /\.sparkline-state \{/);
+
+// Sparkline points are clipped to the LIVE apocalypse start — prices reset
+// to a persisted baseline at every cycle boundary, so a trailing window must
+// never render the previous round's dead regime as current movement.
+assert.match(coinSparkline, /clipPointsSince\(points, sinceMs\)/);
+assert.match(coinSparkline, /cycleStartTime/);
 
 // --- Centralised API base ------------------------------------------------
 // No source file outside services/apiConfig.ts may hard-code the deployed

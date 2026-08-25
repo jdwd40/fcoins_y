@@ -478,6 +478,55 @@
 
   .signal-facts { display: grid; gap: 0.45rem; }
 
+  /* Issue #12: compact dip→boom→dip sparkline. A fixed-height, full-width
+     SVG strip (no axes/legend) with a small caption row; loading/empty/error
+     states are single text lines so the trade controls never move far and
+     never disappear. No animation — reduced-motion restraint stands. */
+  .coin-sparkline { margin-bottom: 0.75rem; min-width: 0; }
+  .sparkline-svg {
+    display: block;
+    width: 100%;
+    height: 44px;
+    max-width: 100%;
+  }
+  .sparkline-svg path {
+    stroke-width: 1.75;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+  .sparkline-up path { stroke: var(--verdigris); }
+  .sparkline-down path { stroke: var(--oxblood); }
+  .sparkline-flat path { stroke: var(--fg-mute); }
+  .coin-sparkline-dead .sparkline-svg path { stroke: var(--oxblood); }
+  .sparkline-entry {
+    stroke: var(--gold);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+  }
+  .sparkline-caption {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.15rem 0.5rem;
+    margin-top: 0.2rem;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: var(--fg-mute);
+  }
+  .sparkline-change { font-weight: 700; }
+  .sparkline-change-up { color: var(--verdigris); }
+  .sparkline-change-down { color: var(--oxblood); }
+  .sparkline-change-flat { color: var(--fg-mute); }
+  .sparkline-state {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: var(--fg-mute);
+  }
+
   /* Phase/risk chips: the WORD carries the meaning; colour only reinforces. */
   .signal-chip {
     display: inline-flex;
