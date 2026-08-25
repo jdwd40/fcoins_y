@@ -80,6 +80,27 @@ The backend progress file is authoritative for the complete V2-1 file list, simu
 
 The backend progress file is authoritative for the complete V2-2 file list, tuning evidence, simulation configuration and metrics. The only correction was a test-fixture duplicate-selection bug; no service code was changed for it.
 
-## V2-3 — NOT STARTED
+## V2-3 — COMPLETE (backend-led stage)
 
-The next authorised work is backend-led V2-3 apocalypse escalation, collapse-risk signals and passive-economy tuning. UI work remains prohibited until V2-1 through V2-4 gates pass.
+- Backend implementation SHA: `d583d56b2371b04ae7dd5c5dfc3e124b01c5e347`
+- Frontend SHA: `cc578d52ce075d5237868c76e58921288ecaa3ee` (unchanged; UI still prohibited)
+- Escalation bands: NORMAL 0–40%, ELEVATED 40–70%, HIGH 70–90%, EXTREME 90–100%; shared Core 2 curve preserved at 1.0→3.0, exponent 2.
+- Collapse risk vocabulary: STABLE, SHAKY, DANGER, CRITICAL; dead coins expose DEAD; no hidden schedule fields.
+- Selected V2 economy configuration: explicit `GAME_ECONOMY_SCALE=0.25` in the study; default 1 preserves Core 7 compatibility.
+- Independent V2-3 gate: 30×24 consecutive rounds, all 11 criteria passed.
+- Median tick movement NORMAL→EXTREME: 2.09%→2.95%→4.14%→5.15%; equal-window swing 18.99%→51.60%.
+- Risk classifier: 22.71% versus 22.86% chance baseline over 5,760 samples.
+- DIP-BOOM median ROI 17.11%; RANDOM -5.69%; paired DIP-BOOM win rate 83.06%.
+- LATE_SELLER paired win rate 73.06%; OVERSTAYER 80.83%; HOLD_FOREVER median ROI -57.87%.
+- LATE_ENTRANT median ROI 24.66%, paired win rate versus RANDOM 84.58%.
+- V2 economy median debits £80.37/round; DIP-BOOM erased-gain rounds 0.18%.
+- Zero cash/basis/position invariant violations; 725,774 Power blocks and 149,679 position-limit blocks.
+- Independent focused V2-1/V2-2/V2-3 run: 15 suites / 199 tests passed.
+- K3 full backend run: 74 suites / 691 tests passed. Independent full rerun had the known `game-public-state-no-seed` timeout/deadlock baseline failure; it also failed isolated in the existing settlement/collapse path, outside V2-3 files.
+- No migration, production configuration, branch, service or data changes outside the V2 branch.
+
+The backend progress file is authoritative for the complete V2-3 file list, risk/economy design, simulation configuration and metrics. The economy-scale fixture correction pinned fresh cycle seeds; service code was unchanged.
+
+## V2-4 — NOT STARTED
+
+The next authorised work is backend-led adaptation of the existing Conservative, Momentum, Dip Buyer and Reckless bots. UI work remains prohibited until V2-4 passes.
