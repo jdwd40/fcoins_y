@@ -62,6 +62,24 @@ Begin with V2-1 planning and the shared deterministic cyclical-market/simulation
 
 The backend progress file is authoritative for the complete V2-1 file list, simulation configuration, metrics, K3 state and next action. Reconcile this frontend record against the backend copy if they differ.
 
-## V2-2 — NOT STARTED
+## V2-2 — COMPLETE (backend-led stage)
 
-The next authorised work is backend-led V2-2 Power, position limits and cost basis/P&L. UI work remains prohibited until V2-1 through V2-4 gates pass.
+- Backend implementation SHA: `84699449d71ecab305d331f17d95689eadbe942d`
+- Frontend SHA: `266d67878ab90124527d5e632b971d73a6f96c2a` (unchanged; no UI work permitted yet)
+- Final Power parameters: max 100, +1 per 30 seconds, buy cost `1 + floor(total / £125)`, maximum 3 open live positions.
+- Focused V2-2 suites: 5 suites / 67 tests passed.
+- Full backend suite: 70 suites / 654 tests passed.
+- Independent 40×24 multi-round Power gate: passed; 960 paired rounds per player.
+- DIP-BOOM vs RANDOM paired win rate: 82.60%; median ROI 14.31% vs RANDOM -7.81%; median paired advantage £2,253.78.
+- SPAM median ROI -4.07%, with 194,944 Power-blocked buys and 543 position-limit blocks.
+- LATE_ENTRANT median ROI 22.06%, paired win rate against RANDOM 85.52%; RETURNING mean round-start Power 39.95.
+- Zero accounting/position-limit violations and zero majority-starved rounds in the final study.
+- Anti-fragmentation twin test: whole deployment 18 Power versus fragmented deployment 20 Power.
+- No production branches, services or data changed. No UI work began.
+- Known Jest force-exit/open-handle warning remains; no V2-2 test failures remain.
+
+The backend progress file is authoritative for the complete V2-2 file list, tuning evidence, simulation configuration and metrics. The only correction was a test-fixture duplicate-selection bug; no service code was changed for it.
+
+## V2-3 — NOT STARTED
+
+The next authorised work is backend-led V2-3 apocalypse escalation, collapse-risk signals and passive-economy tuning. UI work remains prohibited until V2-1 through V2-4 gates pass.
