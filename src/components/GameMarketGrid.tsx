@@ -1,0 +1,81 @@
+import { useGame } from '../context/GameContext.tsx';
+import { CoinSignalCard } from './CoinSignalCard.tsx';
+
+// V2-5 market summary: every active gameplay coin as a large, scannable card
+// (owned positions first — the player's own economics lead), with collapsed
+// coins clearly separated below. Driven entirely by the shared GameContext
+// market-signals poll — no per-card timers or independent fetching.
+export function GameMarketGrid() {
+  const { signals, signalsError, lifecycle, myParticipant } = useGame();
+
+  if (signals === null) {
+    return (
+      <section aria-label="Market" className="paper-card p-6 text-center">
+        <div className="label mb-2">Market</div>
+        <p className="text-sm text-ink-dim">
+          {lifecycle === 'SETTLING'
+            ? 'Market frozen — calculating the damage. The next apocalypse starts automatically.'
+            : signalsError ?? 'Loading market signals…'}
+        </p>
+      </section>
+    );
+  }
+
+  const holdings = myParticipant?.holdings ?? [];
+  const holdingByCoinId = new Map(holdings.map((holding) => [holding.coinId, holding]));
+  const active = signals.coins
+    .filter((coin) => !coin.dead)
+    .sort((a, b) => {
+      // Owned positions lead — the player's economics come first; the rest
+      // keep the backend's stable catalogue order.
+      const aOwned = (holdingByCoinId.get(a.coinId)?.quantity ?? 0) > 0 ? 0 : 1;
+      const bOwned = (holdingByCoinId.get(b.coinId)?.quantity ?? 0) > 0 ? 0 : 1;
+      return aOwned - bOwned || a.coinId - b.coinId;
+    });
+  const dead = signals.coins.filter((coin) => coin.dead);
+
+  return (
+    <section aria-label="Market">
+      <div className="flex items-end justify-between mb-3">
+        <div>
+          <div className="label mb-1">Market</div>
+          <h2 className="font-display text-2xl font-bold tracking-tight text-ink">
+            {active.length} coins in play
+          </h2>
+        </div>
+        <span className="chip">Refreshes every poll</span>
+      </div>
+
+      {signalsError && (
+        <p className="text-[0.7rem] text-oxblood mb-3" role="status">
+          Market update failed — showing the last synced signals. {signalsError}
+        </p>
+      )}
+
+      <div className="game-grid">
+        {active.map((coin) => (
+          <CoinSignalCard
+            key={coin.coinId}
+            coin={coin}
+            holding={holdingByCoinId.get(coin.coinId) ?? null}
+          />
+        ))}
+      </div>
+
+      {dead.length > 0 && (
+        <div className="mt-6">
+          <div className="label mb-2 text-oxblood">Collapsed this apocalypse — dead coins cannot be bought</div>
+          <div className="game-grid">
+            {dead.map((coin) => (
+              <CoinSignalCard
+                key={coin.coinId}
+                coin={coin}
+                holding={holdingByCoinId.get(coin.coinId) ?? null}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}

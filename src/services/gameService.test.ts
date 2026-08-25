@@ -16,14 +16,17 @@ import {
   getCycleResults,
   getRecentLeaderboards,
   getMyRoundEconomy,
+  getMarketSignals,
   parseLiveLeaderboard,
   parseCycleResults,
+  parseMarketSignals,
   parseRecentLeaderboards,
   parseCashEvent,
   parsePlayerRoundEconomy,
+  parseRoundParticipant,
   isSettlementBusyError
 } from './gameService.ts';
-import type { GameState, RoundParticipant, LiveLeaderboard, CycleResults } from './gameService.ts';
+import type { GameState, PowerState, RoundHolding, RoundParticipant, LiveLeaderboard, CycleResults } from './gameService.ts';
 import { SessionExpiredError } from './transactionService.ts';
 
 const VALID_STATE: GameState = {
@@ -35,6 +38,29 @@ const VALID_STATE: GameState = {
   remainingMs: 900_000,
   apocalypsePercent: 50,
   serverTime: '2026-08-20T10:15:00.000Z'
+};
+
+const VALID_POWER: PowerState = {
+  current: 87,
+  max: 100,
+  regenMsPerPoint: 30000,
+  secondsPerPoint: 30,
+  nextPointAt: '2026-08-20T10:15:12.000Z',
+  storedPower: 86,
+  powerUpdatedAt: '2026-08-20T10:14:42.000Z',
+  asOf: '2026-08-20T10:15:00.000Z'
+};
+
+const VALID_HOLDING: RoundHolding = {
+  coinId: 2,
+  symbol: 'JDC',
+  quantity: 0.004,
+  costBasis: 10,
+  averageEntryPrice: 2500,
+  currentPrice: 2500,
+  currentValue: 10,
+  unrealizedPnl: 0,
+  unrealizedPnlPct: 0
 };
 
 const VALID_PARTICIPANT: RoundParticipant = {
@@ -51,6 +77,7 @@ const VALID_PARTICIPANT: RoundParticipant = {
   peakWealth: 10000,
   status: 'ACTIVE',
   finalCash: null,
+  power: VALID_POWER,
   holdings: []
 };
 
@@ -361,7 +388,7 @@ test('fractional round trades send the exact decimal quantity — never integer-
       currentCash: 9990,
       holdingsValue: 10,
       wealth: 10000,
-      holdings: [{ coinId: 2, symbol: 'JDC', quantity: 0.004, currentPrice: 2500, currentValue: 10 }]
+      holdings: [{ ...VALID_HOLDING }]
     },
     peakWealth: 10000
   };
@@ -768,4 +795,139 @@ test('an expired session on the economy endpoint maps 401 to SessionExpiredError
   } finally {
     restore();
   }
+});
+
+// --- V2-2: participant Power + holding economics ------------------------------
+
+test('participant parser preserves the V2 Power view and holding economics', () => {
+  const participant = parseRoundParticipant({
+    ...VALID_PARTICIPANT,
+    holdings: [{ ...VALID_HOLDING, costBasis: 741, averageEntryPrice: 7.41, currentValue: 842, unrealizedPnl: 101, unrealizedPnlPct: 13.6 }]
+  });
+  assert.deepEqual(participant.power, VALID_POWER);
+  const holding = participant.holdings[0];
+  assert.equal(holding.costBasis, 741);
+  assert.equal(holding.averageEntryPrice, 7.41);
+  assert.equal(holding.currentValue, 842);
+  assert.equal(holding.unrealizedPnl, 101);
+  assert.equal(holding.unrealizedPnlPct, 13.6);
+});
+
+test('participant parser accepts a full-Power null nextPointAt and null P&L fields', () => {
+  const participant = parseRoundParticipant({
+    ...VALID_PARTICIPANT,
+    power: { ...VALID_POWER, current: 100, nextPointAt: null },
+    holdings: [{ ...VALID_HOLDING, costBasis: 0, averageEntryPrice: null, unrealizedPnl: 0, unrealizedPnlPct: null }]
+  });
+  assert.equal(participant.power.nextPointAt, null);
+  assert.equal(participant.holdings[0].averageEntryPrice, null);
+  assert.equal(participant.holdings[0].unrealizedPnlPct, null);
+});
+
+test('participant parser rejects a missing or malformed Power block (not a V2 participant)', () => {
+  const withoutPower = { ...VALID_PARTICIPANT } as Record<string, unknown>;
+  delete withoutPower.power;
+  assert.throws(() => parseRoundParticipant(withoutPower), /power/);
+  assert.throws(() => parseRoundParticipant({ ...VALID_PARTICIPANT, power: { current: 10 } }), /max/);
+  assert.throws(
+    () => parseRoundParticipant({ ...VALID_PARTICIPANT, power: { ...VALID_POWER, nextPointAt: 42 } }),
+    /nextPointAt/
+  );
+});
+
+test('participant parser rejects holdings missing the V2 economics fields', () => {
+  const legacyHolding = { coinId: 2, symbol: 'JDC', quantity: 1, currentPrice: 10, currentValue: 10 };
+  assert.throws(
+    () => parseRoundParticipant({ ...VALID_PARTICIPANT, holdings: [legacyHolding] }),
+    /costBasis/
+  );
+  assert.throws(
+    () => parseRoundParticipant({ ...VALID_PARTICIPANT, holdings: [{ ...VALID_HOLDING, unrealizedPnl: 'up' }] }),
+    /unrealizedPnl/
+  );
+});
+
+// --- V2-1/V2-3: public market signals -----------------------------------------
+
+const VALID_SIGNALS = {
+  apocalypseId: 'APOC-0001',
+  apocalypsePercent: 42.5,
+  serverTime: '2026-08-20T10:12:45.000Z',
+  coins: [
+    {
+      coinId: 2, name: 'NovaCash', symbol: 'NVC', archetype: 'MOON',
+      currentPrice: 1.42, recentChangePct: 2.35, phase: 'RISE', momentum: 'UP',
+      typicalCycleMinutes: [3, 5], typicalSwingPct: [8, 15],
+      collapseRisk: 'STABLE', dead: false
+    },
+    {
+      coinId: 3, name: 'Byteon', symbol: 'BYT', archetype: 'RUG',
+      currentPrice: 0, recentChangePct: null, phase: 'DEAD', momentum: 'FLAT',
+      typicalCycleMinutes: null, typicalSwingPct: null,
+      collapseRisk: 'DEAD', dead: true
+    }
+  ]
+};
+
+test('getMarketSignals fetches the public signals envelope and parses live + dead coins', async () => {
+  let seen: FetchArgs | undefined;
+  const restore = stubFetch(async (args) => {
+    seen = args;
+    return jsonResponse({ status: 'success', data: VALID_SIGNALS });
+  });
+  try {
+    const signals = await getMarketSignals();
+    assert.equal(seen?.url, `${API_BASE_URL}/game/market-signals`);
+    assert.equal(seen?.init?.method, 'GET');
+    assert.equal(signals.apocalypseId, 'APOC-0001');
+    assert.equal(signals.coins.length, 2);
+    const live = signals.coins[0];
+    assert.equal(live.phase, 'RISE');
+    assert.equal(live.momentum, 'UP');
+    assert.equal(live.collapseRisk, 'STABLE');
+    assert.deepEqual(live.typicalCycleMinutes, [3, 5]);
+    const dead = signals.coins[1];
+    assert.equal(dead.dead, true);
+    assert.equal(dead.currentPrice, 0);
+    assert.equal(dead.phase, 'DEAD');
+    assert.equal(dead.recentChangePct, null);
+  } finally {
+    restore();
+  }
+});
+
+test('market signals parser rejects malformed coins, unknown vocabularies and DEAD inconsistencies', () => {
+  assert.throws(() => parseMarketSignals(null), /JSON object/);
+  assert.throws(() => parseMarketSignals({ ...VALID_SIGNALS, coins: 'nope' }), /coins/);
+  // Unknown phase / momentum / risk vocabularies fail closed.
+  assert.throws(
+    () => parseMarketSignals({ ...VALID_SIGNALS, coins: [{ ...VALID_SIGNALS.coins[0], phase: 'MOONING' }] }),
+    /phase/
+  );
+  assert.throws(
+    () => parseMarketSignals({ ...VALID_SIGNALS, coins: [{ ...VALID_SIGNALS.coins[0], momentum: 'SIDEWAYS' }] }),
+    /momentum/
+  );
+  assert.throws(
+    () => parseMarketSignals({ ...VALID_SIGNALS, coins: [{ ...VALID_SIGNALS.coins[0], collapseRisk: 'DOOMED' }] }),
+    /collapseRisk/
+  );
+  // A dead coin without the DEAD markers, or a live coin carrying them, is
+  // not the backend contract.
+  assert.throws(
+    () => parseMarketSignals({ ...VALID_SIGNALS, coins: [{ ...VALID_SIGNALS.coins[1], phase: 'DIP' }] }),
+    /dead coin/
+  );
+  assert.throws(
+    () => parseMarketSignals({ ...VALID_SIGNALS, coins: [{ ...VALID_SIGNALS.coins[0], collapseRisk: 'DEAD' }] }),
+    /live coin/
+  );
+  // Hidden-information fields are never required — and never retained.
+  const withLeak = {
+    ...VALID_SIGNALS,
+    coins: [{ ...VALID_SIGNALS.coins[0], seed: 'secret', nextPhaseAt: '2026-08-20T10:20:00.000Z' }]
+  };
+  const parsed = parseMarketSignals(withLeak);
+  assert.equal('seed' in parsed.coins[0], false);
+  assert.equal('nextPhaseAt' in parsed.coins[0], false);
 });

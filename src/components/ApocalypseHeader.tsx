@@ -6,7 +6,8 @@ import {
   displayRemainingMs,
   formatCountdown,
   meterPhase,
-  METER_PHASE_LABEL,
+  escalationBand,
+  ESCALATION_BAND_LABEL,
   LIFECYCLE_LABEL,
   countLivingCoins
 } from '../utils/gameLogic.ts';
@@ -28,6 +29,7 @@ export function ApocalypseHeader({ coins }: { coins: Coin[] }) {
 
   const percent = gameState?.apocalypsePercent ?? 0;
   const phase = meterPhase(percent);
+  const band = escalationBand(percent);
   const remaining = displayRemainingMs(anchor, now);
   const living = countLivingCoins(coins);
   const total = coins.length;
@@ -68,7 +70,7 @@ export function ApocalypseHeader({ coins }: { coins: Coin[] }) {
               <span className="label">
                 Apocalypse <strong className="text-ink ml-1 tnum">{percent.toFixed(1)}%</strong>
               </span>
-              <span className="label hidden sm:inline">{METER_PHASE_LABEL[phase]}</span>
+              <span className="label">{ESCALATION_BAND_LABEL[band]}</span>
               <span className="label tnum">
                 {total > 0 ? `${living} of ${total} coins still breathing` : '—'}
               </span>

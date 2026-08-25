@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Activity, BarChart3, ShieldCheck, Skull } from 'lucide-react';
+import { Activity } from 'lucide-react';
 import { CoinsList } from './components/CoinsList';
 import { CoinDetail } from './components/CoinDetail';
 import { MarketStats } from './components/MarketStats';
@@ -10,7 +10,6 @@ import { Modal } from './components/Modal';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { GameProvider } from './context/GameContext.tsx';
-import { UserMenu } from './components/UserMenu';
 import { AuthForms } from './components/AuthForms';
 import { Profile } from './components/Profile';
 import { MarketValueChart } from './components/MarketValueChart';
@@ -18,99 +17,20 @@ import { ApocalypseHeader } from './components/ApocalypseHeader.tsx';
 import { PlayerRoundPanel } from './components/PlayerRoundPanel.tsx';
 import { LeaderboardPanel } from './components/LeaderboardPanel.tsx';
 import { ResultsOverlay, RecentResultsPanel } from './components/ResultsPanel.tsx';
-import { parsePrice } from './services/transactionService.ts';
+import { GameTopBar } from './components/GameTopBar.tsx';
+import { PlayerStatusStrip } from './components/PlayerStatusStrip.tsx';
+import { LeaderboardPressure } from './components/LeaderboardPressure.tsx';
+import { GameMarketGrid } from './components/GameMarketGrid.tsx';
 import { API_BASE_URL } from './services/apiConfig.ts';
-import { isCoinCollapsed } from './utils/gameLogic.ts';
 import type { Coin, MarketStatus as MarketStatusType, MarketStats as MarketStatsType } from './types';
 
 const AUTO_REFRESH_INTERVAL = 30000;
 
-function TickerTape({ coins }: { coins: Coin[] }) {
-  const items = useMemo(() => {
-    const base = coins.slice(0, 20);
-    return [...base, ...base];
-  }, [coins]);
-
-  if (!coins.length) return null;
-
-  return (
-    <div className="border-b border-rule overflow-hidden bg-paper-alt">
-      <div className="flex animate-ticker whitespace-nowrap py-2.5">
-        {items.map((coin, i) => {
-          const price = parsePrice(coin?.current_price ?? 0);
-          const change = parseFloat(coin?.price_change_24h?.toString() ?? '0');
-          const up = change >= 0;
-          const dead = isCoinCollapsed(coin?.current_price ?? 0);
-          return (
-            <div key={`${coin.coin_id}-${i}`} className="flex items-center gap-3 px-5 border-r border-rule">
-              <span className="font-mono text-[0.7rem] text-ink font-bold">
-                {coin.symbol}/GBP{dead && <span className="text-oxblood ml-1">DEAD</span>}
-              </span>
-              <span className={`font-mono text-[0.72rem] tnum ${dead ? 'text-oxblood' : 'text-ink-dim'}`}>
-                {dead ? '£0.00' : `£${price.toFixed(2)}`}
-              </span>
-              <span className={`font-mono text-[0.68rem] font-semibold tnum ${up ? 'text-verdigris' : 'text-oxblood'}`}>
-                {up ? '+' : ''}{change.toFixed(2)}%
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ExchangeHeader({
-  onAuthClick,
-  isDark,
-  onThemeToggle,
-  marketStatus,
-}: {
-  onAuthClick: () => void;
-  isDark: boolean;
-  onThemeToggle: () => void;
-  marketStatus: MarketStatusType | null | undefined;
-}) {
-  const cycle = marketStatus?.currentCycle?.type?.replace('_', ' ') ?? 'STABLE';
-  const isLive = marketStatus?.status !== 'STOPPED';
-
-  return (
-    <header className="exchange-nav sticky top-0 z-30">
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-8 h-16 flex items-center justify-between gap-5">
-        <a href="#top" className="flex items-center gap-3 shrink-0" aria-label="Crypto Chaos home">
-          <span className="w-9 h-9 rounded-xl bg-gold text-white grid place-items-center font-extrabold text-sm shadow-gold-glow">
-            <Skull className="w-4 h-4" />
-          </span>
-          <span className="font-display text-xl font-bold tracking-tight text-ink">Crypto Chaos</span>
-          <span className="hidden sm:inline chip">Virtual GBP</span>
-        </a>
-
-        <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-ink-mute" aria-label="Main navigation">
-          <a href="#game" className="hover:text-gold transition-colors">Apocalypse</a>
-          <a href="#markets" className="hover:text-gold transition-colors">Markets</a>
-          <a href="#analytics" className="hover:text-gold transition-colors">Analytics</a>
-        </nav>
-
-        <UserMenu onAuthClick={onAuthClick} isDark={isDark} onThemeToggle={onThemeToggle} />
-      </div>
-
-      <div className="border-t border-rule bg-paper-alt">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-8 py-2 flex items-center justify-between gap-4 overflow-x-auto">
-          <div className="flex items-center gap-5 whitespace-nowrap">
-            <span className="flex items-center gap-2 label-ink">
-              <span className="live-dot" /> {isLive ? 'Market live' : 'Market halted'}
-            </span>
-            <span className="label">Cycle <strong className="text-ink ml-1">{cycle}</strong></span>
-          </div>
-          <div className="hidden sm:flex items-center gap-2 label whitespace-nowrap">
-            <ShieldCheck className="w-3.5 h-3.5 text-gold" /> Simulation only · No real funds · Coins may die permanently
-          </div>
-        </div>
-      </div>
-    </header>
-  );
-}
-
+// V2-5 primary screen composition: the casual mobile game FIRST — compact
+// status header, player status strip, leaderboard pressure, then the
+// scannable market grid. The classic exchange (stats, charts, asset table,
+// profile/history) is preserved intact as the secondary drill-down surface
+// below the game.
 function Market({ refreshTrigger }: { refreshTrigger: number }) {
   const [selectedCoinId, setSelectedCoinId] = useState<number | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -121,6 +41,9 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
     return true;
   });
 
+  // Classic exchange feeds. These serve the secondary drill-down surfaces
+  // only — the primary game surface reads the shared GameContext game
+  // contracts, so a classic-market outage never blocks gameplay.
   const { data: coinsData, loading: coinsLoading, error: coinsError } =
     useFetch<{ coins: Coin[] }>(`${API_BASE_URL}/coins`, 2000);
 
@@ -132,8 +55,8 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
     market_stats: marketStats,
   } : undefined;
 
-  const loading = coinsLoading || marketStatsLoading;
-  const error = coinsError || marketStatsError;
+  const classicLoading = coinsLoading || marketStatsLoading;
+  const classicError = coinsError || marketStatsError;
 
   const { data: marketStatus } = useFetch<MarketStatusType>(
     `${API_BASE_URL}/market/status`,
@@ -154,120 +77,103 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
     }
   }, [isDark]);
 
-  if (marketStatus?.status === 'STOPPED') {
-    return (
-      <div className="min-h-screen bg-paper flex items-center justify-center px-4">
-        <div className="paper-card max-w-md w-full p-9 text-center animate-reveal">
-          <Activity className="w-10 h-10 text-oxblood mx-auto mb-5" />
-          <div className="label mb-2">Market status</div>
-          <h2 className="font-display text-3xl font-bold text-ink mb-3">Trading paused</h2>
-          <p className="text-ink-dim text-sm leading-relaxed">
-            The virtual market simulator is temporarily offline. Balances and holdings remain safe.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-paper flex items-center justify-center px-4">
-        <div className="paper-card max-w-md w-full p-9 text-center">
-          <div className="label text-oxblood mb-2">Connection error</div>
-          <h2 className="font-display text-3xl font-bold text-ink mb-3">Market data unavailable</h2>
-          <p className="text-oxblood font-mono text-xs leading-relaxed">{error}</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading && !marketData) {
-    return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-11 h-11 rounded-full border-2 border-rule border-t-gold animate-spin" />
-          <span className="label">Loading live market data</span>
-        </div>
-      </div>
-    );
-  }
+  const classicNotice = (() => {
+    if (marketStatus?.status === 'STOPPED') {
+      return 'The classic exchange simulator is temporarily offline. Balances and holdings remain safe.';
+    }
+    if (classicError) {
+      return `Classic market data unavailable — ${classicError}`;
+    }
+    if (classicLoading && !marketData) {
+      return 'Loading classic market data…';
+    }
+    return null;
+  })();
 
   return (
     <div id="top" className="min-h-screen bg-paper text-ink">
-      <ExchangeHeader
+      <GameTopBar
         onAuthClick={() => setShowAuthModal(true)}
         isDark={isDark}
         onThemeToggle={() => setIsDark(!isDark)}
-        marketStatus={marketStatus}
       />
 
-      {/* Persistent game status: always answers "how long, how bad, can I trade" */}
-      <ApocalypseHeader coins={marketData?.coins ?? []} />
+      {/* Compact game status: apocalypse id, server-anchored countdown,
+          escalation, connection state — directly above the gameplay. */}
+      <ApocalypseHeader coins={marketData?.coins ?? coinsData?.coins ?? []} />
 
-      {marketData?.coins && <TickerTape coins={marketData.coins} />}
+      <main className="game-shell py-4 sm:py-8">
+        {/* Primary mobile-first game surface */}
+        <div className="space-y-4 sm:space-y-5 mb-8 sm:mb-10">
+          <PlayerStatusStrip onAuthRequest={() => setShowAuthModal(true)} />
+          <LeaderboardPressure />
+          <GameMarketGrid />
+        </div>
 
-      <main className="max-w-[1400px] mx-auto px-4 sm:px-8 py-8 sm:py-12">
-        <section id="game" className="animate-reveal delay-75 mb-6 sm:mb-8">
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5 mb-7">
-            <div>
-              <div className="flex items-center gap-2 label text-gold mb-2">
-                <BarChart3 className="w-3.5 h-3.5" /> Live simulation · apocalypse mode
-              </div>
-              <h1 className="font-display text-4xl sm:text-5xl font-bold tracking-tight text-ink">Market Overview</h1>
-              <p className="text-ink-mute mt-3 max-w-2xl text-sm sm:text-base">
-                Trade virtual GBP against the clock. Coins collapse permanently as the
-                apocalypse matures; final cash decides the reckoning.
-              </p>
-            </div>
-            <span className="chip self-start lg:self-auto">Refreshes every 2 seconds</span>
-          </div>
-          {marketData?.market_stats && <MarketStats stats={marketData.market_stats} />}
-        </section>
-
-        {/* Crypto Chaos game surface: round dashboard + live leaderboard + history */}
-        <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10" aria-label="Crypto Chaos game">
-          <div className="animate-reveal delay-150">
-            <PlayerRoundPanel coins={marketData?.coins ?? []} onAuthRequest={() => setShowAuthModal(true)} />
-          </div>
-          <div className="animate-reveal delay-225">
+        {/* Drill-down: full board, round activity, recent results */}
+        <section id="leaderboard" className="mb-10 sm:mb-12" aria-label="Round detail">
+          <div className="label mb-2">Round detail</div>
+          <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-ink mb-4">
+            Board, activity and results
+          </h2>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
             <LeaderboardPanel />
-          </div>
-          <div className="animate-reveal delay-300">
+            <PlayerRoundPanel coins={marketData?.coins ?? coinsData?.coins ?? []} onAuthRequest={() => setShowAuthModal(true)} />
             <RecentResultsPanel />
           </div>
         </section>
 
-        <section id="analytics" className="mt-7 grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 animate-reveal delay-150">
-            <MarketValueChart refreshTrigger={refreshTrigger} />
-          </div>
-          <div className="animate-reveal delay-225">
-            {marketStatus && <MarketStatus status={marketStatus} />}
-          </div>
-        </section>
+        {/* Secondary: classic exchange surfaces (preserved Core 7 behaviour) */}
+        <section id="markets" className="animate-reveal" aria-label="Classic exchange">
+          <div className="label mb-2">Classic exchange · drill-down</div>
+          <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-ink mb-1">
+            Charts and full asset detail
+          </h2>
+          <p className="text-ink-mute text-sm mb-5 max-w-2xl">
+            The original exchange view: market statistics, charts and the full asset table.
+            Gameplay above never depends on reading a chart.
+          </p>
 
-        <section id="markets" className="mt-12 sm:mt-16 animate-reveal delay-300">
-          <div className="flex items-end justify-between mb-5">
-            <div>
-              <div className="label mb-2">Virtual assets</div>
-              <h2 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-ink">Markets</h2>
+          {classicNotice !== null ? (
+            <div className="paper-card max-w-md w-full p-7 text-center mb-8">
+              <Activity className="w-8 h-8 text-oxblood mx-auto mb-4" aria-hidden="true" />
+              <p className="text-ink-dim text-sm leading-relaxed">{classicNotice}</p>
             </div>
-            <div className="text-right">
-              <div className="font-mono text-sm text-ink">{marketData?.coins.length ?? 0} assets</div>
-              <div className="label mt-1">Sorted by price · dead coins sink</div>
-            </div>
-          </div>
-          {marketData?.coins && (
-            <CoinsList
-              coins={marketData.coins}
-              onSelectCoin={setSelectedCoinId}
-              selectedCoinId={selectedCoinId}
-              events={marketStatus?.events || []}
-            />
+          ) : (
+            <>
+              {marketData?.market_stats && (
+                <div className="mb-6">
+                  <MarketStats stats={marketData.market_stats} />
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
+                <div className="lg:col-span-2">
+                  <MarketValueChart refreshTrigger={refreshTrigger} />
+                </div>
+                <div>
+                  {marketStatus && <MarketStatus status={marketStatus} />}
+                </div>
+              </div>
+
+              {marketData?.coins && (
+                <>
+                  <div className="flex items-end justify-between mb-4">
+                    <div className="label">{marketData.coins.length} assets · sorted by price · dead coins sink</div>
+                  </div>
+                  <CoinsList
+                    coins={marketData.coins}
+                    onSelectCoin={setSelectedCoinId}
+                    selectedCoinId={selectedCoinId}
+                    events={marketStatus?.events || []}
+                  />
+                </>
+              )}
+            </>
           )}
         </section>
 
-        <footer id="about" className="mt-16 sm:mt-20 pt-7 border-t border-rule flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <footer id="about" className="mt-14 sm:mt-16 pt-7 border-t border-rule flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="font-display font-bold text-ink">Crypto Chaos · a CoinX apocalypse</div>
             <p className="text-ink-mute text-xs mt-1">A private fantasy market for friends and family — now with scheduled extinction events.</p>

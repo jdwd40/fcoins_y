@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "test:ui": "node scripts/ui-contract.mjs",
-    "test:unit": "node --test src/utils/priceSummary.test.ts src/utils/gameLogic.test.ts src/services/gameService.test.ts",
+    "test:unit": "node --test src/utils/priceSummary.test.ts src/utils/gameLogic.test.ts src/utils/gameV2.test.ts src/services/gameService.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {

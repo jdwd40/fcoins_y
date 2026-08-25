@@ -17,17 +17,37 @@ const profile = readFileSync(new URL('../src/components/Profile.tsx', import.met
 const gameService = readFileSync(new URL('../src/services/gameService.ts', import.meta.url), 'utf8');
 const howToPlay = readFileSync(new URL('../src/components/HowToPlay.tsx', import.meta.url), 'utf8');
 const resultsPanel = readFileSync(new URL('../src/components/ResultsPanel.tsx', import.meta.url), 'utf8');
+const gameTopBar = readFileSync(new URL('../src/components/GameTopBar.tsx', import.meta.url), 'utf8');
+const playerStatusStrip = readFileSync(new URL('../src/components/PlayerStatusStrip.tsx', import.meta.url), 'utf8');
+const leaderboardPressure = readFileSync(new URL('../src/components/LeaderboardPressure.tsx', import.meta.url), 'utf8');
+const gameMarketGrid = readFileSync(new URL('../src/components/GameMarketGrid.tsx', import.meta.url), 'utf8');
+const coinSignalCard = readFileSync(new URL('../src/components/CoinSignalCard.tsx', import.meta.url), 'utf8');
 
 // --- Core Crypto Chaos surface ------------------------------------------
+// V2-5: the primary screen is the mobile-first game — compact top bar,
+// apocalypse status header, player status strip, leaderboard pressure and
+// the scannable market grid. The classic exchange survives below as the
+// drill-down surface.
 assert.match(app, /Crypto Chaos/);
-assert.match(app, /Virtual GBP/);
-assert.match(app, /Market Overview/);
-assert.match(app, /Markets/);
+assert.match(app, /GameTopBar/);
+assert.match(app, /PlayerStatusStrip/);
+assert.match(app, /LeaderboardPressure/);
+assert.match(app, /GameMarketGrid/);
 assert.match(app, /ApocalypseHeader/);
 assert.match(app, /PlayerRoundPanel/);
 assert.match(app, /LeaderboardPanel/);
 assert.match(app, /ResultsOverlay/);
 assert.match(app, /GameProvider/);
+assert.match(gameTopBar, /Virtual GBP/);
+assert.match(gameTopBar, /UserMenu/); // auth access preserved above the game
+// No dense desktop navigation above the gameplay.
+assert.doesNotMatch(gameTopBar, /<nav/);
+// Classic exchange surfaces preserved as secondary drill-down.
+assert.match(app, /Classic exchange · drill-down/);
+assert.match(app, /CoinsList/);
+assert.match(app, /MarketValueChart/);
+assert.match(app, /id="markets"/);
+assert.match(app, /Profile/); // profile route preserved
 
 // Persistent apocalypse header: identity, countdown, meter, phase, stale state.
 assert.match(header, /progressbar/);
@@ -36,6 +56,11 @@ assert.match(header, /Connection stale/);
 assert.match(header, /Backend unavailable/);
 assert.match(header, /formatCountdown/);
 assert.match(header, /meterPhase/);
+// V2-3/V2-5: the escalation label uses the backend's shared band vocabulary.
+assert.match(header, /escalationBand/);
+assert.match(header, /ESCALATION_BAND_LABEL\[band\]/);
+assert.match(gameLogic, /export function escalationBand/);
+assert.match(gameLogic, /ESCALATION_BAND_LABEL/);
 
 // Central polling with focus/visibility resync; no per-component game timers.
 assert.match(gameContext, /GAME_POLL_INTERVAL_MS/);
@@ -266,6 +291,150 @@ assert.match(resultsPanel, /No qualifiers — nobody finished above the/);
 // The player's own finish summary also reads the backend rank, not a
 // recomputed position.
 assert.match(resultsPanel, /#\{myResult\.rank\}/);
+
+// --- V2-5: real backend contracts on the wire --------------------------------
+// Market signals: typed parser, envelope unwrap and the exact public route;
+// the hidden-information fields (seed/future timing) are never required.
+assert.match(gameService, /export async function getMarketSignals/);
+assert.match(gameService, /\/game\/market-signals/);
+assert.match(gameService, /export function parseMarketSignals/);
+assert.match(gameService, /'DIP' \| 'RISE' \| 'BOOM' \| 'FALL' \| 'DEAD'/);
+assert.match(gameService, /'STABLE' \| 'SHAKY' \| 'DANGER' \| 'CRITICAL' \| 'DEAD'/);
+// Participant V2 fields: Power view and holding economics are hard contracts.
+assert.match(gameService, /export interface PowerState/);
+assert.match(gameService, /nextPointAt/);
+assert.match(gameService, /secondsPerPoint/);
+assert.match(gameService, /costBasis/);
+assert.match(gameService, /averageEntryPrice/);
+assert.match(gameService, /unrealizedPnlPct/);
+// Market signals ride the ONE shared poll; adopted only for the live cycle.
+assert.match(gameContext, /getMarketSignals\(\)/);
+assert.match(gameContext, /payload\.apocalypseId === liveId/);
+assert.match(gameContext, /setSignalsError/);
+// No independent fetching or per-card timers anywhere on the game surface.
+for (const [name, text] of Object.entries({ coinSignalCard, gameMarketGrid, leaderboardPressure })) {
+  assert.doesNotMatch(text, /\bfetch\(/, `${name} must not fetch independently`);
+  assert.doesNotMatch(text, /setInterval/, `${name} must not run its own timer`);
+}
+
+// --- V2-5: the 13-answer readability gate -------------------------------------
+// 1. How much Cash do I have? — dominant, server-sourced, never fabricated.
+assert.match(playerStatusStrip, /displayRoundCash\(myEntry, myParticipant\)/);
+assert.match(playerStatusStrip, /Cash/);
+assert.match(playerStatusStrip, /aria-label=\{`Cash \$\{formatCurrency\(roundCash\)\}`\}/);
+assert.match(playerStatusStrip, /Syncing your position/); // never fabricate £10,000
+// 2. How much Power do I have?
+assert.match(playerStatusStrip, /power\.current/);
+assert.match(playerStatusStrip, /\{power\.max\}/);
+// 3. When does Power regenerate? — server rate + next-point hint.
+assert.match(playerStatusStrip, /formatPowerRegenRate\(power\)/);
+assert.match(playerStatusStrip, /formatPowerNextHint\(power, now\)/);
+assert.match(gameLogic, /\+1 Power \/ \$\{seconds\}s/);
+assert.match(gameLogic, /next \+1 in \$\{seconds\}s/);
+assert.match(gameLogic, /Power full/);
+// 4. How long until the apocalypse ends? — server-anchored countdown.
+assert.match(header, /Time left/);
+assert.match(header, /formatCountdown\(remaining\)/);
+assert.match(header, /displayRemainingMs\(anchor, now\)/);
+// 5./6. Which coins are dipping / rising / booming? — explicit phase chips.
+assert.match(coinSignalCard, /phase-\$\{coin\.phase\.toLowerCase\(\)\}/);
+assert.match(styles, /\.phase-dip/);
+assert.match(styles, /\.phase-rise/);
+assert.match(styles, /\.phase-boom/);
+assert.match(styles, /\.phase-fall/);
+assert.match(coinSignalCard, /1m change/);
+assert.match(coinSignalCard, /formatRecentChangePct\(coin\.recentChangePct\)/);
+assert.match(coinSignalCard, /momentumArrow\(coin\.momentum\)/);
+assert.match(gameLogic, /▲ UP/);
+assert.match(gameLogic, /▼ DOWN/);
+// 7. What do I currently own? — owned cards lead the grid.
+assert.match(coinSignalCard, /your position/);
+assert.match(gameMarketGrid, /Owned positions lead/);
+// 8. Am I making or losing money on each position? — explicit P&L £ + %.
+assert.match(coinSignalCard, /Avg entry/);
+assert.match(coinSignalCard, /Current price/);
+assert.match(coinSignalCard, /Position value/);
+assert.match(coinSignalCard, /formatSignedGbp\(holding\.unrealizedPnl\)/);
+assert.match(coinSignalCard, /formatSignedPct\(holding\.unrealizedPnlPct\)/);
+assert.match(coinSignalCard, /pnlWord/); // "profit" / "loss" in words
+// 9. How do I buy? — the quick-buy ladder with the V2-5 amounts.
+assert.match(coinSignalCard, /quick-buy-grid/);
+assert.match(coinSignalCard, /QUICK_BUY_NOTIONALS\.map/);
+assert.match(gameLogic, /QUICK_BUY_NOTIONALS: readonly number\[\] = \[250, 500, 1000, 2500\]/);
+assert.match(gameLogic, /£2\.5K/);
+// 10. What will that buy cost in Power? — visible estimate BEFORE committing,
+//     the shared V2 formula, labelled as an estimate.
+assert.match(gameLogic, /1 \+ Math\.floor\(notional \/ BUY_POWER_COST_DIVISOR\)/);
+assert.match(gameLogic, /BUY_POWER_COST_DIVISOR = 125/);
+assert.match(coinSignalCard, /⚡\{powerCost\} est\./);
+assert.match(coinSignalCard, /estimated \$\{powerCost\} Power/);
+assert.match(coinSignalCard, /server confirms the final cost/);
+// 11. How do I sell? — one dominant SELL POSITION action; selling is free.
+assert.match(coinSignalCard, /Sell position · \{formatCurrency\(holding\.currentValue\)\}/);
+assert.match(coinSignalCard, /aria-label=\{`Sell entire \$\{coin\.symbol\} position`\}/);
+assert.match(coinSignalCard, /0 — selling is always free/);
+// 12. Which positions are dangerous? — the collapse-risk chip, in words.
+assert.match(coinSignalCard, /Collapse risk/);
+assert.match(coinSignalCard, /risk-\$\{coin\.collapseRisk\.toLowerCase\(\)\}/);
+assert.match(styles, /\.risk-critical/);
+assert.match(styles, /\.risk-stable/);
+// 13. What is my leaderboard rank? — in the main status area AND the strip.
+assert.match(leaderboardPressure, /Your rank <strong>#\{myEntry\.rank\}<\/strong> of \{entries\.length\}/);
+assert.match(playerStatusStrip, /#\{myEntry\.rank\}/);
+assert.match(leaderboardPressure, /leaderboard-me/); // human row highlighted
+assert.match(leaderboardPressure, /Bot/); // bot marker preserved
+
+// --- V2-5: trade safety on the new surface ------------------------------------
+// Quick buys convert notional -> quantity at the displayed price (the backend
+// trade endpoint takes quantity); the server stays authoritative.
+assert.match(gameLogic, /export function quantityForNotional/);
+assert.match(coinSignalCard, /quantityForNotional\(notional, coin\.currentPrice\)/);
+assert.match(coinSignalCard, /trade\('BUY', coin\.coinId, quantity\)/);
+assert.match(coinSignalCard, /trade\('SELL', coin\.coinId, holding\.quantity\)/);
+// Financial actions are confirmed first; server rejections render verbatim.
+assert.match(coinSignalCard, /Confirm quick buy/);
+assert.match(coinSignalCard, /Confirm sale/);
+assert.match(coinSignalCard, /err\.message/);
+// Stale/offline/limit states disable with explicit explanations.
+assert.match(coinSignalCard, /quickBuyBlockReason/);
+assert.match(coinSignalCard, /QUICK_BUY_BLOCK_LABEL/);
+assert.match(gameLogic, /Connection stale — refusing to trade on old data/);
+assert.match(gameLogic, /Not enough Cash/);
+assert.match(gameLogic, /Not enough Power/);
+assert.match(gameLogic, /Position limit reached/);
+// Dead coins: £0.00, DEAD/COLLAPSED, no BUY; a held dead position stays
+// visible with the existing £0 sell path.
+assert.match(coinSignalCard, /DEAD · COLLAPSED/);
+assert.match(coinSignalCard, /£0\.00/);
+assert.match(coinSignalCard, /cannot be bought/);
+assert.match(coinSignalCard, /Sell dead position for £0\.00/);
+assert.match(coinSignalCard, /Confirm £0 sell/);
+assert.match(gameMarketGrid, /Collapsed this apocalypse — dead coins cannot be bought/);
+// Archetype personality and typical ranges are public-signal derived.
+assert.match(coinSignalCard, /archetypePersonality\(coin\.archetype\)/);
+assert.match(coinSignalCard, /formatTypicalProfile\(coin\)/);
+assert.match(gameLogic, /ARCHETYPE_PERSONALITY/);
+
+// --- V2-5: mobile-first CSS -----------------------------------------------------
+// Single-column phone composition first; columns only arrive with width.
+assert.match(styles, /\.game-grid \{\s*display: grid;\s*grid-template-columns: 1fr;/);
+assert.match(styles, /@media \(min-width: 640px\) \{\s*\.game-grid \{ grid-template-columns: repeat\(2/);
+// Comfortable tap targets on primary actions (44px minimum).
+assert.match(styles, /\.tap-target \{ min-height: 44px; \}/);
+assert.match(styles, /\.tap-target-lg \{ min-height: 48px;/);
+assert.match(styles, /\.quick-buy-btn \{/);
+assert.match(styles, /min-height: 52px;/);
+// No horizontal overflow at 360–412px: the shell, cards and media are all
+// contained, with a hard overflow guard.
+assert.match(styles, /\.game-shell/);
+assert.match(styles, /overflow-x: clip/);
+assert.match(styles, /img, svg, video, canvas \{ max-width: 100%; \}/);
+assert.match(styles, /min-width: 0;/);
+// The V2-5 surface introduces no new animation (reduced-motion surface-wide
+// restraint stays exactly as it was).
+const v25Css = styles.slice(styles.indexOf('V2-5 mobile-first game surface'));
+assert.doesNotMatch(v25Css, /@keyframes/);
+assert.doesNotMatch(v25Css, /animation:/);
 
 assert.match(html, /<title>Crypto Chaos · CoinX Apocalypse Exchange<\/title>/);
 assert.match(html, /family=Inter/);
