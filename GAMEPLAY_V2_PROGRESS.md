@@ -116,6 +116,24 @@ The backend progress file is authoritative for the complete V2-3 file list, risk
 - Independent full backend: 74 suites / 710 tests passed; one known suite-order worker/settlement deadlock baseline failure. `game-cycle-worker.test.js` passes isolated 5/5. No V2-4 files are implicated.
 - `git diff --check` and JS syntax checks passed. No migration, production config, service or data changes.
 
-## V2-5 — NOT STARTED
+## V2-5 — COMPLETE
 
-UI work is now authorised. The next task is a fresh K3 mobile-first frontend implementation after reading the V2-5 plan section and both progress records. V2-6 remains pending.
+- Backend SHA: `7ffab04c24f0b30f8bfb1b10d2d87db91991314a` (unchanged)
+- Frontend implementation SHA: `018cc0f1fb677256166c2443b982b65502c45f15`
+- Mobile-first game surface: compact top bar, server countdown/apocalypse header, Cash/Power/rank/positions strip, leaderboard pressure and signal-driven active/dead coin cards.
+- Real `/api/game/market-signals` contract consumed through the shared GameContext poll; participant Power and cost-basis/P&L fields typed and validated.
+- Quick buys: £250/£500/£1K/£2.5K; Power preview uses `1 + floor(notional / £125)`; server remains authoritative.
+- Owned cards show average entry, current value, P&L £/%, phase, risk and complete-position SELL; dead cards show £0/DEAD/no BUY.
+- Existing profile/results/classic market/chart surfaces preserved below the primary game.
+- Responsive one-column phone layout, wider breakpoint columns, tap targets and reduced-motion rules implemented.
+- Readability contract covers all 13 plan answers.
+- `npm run test:unit`: 130/130 passed.
+- `npm run test:ui`: passed.
+- `npm run lint`: 0 errors, six existing warnings.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed.
+- `git diff --check`: passed; generated artifacts ignored.
+
+## V2-6 — NOT STARTED
+
+Before V2-6, read the complete plan, both progress files and both repository states again. Run final backend/frontend verification, final large simulations against final gameplay code, regression checks and the complete morning report. Do not merge or deploy.
