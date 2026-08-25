@@ -101,6 +101,21 @@ The backend progress file is authoritative for the complete V2-2 file list, tuni
 
 The backend progress file is authoritative for the complete V2-3 file list, risk/economy design, simulation configuration and metrics. The economy-scale fixture correction pinned fresh cycle seeds; service code was unchanged.
 
-## V2-4 — NOT STARTED
+## V2-4 — COMPLETE (backend-led stage)
 
-The next authorised work is backend-led adaptation of the existing Conservative, Momentum, Dip Buyer and Reckless bots. UI work remains prohibited until V2-4 passes.
+- Backend implementation SHA: `bdaf1d0787abc94456ca1338a93e0d2bfd08c799`
+- Frontend SHA: `2f78fa85151e717a9a5bb02aeade1fd1e7bdf7bf` (unchanged)
+- Existing four-bot roster preserved and adapted to shared V2 public signals, Power, position limits, P&L and common buy/sell services.
+- Exact public-state allowlists reject hidden seed, future collapse schedule/rank/timestamp and extra/missing fields.
+- Independent bot gate: 24×16 consecutive rounds, all 9 criteria passed.
+- Conservative median ROI +2.21%; Momentum +0.45%; Dip Buyer +13.93%; Reckless -6.84%; DIP_BOOM +18.55%.
+- Dip Buyer versus DIP_BOOM paired win rate 34.11%; conservative risky entries 0%; reckless risky entries 48.99%; Dip Buyer DIP entries 97.5%; Momentum RISE entries 100%.
+- Zero cash/basis/position invariant violations; max open positions 3; zero-Power sells 73/73; 185,856 hidden-information checks with 0 violations.
+- Independent focused run: 20 suites / 237 tests passed.
+- Independent V2-2 and V2-3 regression gates passed.
+- Independent full backend: 74 suites / 710 tests passed; one known suite-order worker/settlement deadlock baseline failure. `game-cycle-worker.test.js` passes isolated 5/5. No V2-4 files are implicated.
+- `git diff --check` and JS syntax checks passed. No migration, production config, service or data changes.
+
+## V2-5 — NOT STARTED
+
+UI work is now authorised. The next task is a fresh K3 mobile-first frontend implementation after reading the V2-5 plan section and both progress records. V2-6 remains pending.
