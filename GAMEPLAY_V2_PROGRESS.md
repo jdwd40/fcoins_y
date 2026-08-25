@@ -45,3 +45,23 @@ This progress document is the only new tracked preparation file pending checkpoi
 ## Next authorised phase
 
 Begin with V2-1 planning and the shared deterministic cyclical-market/simulation gate. Do not proceed to Power, bots, or major UI work until DIP-BOOM demonstrates a repeatable advantage over RANDOM on identical seeded paths.
+
+---
+
+## V2-1 — COMPLETE (backend-led stage)
+
+- Backend authoritative stage SHA: `b71f0671b0beb2c712af298232f61befef8f67f1`
+- Frontend SHA: `3a2688b3111785f09321dd9f8cb8f32ff6d63357` (unchanged)
+- Frontend V2-1 implementation: none; backend shared domain and simulator are authoritative for this stage.
+- Backend focused V2-1 tests: 86/86 passed.
+- Backend full suite: 65 suites / 587 tests passed.
+- Independent 2,000-round paired simulation gate: passed.
+- DIP-BOOM vs RANDOM paired win rate: 99.55%.
+- DIP-BOOM median ROI: 271.37%; RANDOM median ROI: -53.76%.
+- No production branches, services or data were changed.
+
+The backend progress file is authoritative for the complete V2-1 file list, simulation configuration, metrics, K3 state and next action. Reconcile this frontend record against the backend copy if they differ.
+
+## V2-2 — NOT STARTED
+
+The next authorised work is backend-led V2-2 Power, position limits and cost basis/P&L. UI work remains prohibited until V2-1 through V2-4 gates pass.
