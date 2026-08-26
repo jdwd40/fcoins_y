@@ -28,9 +28,9 @@ const AUTO_REFRESH_INTERVAL = 30000;
 
 // V2-5 primary screen composition: the casual mobile game FIRST — compact
 // status header, player status strip, leaderboard pressure, then the
-// scannable market grid. The classic exchange (stats, charts, asset table,
-// profile/history) is preserved intact as the secondary drill-down surface
-// below the game.
+// scannable market grid. The historical market drill-down (stats, charts,
+// asset table, profile/history) is preserved intact as the secondary
+// surface below the game.
 function Market({ refreshTrigger }: { refreshTrigger: number }) {
   const [selectedCoinId, setSelectedCoinId] = useState<number | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -41,9 +41,9 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
     return true;
   });
 
-  // Classic exchange feeds. These serve the secondary drill-down surfaces
+  // Historical market feeds. These serve the secondary drill-down surfaces
   // only — the primary game surface reads the shared GameContext game
-  // contracts, so a classic-market outage never blocks gameplay.
+  // contracts, so a historical-market outage never blocks gameplay.
   const { data: coinsData, loading: coinsLoading, error: coinsError } =
     useFetch<{ coins: Coin[] }>(`${API_BASE_URL}/coins`, 2000);
 
@@ -79,13 +79,13 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
 
   const classicNotice = (() => {
     if (marketStatus?.status === 'STOPPED') {
-      return 'The classic exchange simulator is temporarily offline. Balances and holdings remain safe.';
+      return 'The historical market detail is temporarily offline. Balances and holdings remain safe.';
     }
     if (classicError) {
-      return `Classic market data unavailable — ${classicError}`;
+      return `Historical market data unavailable — ${classicError}`;
     }
     if (classicLoading && !marketData) {
-      return 'Loading classic market data…';
+      return 'Loading historical market data…';
     }
     return null;
   })();
@@ -123,14 +123,14 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
           </div>
         </section>
 
-        {/* Secondary: classic exchange surfaces (preserved Core 7 behaviour) */}
-        <section id="markets" className="animate-reveal" aria-label="Classic exchange">
-          <div className="label mb-2">Classic exchange · drill-down</div>
+        {/* Secondary: historical market drill-down surfaces (preserved Core 7 behaviour) */}
+        <section id="markets" className="animate-reveal" aria-label="Historical market drill-down">
+          <div className="label mb-2">Historical market drill-down</div>
           <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-ink mb-1">
             Charts and full asset detail
           </h2>
           <p className="text-ink-mute text-sm mb-5 max-w-2xl">
-            The original exchange view: market statistics, charts and the full asset table.
+            Longer-range statistics, charts and the full asset table live here as a secondary reference — recent cyclical price history is core V2 gameplay.
           </p>
 
           {classicNotice !== null ? (
