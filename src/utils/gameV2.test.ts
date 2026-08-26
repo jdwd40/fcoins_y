@@ -24,6 +24,8 @@ import {
   momentumArrow,
   archetypePersonality,
   formatTypicalProfile,
+  formatTypicalCycle,
+  formatTypicalSwing,
   formatSignedPct
 } from './gameLogic.ts';
 import type { QuickBuyGate } from './gameLogic.ts';
@@ -210,6 +212,15 @@ test('archetype personality and typical profile render from public ranges', () =
     '~3–5 min cycles · ±8–15% swings'
   );
   assert.equal(formatTypicalProfile({ typicalCycleMinutes: null, typicalSwingPct: null }), '');
+});
+
+// Issue #13 detail view: the typical cycle range and typical swing range
+// are separate rows, still derived only from the public signal payload.
+test('detail view typical cycle/swing rows render from public ranges only', () => {
+  assert.equal(formatTypicalCycle({ typicalCycleMinutes: [3, 5] }), '~3–5 min per cycle');
+  assert.equal(formatTypicalCycle({ typicalCycleMinutes: null }), '—');
+  assert.equal(formatTypicalSwing({ typicalSwingPct: [8, 15] }), '±8–15% per swing');
+  assert.equal(formatTypicalSwing({ typicalSwingPct: null }), '—');
 });
 
 test('P&L percentage always carries an explicit sign', () => {

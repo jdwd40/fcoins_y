@@ -26,11 +26,13 @@ const sparklineUtil = readFileSync(new URL('../src/utils/sparkline.ts', import.m
 const priceHistoryService = readFileSync(new URL('../src/services/priceHistoryService.ts', import.meta.url), 'utf8');
 const coinSparkline = readFileSync(new URL('../src/components/CoinSparkline.tsx', import.meta.url), 'utf8');
 const useCoinSparkline = readFileSync(new URL('../src/hooks/useCoinSparkline.ts', import.meta.url), 'utf8');
+const gameCoinDetail = readFileSync(new URL('../src/components/GameCoinDetail.tsx', import.meta.url), 'utf8');
+const typesTs = readFileSync(new URL('../src/types.ts', import.meta.url), 'utf8');
 
 // --- Core Crypto Chaos surface ------------------------------------------
 // V2-5: the primary screen is the mobile-first game — compact top bar,
 // apocalypse status header, player status strip, leaderboard pressure and
-// the scannable market grid. The classic exchange survives below as the
+// scannable market grid. The historical market detail survives below as the
 // drill-down surface.
 assert.match(app, /Crypto Chaos/);
 assert.match(app, /GameTopBar/);
@@ -46,8 +48,13 @@ assert.match(gameTopBar, /Virtual GBP/);
 assert.match(gameTopBar, /UserMenu/); // auth access preserved above the game
 // No dense desktop navigation above the gameplay.
 assert.doesNotMatch(gameTopBar, /<nav/);
-// Classic exchange surfaces preserved as secondary drill-down.
-assert.match(app, /Classic exchange · drill-down/);
+// Historical market drill-down surfaces preserved as secondary.
+assert.match(app, /Historical market drill-down/);
+assert.match(app, /aria-label="Historical market drill-down"/);
+assert.doesNotMatch(app, /Classic exchange · drill-down/);
+assert.doesNotMatch(app, /aria-label="Classic exchange"/);
+assert.doesNotMatch(app, /The original exchange view/);
+assert.doesNotMatch(app, /Secondary: classic exchange surfaces/);
 assert.match(app, /CoinsList/);
 assert.match(app, /MarketValueChart/);
 assert.match(app, /id="markets"/);
@@ -546,6 +553,119 @@ assert.match(styles, /\.sparkline-state \{/);
 // never render the previous round's dead regime as current movement.
 assert.match(coinSparkline, /clipPointsSince\(points, sinceMs\)/);
 assert.match(coinSparkline, /cycleStartTime/);
+
+// --- Issue #13: detailed V2 coin view from every primary card -----------------
+// The grid owns the detail state; every card variant (available, owned,
+// dead) is wired to open it, and the open detail always resolves from the
+// LIVE signals payload so the correct coin id/name/symbol is traceable.
+assert.match(gameMarketGrid, /useState<number \| null>\(null\)/);
+assert.match(gameMarketGrid, /signals\.coins\.find\(\(coin\) => coin\.coinId === detailCoinId\)/);
+assert.match(gameMarketGrid, /import \{ Modal \} from '\.\/Modal\.tsx';/);
+assert.match(gameMarketGrid, /import \{ GameCoinDetail \} from '\.\/GameCoinDetail\.tsx';/);
+assert.match(gameMarketGrid, /<Modal isOpen=\{detailCoin !== null\} onClose=\{\(\) => setDetailCoinId\(null\)\}>/);
+assert.match(gameMarketGrid, /<GameCoinDetail/);
+// Both the active grid and the collapsed grid wire the same opener.
+assert.equal(
+  (gameMarketGrid.match(/onOpenDetail=\{\(\) => setDetailCoinId\(coin\.coinId\)\}/g) || []).length,
+  2,
+  'active AND dead card lists must both open the detail'
+);
+assert.match(coinSignalCard, /onOpenDetail: \(\) => void;/);
+// All three card variants (dead / owned / available) activate the detail.
+assert.equal(
+  (coinSignalCard.match(/onClick=\{handleCardClick\}/g) || []).length,
+  3,
+  'every primary card variant must open the detail from non-trade areas'
+);
+// Trade-area isolation: the delegation guard ignores every interactive
+// element, so BUY/SELL/confirm/cancel/custom-amount taps and nested
+// RoundTradePanel controls can never open the detail — and the detail
+// gesture can never fire a trade.
+assert.match(coinSignalCard, /target\.closest\('button, a, input, select, textarea, \[role="button"\]'\)/);
+// Keyboard/AT route: a real, labelled button with visible focus styling.
+assert.match(coinSignalCard, /aria-label=\{`Open \$\{coin\.name\} details`\}/);
+assert.match(coinSignalCard, /card-detail-trigger/);
+assert.match(styles, /\.card-detail-trigger \{/);
+assert.match(styles, /\.card-detail-trigger:focus-visible/);
+// Practical touch target: the narrow media block keeps the Details control
+// at a >=44px minimum height with readable text.
+assert.match(styles, /\.card-detail-trigger \{ min-height: 44px;/);
+
+// Detail content: identity, live price, full V2 signal set and typical
+// ranges — all public, already-happened data.
+assert.match(gameCoinDetail, /Coin \{coin\.coinId\}/);
+assert.match(gameCoinDetail, /<h2[^>]*>\s*\{coin\.name\}\s*<\/h2>/);
+assert.match(gameCoinDetail, /\{coin\.symbol\}\/GBP/);
+assert.match(gameCoinDetail, /phase-\$\{coin\.phase\.toLowerCase\(\)\}/);
+assert.match(gameCoinDetail, /momentumArrow\(coin\.momentum\)/);
+assert.match(gameCoinDetail, /archetypePersonality\(coin\.archetype\)/);
+assert.match(gameCoinDetail, /risk-\$\{coin\.collapseRisk\.toLowerCase\(\)\}/);
+assert.match(gameCoinDetail, /formatRecentChangePct\(coin\.recentChangePct\)/);
+assert.match(gameCoinDetail, /formatTypicalCycle\(coin\)/);
+assert.match(gameCoinDetail, /formatTypicalSwing\(coin\)/);
+assert.match(gameLogic, /export function formatTypicalCycle/);
+assert.match(gameLogic, /export function formatTypicalSwing/);
+// Owned economics: server-owned holding fields rendered verbatim.
+assert.match(gameCoinDetail, /Your position/);
+assert.match(gameCoinDetail, /Avg entry/);
+assert.match(gameCoinDetail, /Cost basis/);
+assert.match(gameCoinDetail, /Position value/);
+assert.match(gameCoinDetail, /holding\.averageEntryPrice/);
+assert.match(gameCoinDetail, /holding\.costBasis/);
+assert.match(gameCoinDetail, /holding\.currentValue/);
+assert.match(gameCoinDetail, /formatSignedGbp\(holding\.unrealizedPnl\)/);
+assert.match(gameCoinDetail, /formatSignedPct\(holding\.unrealizedPnlPct\)/);
+// Dead/collapsed state: £0.00, explicitly non-buyable, and the alive trade
+// panel is never rendered for a dead coin (only the owned £0 sell path).
+assert.match(gameCoinDetail, /DEAD · COLLAPSED/);
+assert.match(gameCoinDetail, /£0\.00/);
+assert.match(gameCoinDetail, /cannot be bought/);
+assert.match(gameCoinDetail, /\{coin\.dead \? \(/);
+// Detail trade area: the shared authoritative RoundTradePanel with the
+// per-order Power cost estimate; selling is explicitly free.
+assert.match(gameCoinDetail, /<RoundTradePanel coin=\{legacyCoin\} showPowerEstimate \/>/);
+assert.match(gameCoinDetail, /⚡ Power \{power\.current\}\/\{power\.max\}/);
+assert.match(gameCoinDetail, /selling is always free/);
+assert.match(roundTrade, /showPowerEstimate\?: boolean/);
+assert.match(roundTrade, /estimateBuyPowerCost\(total\)/);
+assert.match(roundTrade, /⚡0 — selling is always free/);
+assert.match(roundTrade, /server confirms the final cost/);
+// The detail rides the shared context — no independent fetch, timer, or
+// second charting library (Chart.js only inside the existing PriceChart).
+assert.doesNotMatch(gameCoinDetail, /\bfetch\(|setInterval/);
+assert.doesNotMatch(gameCoinDetail, /chart\.js|react-chartjs-2/);
+// No future price, next peak, future phase timestamp, hidden collapse
+// time/order, seed, or predictive target anywhere on the detail surface.
+assert.doesNotMatch(gameCoinDetail, /seed|nextPeak|next_peak|collapseTime|collapse_time|futurePrice|predictive/i);
+// Narrow-friendly layout: stat cells (min-width: 0) in a wrapping grid.
+assert.match(gameCoinDetail, /grid grid-cols-2 sm:grid-cols-3 gap-2/);
+assert.match(gameCoinDetail, /stat-cell/);
+// Copy framing: cycle recognition is core gameplay; no stale "Classic
+// exchange" wording on the scoped detail surface.
+assert.doesNotMatch(gameCoinDetail, /Classic exchange/i);
+assert.match(gameLogic, /reading the dip → rise → boom → fall cycle on the price chart is core gameplay/);
+
+// Detail chart: short cycle windows first-class with the archetype-aware
+// default; longer windows only as a secondary group; the SAME #12 cycle
+// clip and entry-marker rule; the authoritative per-coin endpoint only.
+assert.match(gameCoinDetail, /DETAIL_PRIMARY_RANGES: readonly TimeRange\[\] = \['10M', '30M', '1H', '2H'\]/);
+assert.match(gameCoinDetail, /DETAIL_SECONDARY_RANGES: readonly TimeRange\[\] = \['24H', '7D', '30D', 'ALL'\]/);
+assert.match(gameCoinDetail, /initialRange = sparklineRangeForCoin\(coin\)/);
+assert.match(gameCoinDetail, /cycleStartTime=\{gameState\?\.startTime \?\? null\}/);
+assert.match(gameCoinDetail, /averageEntryPrice=\{owned && holding \? holding\.averageEntryPrice : null\}/);
+assert.match(typesTs, /'10M' \| '30M' \| '1H' \| '2H' \| '24H' \| '7D' \| '30D' \| 'ALL'/);
+assert.match(chart, /clipPointsSince\(result\.points \|\| \[\], sinceMs\)/);
+assert.match(chart, /cycleStartTime\?: string \| null/);
+assert.match(chart, /entryMarkerVisible/);
+assert.match(chart, /secondaryRanges/);
+assert.match(chart, /aria-label="Select a longer chart time range"/);
+assert.match(chart, /filter: \(tooltipItem/); // the entry marker is never a tooltip value
+assert.match(chart, /Your average entry/);
+assert.match(chart, /\$\{API_BASE\}\/coins\/\$\{coinId\}\/price-history\?range=\$\{range\}/);
+assert.doesNotMatch(chart, /market\/price-history/);
+assert.match(sparklineUtil, /export function entryMarkerVisible/);
+// The classic modal chart defaults are unchanged (24H first, long ranges).
+assert.match(chart, /initialRange \?\? primaryRanges\[0\]/);
 
 // --- Centralised API base ------------------------------------------------
 // No source file outside services/apiConfig.ts may hard-code the deployed

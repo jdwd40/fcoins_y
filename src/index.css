@@ -468,6 +468,32 @@
     border-color: color-mix(in srgb, var(--oxblood) 35%, var(--card-edge));
   }
 
+  /* Issue #13: the whole non-trade card surface opens the coin detail, so
+     the card hints clickability; trade controls keep their own cursors and
+     remain isolated by the card's click guard. */
+  .game-card { cursor: pointer; }
+  .game-card button, .game-card input { cursor: auto; }
+  .game-card button:not(:disabled) { cursor: pointer; }
+
+  /* Explicit, keyboard-focusable Details affordance in the card header. */
+  .card-detail-trigger {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0.15rem 0.55rem;
+    border: 1px solid var(--card-edge);
+    border-radius: 8px;
+    background: var(--bg-alt);
+    color: var(--fg-dim);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .card-detail-trigger:hover { color: var(--gold); border-color: var(--gold); }
+  .card-detail-trigger:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
   .stat-cell {
     border: 1px solid var(--rule);
     border-radius: 10px;
@@ -610,6 +636,8 @@
        including the custom-trade panel that reuses the shared btn classes. */
     .btn-gold, .btn-ink, .btn-oxblood { min-height: 44px; font-size: 0.85rem; }
     .how-to-play-trigger { min-height: 44px; font-size: 0.72rem; padding-inline: 0.85rem; }
+    /* The card Details affordance stays a comfortable, readable target. */
+    .card-detail-trigger { min-height: 44px; font-size: 0.75rem; }
     /* The dominant Cash figure scales fluidly with the viewport so a large
        balance can never squeeze the Wealth figure off the strip. */
     .player-cash-figure { font-size: clamp(1.9rem, 8.5vw, 2.25rem); }

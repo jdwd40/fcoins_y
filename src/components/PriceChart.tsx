@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { API_BASE_URL } from '../services/apiConfig.ts';
 import {
   Chart as ChartJS,
@@ -16,6 +16,7 @@ import 'chartjs-adapter-date-fns';
 
 import { PricePoint, PriceHistoryResponse, TimeRange } from '../types';
 import { computePeriodSummary, PeriodSummary } from '../utils/priceSummary';
+import { clipPointsSince, entryMarkerVisible } from '../utils/sparkline.ts';
 
 ChartJS.register(
   CategoryScale,
@@ -31,6 +32,21 @@ ChartJS.register(
 interface PriceChartProps {
   coinId: number;
   refreshTrigger?: number;
+  /** Selectable primary ranges (default: the classic 24H/7D/30D/ALL set). */
+  ranges?: readonly TimeRange[];
+  /** Longer windows rendered as a separate secondary group (issue #13). */
+  secondaryRanges?: readonly TimeRange[];
+  /** Initially selected range (default: the first primary range). */
+  initialRange?: TimeRange;
+  /** Authoritative LIVE apocalypse start (ISO). When set, points older than
+   *  the cycle boundary are clipped so the previous apocalypse's reset/dead
+   *  regime can never render as current movement (issue #12 rule, reused). */
+  cycleStartTime?: string | null;
+  /** Server-owned average entry price; drawn as a dashed marker when it sits
+   *  inside the visible window (never distorts the local scale). */
+  averageEntryPrice?: number | null;
+  /** Chart area height utility classes (default matches the classic modal). */
+  heightClass?: string;
 }
 
 function formatAdaptivePrice(value: number): string {
@@ -89,13 +105,31 @@ function getTooltipTitleFormat(/* eslint-disable-line @typescript-eslint/no-unus
   };
 }
 
-export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
-  const [selectedRange, setSelectedRange] = useState<TimeRange>('24H');
+export function PriceChart({
+  coinId,
+  refreshTrigger = 0,
+  ranges,
+  secondaryRanges,
+  initialRange,
+  cycleStartTime = null,
+  averageEntryPrice = null,
+  heightClass = 'h-[240px] sm:h-[380px]'
+}: PriceChartProps) {
+  const primaryRanges = ranges ?? TIME_RANGES.map(({ value }) => value);
+  const [selectedRange, setSelectedRange] = useState<TimeRange>(initialRange ?? primaryRanges[0]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<PriceHistoryResponse | null>(null);
   const [chartData, setChartData] = useState<{ x: number; y: number }[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Issue #12 cycle clip, reused for the detail view (issue #13): prices are
+  // reset to a persisted baseline at every apocalypse boundary, so points
+  // older than the LIVE round start are the previous round's dead regime.
+  const sinceMs = useMemo(() => {
+    const parsed = cycleStartTime ? Date.parse(cycleStartTime) : NaN;
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [cycleStartTime]);
 
   const fetchPriceHistory = useCallback(async (range: TimeRange) => {
     if (abortControllerRef.current) abortControllerRef.current.abort();
@@ -109,9 +143,12 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
       );
       if (!response.ok) throw new Error(`Failed to fetch data (${response.status})`);
       const result: PriceHistoryResponse = await response.json();
-      setHistory(result);
+      // Clip to the live apocalypse BEFORE summarising or drawing so the
+      // high/low/change figures and the line describe the same live window.
+      const livePoints = clipPointsSince(result.points || [], sinceMs);
+      setHistory({ ...result, points: livePoints });
 
-      const processed = (result.points || [])
+      const processed = livePoints
         .filter((p: PricePoint) => {
           const ts = new Date(p.time).getTime();
           return !isNaN(ts) && !isNaN(p.close) && p.close > 0;
@@ -130,7 +167,7 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
     } finally {
       setLoading(false);
     }
-  }, [coinId]);
+  }, [coinId, sinceMs]);
 
   useEffect(() => {
     fetchPriceHistory(selectedRange);
@@ -209,6 +246,21 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
     };
   })();
 
+  // Average-entry marker (owned coins, issue #13): a dashed horizontal line
+  // at the server-owned entry price, drawn ONLY when the entry sits inside
+  // the visible window so it can never distort the local scale — the exact
+  // same rule the compact card sparkline applies (entryMarkerVisible).
+  const entryMarker = (() => {
+    if (chartData.length < 2) return null;
+    const prices = chartData.map((d) => d.y);
+    if (!entryMarkerVisible(averageEntryPrice, Math.min(...prices), Math.max(...prices))) return null;
+    return {
+      firstX: chartData[0].x,
+      lastX: chartData[chartData.length - 1].x,
+      entry: averageEntryPrice as number
+    };
+  })();
+
   const data = {
     datasets: [
       {
@@ -224,6 +276,21 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
         fill: true,
         tension: 0.35,
       },
+      ...(entryMarker
+        ? [{
+            data: [
+              { x: entryMarker.firstX, y: entryMarker.entry },
+              { x: entryMarker.lastX, y: entryMarker.entry }
+            ],
+            borderColor: isDark ? '#d4a017' : '#b8860b',
+            borderWidth: 1.25,
+            borderDash: [6, 4],
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            fill: false as const,
+            tension: 0,
+          }]
+        : []),
     ],
   };
 
@@ -244,6 +311,8 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
         displayColors: false,
         titleFont: { family: 'JetBrains Mono', size: 10, weight: 'normal' as const },
         bodyFont: { family: 'Inter', size: 16, weight: '600' as const },
+        // The dashed average-entry marker never appears as a tooltip value.
+        filter: (tooltipItem: { datasetIndex: number }) => tooltipItem.datasetIndex === 0,
         callbacks: {
           title: (tooltipItems: Array<{ parsed: { x: number } }>) => {
             const date = new Date(tooltipItems[0].parsed.x);
@@ -300,8 +369,26 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
     } else {
       desc += `: current ${priceStr}. No period data yet.`;
     }
+    if (entryMarker) {
+      desc += ` Your average entry ${formatAdaptivePrice(entryMarker.entry)} is shown as a dashed line.`;
+    }
     return desc;
   })();
+
+  const rangeButton = (value: TimeRange) => (
+    <button
+      key={value}
+      onClick={() => setSelectedRange(value)}
+      aria-pressed={selectedRange === value}
+      className={`flex-1 sm:flex-none min-h-[44px] px-2 sm:px-4 py-2 font-mono text-xs sm:text-sm tracking-[0.5px] uppercase border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
+        selectedRange === value
+          ? 'border-gold text-gold bg-paper-alt'
+          : 'border-transparent text-ink-mute hover:text-ink hover:border-rule'
+      }`}
+    >
+      {value}
+    </button>
+  );
 
   return (
     <div className="w-full space-y-4">
@@ -334,27 +421,28 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
         </div>
       </div>
 
-      {/* Range selector: 24H 7D 30D ALL , 44px targets, aria-pressed */}
+      {/* Range selector: primary windows first; longer history is a
+          secondary group where provided (issue #13 detail view). 44px
+          targets, aria-pressed. */}
       <div
         role="group"
         aria-label="Select chart time range"
         className="flex gap-1 sm:gap-2"
       >
-        {TIME_RANGES.map(({ value, label }) => (
-          <button
-            key={value}
-            onClick={() => setSelectedRange(value)}
-            aria-pressed={selectedRange === value}
-            className={`flex-1 sm:flex-none min-h-[44px] px-2 sm:px-4 py-2 font-mono text-xs sm:text-sm tracking-[0.5px] uppercase border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
-              selectedRange === value
-                ? 'border-gold text-gold bg-paper-alt'
-                : 'border-transparent text-ink-mute hover:text-ink hover:border-rule'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+        {primaryRanges.map(rangeButton)}
       </div>
+      {secondaryRanges && secondaryRanges.length > 0 && (
+        <div className="flex items-center gap-2">
+          <span className="label shrink-0">Longer</span>
+          <div
+            role="group"
+            aria-label="Select a longer chart time range"
+            className="flex flex-1 gap-1 sm:gap-2"
+          >
+            {secondaryRanges.map(rangeButton)}
+          </div>
+        </div>
+      )}
 
       {/* Chart area with states */}
       <div className="relative" role="img" aria-label={ariaLabel}>
@@ -382,10 +470,15 @@ export function PriceChart({ coinId, refreshTrigger = 0 }: PriceChartProps) {
             <p className="label">No price history available for this period yet</p>
           </div>
         )}
-        <div className="h-[240px] sm:h-[380px]">
+        <div className={heightClass}>
           <Line data={data} options={options} />
         </div>
       </div>
+      {entryMarker && (
+        <p className="font-mono text-xs text-gold tnum">
+          ┄ Your average entry {formatAdaptivePrice(entryMarker.entry)}
+        </p>
+      )}
     </div>
   );
 }

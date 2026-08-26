@@ -165,6 +165,20 @@ export function buildSparklinePath(
   return { path, min, max };
 }
 
+// Should the player's average-entry marker be drawn at all? Only when the
+// server-owned entry price is real, positive and INSIDE the visible window —
+// an off-window entry is simply omitted so it can never squeeze or distort
+// the local scale (shared by the compact sparkline and the detail chart).
+export function entryMarkerVisible(
+  averageEntry: number | null,
+  min: number,
+  max: number
+): boolean {
+  if (averageEntry === null || !Number.isFinite(averageEntry) || averageEntry <= 0) return false;
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return false;
+  return averageEntry >= min && averageEntry <= max;
+}
+
 // The player's average-entry marker on owned cards: a plain horizontal line
 // at the entry price, rendered ONLY when the entry sits inside the visible
 // window — an off-window entry never squeezes or distorts the local scale.
@@ -175,10 +189,10 @@ export function entryMarkerY(
   height: number,
   padding = 2
 ): number | null {
-  if (averageEntry === null || !Number.isFinite(averageEntry) || averageEntry <= 0) return null;
-  if (averageEntry < min || averageEntry > max) return null;
+  if (!entryMarkerVisible(averageEntry, min, max)) return null;
+  const entry = averageEntry as number;
   if (max === min) return height / 2;
-  return round2(padding + (1 - (averageEntry - min) / (max - min)) * (height - padding * 2));
+  return round2(padding + (1 - (entry - min) / (max - min)) * (height - padding * 2));
 }
 
 // A collapsed coin's sparkline is a deterministic flatline near the bottom of

@@ -4,12 +4,16 @@ import { useToast } from '../context/ToastContext';
 import { useGame } from '../context/GameContext.tsx';
 import { SessionExpiredError, formatCurrency, parsePrice } from '../services/transactionService.ts';
 import { GameApiError } from '../services/gameService.ts';
-import { isCoinCollapsed, tradeBlockReason, TRADE_BLOCK_LABEL, formatQuantity, parseTradeQuantity, minTradeValueError, displayRoundCash } from '../utils/gameLogic.ts';
+import { isCoinCollapsed, tradeBlockReason, TRADE_BLOCK_LABEL, formatQuantity, parseTradeQuantity, minTradeValueError, displayRoundCash, estimateBuyPowerCost } from '../utils/gameLogic.ts';
 import type { Coin } from '../types';
 import { Check, X } from 'lucide-react';
 
 interface RoundTradePanelProps {
   coin: Coin;
+  /** Issue #13 detail view: also render the Power position and a per-order
+   *  Power cost estimate (shared V2 preview formula, labelled as an
+   *  estimate; the server confirms the final cost at commit time). */
+  showPowerEstimate?: boolean;
 }
 
 // Crypto Chaos round trading (Core 4): buys and sells settle against the
@@ -18,7 +22,7 @@ interface RoundTradePanelProps {
 // backend validates cycle/freeze/collapse state again at commit time, and any
 // domain rejection refreshes game state instead of leaving optimistic UI
 // behind.
-export function RoundTradePanel({ coin }: RoundTradePanelProps) {
+export function RoundTradePanel({ coin, showPowerEstimate = false }: RoundTradePanelProps) {
   const { user, handleSessionExpired } = useAuth();
   const { showToast } = useToast();
   const { joined, myEntry, myParticipant, lifecycle, connection, trade } = useGame();
@@ -184,6 +188,16 @@ export function RoundTradePanel({ coin }: RoundTradePanelProps) {
             <dt className="text-ink-mute">Cash after</dt>
             <dd className="text-ink-dim tnum text-right">{formatCurrency(side === 'BUY' ? roundCash - total : roundCash + total)}</dd>
           </div>
+          {showPowerEstimate && (
+            <div className="flex justify-between gap-2">
+              <dt className="text-ink-mute">Power (estimate)</dt>
+              <dd className={`tnum text-right ${side === 'BUY' ? 'text-ink' : 'text-verdigris'}`}>
+                {side === 'BUY'
+                  ? `⚡${estimateBuyPowerCost(total)} — server confirms the final cost`
+                  : '⚡0 — selling is always free'}
+              </dd>
+            </div>
+          )}
         </dl>
         <div className="flex gap-3">
           <button onClick={() => setConfirming(false)} disabled={pending} className="btn-ink flex-1">Cancel</button>
@@ -268,6 +282,17 @@ export function RoundTradePanel({ coin }: RoundTradePanelProps) {
             Cash · <span className="text-ink-dim">{formatCurrency(roundCash)}</span>
             {side === 'SELL' && <span className="ml-3">Held · <span className="text-ink-dim">{formatQuantity(heldQuantity)} {coin.symbol}</span></span>}
           </div>
+
+          {showPowerEstimate && (
+            <div className="label">
+              Power · <span className="text-ink-dim">⚡{myParticipant?.power.current ?? '—'}/{myParticipant?.power.max ?? '—'}</span>
+              <span className="ml-3">
+                {side === 'BUY'
+                  ? <>This buy ≈ <span className="text-ink-dim">⚡{estimateBuyPowerCost(total)} est.</span> — server confirms the final cost</>
+                  : <span className="text-verdigris">Selling is always free (⚡0)</span>}
+              </span>
+            </div>
+          )}
 
           {error && <div className="font-mono text-xs text-oxblood" role="alert">{error}</div>}
 

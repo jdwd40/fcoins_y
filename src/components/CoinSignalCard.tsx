@@ -30,6 +30,9 @@ import type { Coin } from '../types';
 interface CoinSignalCardProps {
   coin: MarketSignalCoin;
   holding: RoundHolding | null;
+  /** Issue #13: opens this coin's detailed V2 view (modal owned by
+   *  GameMarketGrid). Fired from the card's non-trade areas only. */
+  onOpenDetail: () => void;
 }
 
 // V2-5 coin card. One card per gameplay coin driven by the public
@@ -42,7 +45,7 @@ interface CoinSignalCardProps {
 // (1 + floor(notional / £125)), labelled as an estimate. The server remains
 // authoritative: trades confirm first, fake success is never shown, and a
 // domain rejection renders verbatim.
-export function CoinSignalCard({ coin, holding }: CoinSignalCardProps) {
+export function CoinSignalCard({ coin, holding, onOpenDetail }: CoinSignalCardProps) {
   const { user, handleSessionExpired } = useAuth();
   const { showToast } = useToast();
   const { joined, myEntry, myParticipant, lifecycle, connection, trade, gameState } = useGame();
@@ -52,6 +55,19 @@ export function CoinSignalCard({ coin, holding }: CoinSignalCardProps) {
   const [showCustomTrade, setShowCustomTrade] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Issue #13: tapping a NON-TRADE area of the card opens the detailed coin
+  // view. Every trade control (quick-buy ladder, sell, confirmations,
+  // cancel, custom amount, nested RoundTradePanel) is a real button/input,
+  // so this delegation guard keeps trade taps strictly isolated from detail
+  // navigation — a trade click can never open the detail, and the detail
+  // gesture can never fire a trade. Keyboard users get the explicit Details
+  // button in the header (real <button>, visible focus, labelled).
+  const handleCardClick = (event: React.MouseEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('button, a, input, select, textarea, [role="button"]')) return;
+    onOpenDetail();
+  };
 
   const owned = !!holding && holding.quantity > 0;
   const roundCash = displayRoundCash(myEntry, myParticipant);
@@ -156,11 +172,23 @@ export function CoinSignalCard({ coin, holding }: CoinSignalCardProps) {
         <div className="font-display font-bold text-ink text-lg leading-tight truncate">{coin.name}</div>
         <div className="label mt-0.5">{coin.symbol}/GBP</div>
       </div>
-      <div className="text-right shrink-0">
-        <div className="label mb-0.5">Price</div>
-        <div className={`numeral text-2xl tnum ${coin.dead ? 'text-oxblood' : 'text-ink'}`}>
-          {coin.dead ? '£0.00' : formatCurrency(coin.currentPrice)}
+      <div className="text-right shrink-0 flex flex-col items-end gap-1">
+        <div>
+          <div className="label mb-0.5">Price</div>
+          <div className={`numeral text-2xl tnum ${coin.dead ? 'text-oxblood' : 'text-ink'}`}>
+            {coin.dead ? '£0.00' : formatCurrency(coin.currentPrice)}
+          </div>
         </div>
+        {/* Explicit accessible route into the detailed coin view (issue
+            #13); the rest of the non-trade card surface opens it too. */}
+        <button
+          type="button"
+          className="card-detail-trigger"
+          onClick={onOpenDetail}
+          aria-label={`Open ${coin.name} details`}
+        >
+          Details ▸
+        </button>
       </div>
     </div>
   );
@@ -168,7 +196,7 @@ export function CoinSignalCard({ coin, holding }: CoinSignalCardProps) {
   // --- Dead / collapsed coin -------------------------------------------------
   if (coin.dead) {
     return (
-      <article className="game-card dead-card" aria-label={`${coin.name} — dead`}>
+      <article className="game-card dead-card" aria-label={`${coin.name} — dead`} onClick={handleCardClick}>
         {cardHeader}
         <div className="flex items-center gap-2 mb-3" role="note">
           <Skull className="w-4 h-4 text-oxblood" aria-hidden="true" />
@@ -229,7 +257,7 @@ export function CoinSignalCard({ coin, holding }: CoinSignalCardProps) {
     const pnlClass = holding.unrealizedPnl >= 0 ? 'text-verdigris' : 'text-oxblood';
     const pnlWord = holding.unrealizedPnl >= 0 ? 'profit' : 'loss';
     return (
-      <article className="game-card owned-card" aria-label={`${coin.name} — your position`}>
+      <article className="game-card owned-card" aria-label={`${coin.name} — your position`} onClick={handleCardClick}>
         {cardHeader}
         <CoinSparkline coin={coin} averageEntryPrice={holding.averageEntryPrice} cycleStartTime={gameState?.startTime ?? null} />
         <div className="position-economics" aria-label={`Position ${pnlWord}`}>
@@ -336,7 +364,7 @@ export function CoinSignalCard({ coin, holding }: CoinSignalCardProps) {
     : null;
 
   return (
-    <article className="game-card" aria-label={`${coin.name} — available to buy`}>
+    <article className="game-card" aria-label={`${coin.name} — available to buy`} onClick={handleCardClick}>
       {cardHeader}
       <CoinSparkline coin={coin} cycleStartTime={gameState?.startTime ?? null} />
       {signalBlock}

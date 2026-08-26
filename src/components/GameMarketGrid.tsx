@@ -1,12 +1,22 @@
+import { useState } from 'react';
 import { useGame } from '../context/GameContext.tsx';
 import { CoinSignalCard } from './CoinSignalCard.tsx';
+import { GameCoinDetail } from './GameCoinDetail.tsx';
+import { Modal } from './Modal.tsx';
 
 // V2-5 market summary: every active gameplay coin as a large, scannable card
 // (owned positions first — the player's own economics lead), with collapsed
 // coins clearly separated below. Driven entirely by the shared GameContext
 // market-signals poll — no per-card timers or independent fetching.
+//
+// Issue #13: tapping any card's non-trade area opens that coin's detailed
+// V2 view in a modal. The detail reads the SAME live signals/holding
+// objects, so it stays in step with the poll; closing it returns to the
+// exact market location (the grid never unmounts and round state is
+// untouched).
 export function GameMarketGrid() {
   const { signals, signalsError, lifecycle, myParticipant } = useGame();
+  const [detailCoinId, setDetailCoinId] = useState<number | null>(null);
 
   if (signals === null) {
     return (
@@ -34,6 +44,13 @@ export function GameMarketGrid() {
     });
   const dead = signals.coins.filter((coin) => coin.dead);
 
+  // The open detail always resolves from the LIVE signals payload — the
+  // correct coin id/name/symbol is traceable end to end, and a mid-view
+  // collapse or trade re-renders the detail with authoritative data.
+  const detailCoin = detailCoinId === null
+    ? null
+    : signals.coins.find((coin) => coin.coinId === detailCoinId) ?? null;
+
   return (
     <section aria-label="Market">
       <div className="flex items-end justify-between gap-3 mb-3">
@@ -59,6 +76,7 @@ export function GameMarketGrid() {
             key={coin.coinId}
             coin={coin}
             holding={holdingByCoinId.get(coin.coinId) ?? null}
+            onOpenDetail={() => setDetailCoinId(coin.coinId)}
           />
         ))}
       </div>
@@ -72,11 +90,22 @@ export function GameMarketGrid() {
                 key={coin.coinId}
                 coin={coin}
                 holding={holdingByCoinId.get(coin.coinId) ?? null}
+                onOpenDetail={() => setDetailCoinId(coin.coinId)}
               />
             ))}
           </div>
         </div>
       )}
+
+      <Modal isOpen={detailCoin !== null} onClose={() => setDetailCoinId(null)}>
+        {detailCoin && (
+          <GameCoinDetail
+            key={detailCoin.coinId}
+            coin={detailCoin}
+            holding={holdingByCoinId.get(detailCoin.coinId) ?? null}
+          />
+        )}
+      </Modal>
     </section>
   );
 }

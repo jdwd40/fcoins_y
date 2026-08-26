@@ -14,6 +14,7 @@ import {
   clipPointsSince,
   deadFlatlinePath,
   describeSparkline,
+  entryMarkerVisible,
   entryMarkerY,
   formatSparkPrice,
   sparklineRangeForCoin,
@@ -169,6 +170,27 @@ test('entryMarkerY draws only inside the visible window and never distorts scale
   assert.equal(entryMarkerY(0, 10, 20, 36, 2), null);
   // flat window → midline
   assert.equal(entryMarkerY(10, 10, 10, 36, 2), 18);
+});
+
+// Issue #13: the SAME in-window rule gates the larger detail chart's
+// average-entry marker (entryMarkerVisible is the shared decision;
+// entryMarkerY only adds SVG-space geometry on top of it).
+test('entryMarkerVisible gates the marker identically for sparkline and detail chart', () => {
+  assert.equal(entryMarkerVisible(15, 10, 20), true);
+  assert.equal(entryMarkerVisible(10, 10, 20), true); // bounds are visible
+  assert.equal(entryMarkerVisible(20, 10, 20), true);
+  assert.equal(entryMarkerVisible(30, 10, 20), false); // off-window never distorts scale
+  assert.equal(entryMarkerVisible(5, 10, 20), false);
+  assert.equal(entryMarkerVisible(null, 10, 20), false);
+  assert.equal(entryMarkerVisible(0, 10, 20), false); // £0 entry is not a real entry
+  assert.equal(entryMarkerVisible(-3, 10, 20), false);
+  assert.equal(entryMarkerVisible(NaN, 10, 20), false);
+  assert.equal(entryMarkerVisible(10, NaN, 20), false);
+  // a flat window still counts as visible (rendered as a midline)
+  assert.equal(entryMarkerVisible(10, 10, 10), true);
+  // entryMarkerY now delegates the decision: visibility and geometry agree
+  assert.equal(entryMarkerY(30, 10, 20, 36, 2) === null, !entryMarkerVisible(30, 10, 20));
+  assert.equal(entryMarkerY(15, 10, 20, 36, 2) !== null, entryMarkerVisible(15, 10, 20));
 });
 
 // --- Dead flatline ------------------------------------------------------------

@@ -608,7 +608,7 @@ export const HOW_TO_PLAY_STEPS: HowToPlayStep[] = [
   {
     id: 'trade',
     title: 'TRADE',
-    body: 'Buy and sell the available coins with your Cash. Fractional quantities are supported — 0.004 of a coin is a real position. Trading is how you try to beat the drains.'
+    body: 'Buy and sell the available coins with your Cash. Fractional quantities are supported — 0.004 of a coin is a real position. Trading is how you try to beat the drains. Tap any coin card to open its detail view: reading the dip → rise → boom → fall cycle on the price chart is core gameplay, not optional homework.'
   },
   {
     id: 'clock',
@@ -866,6 +866,25 @@ export function formatTypicalProfile(
   const [cycleMin, cycleMax] = coin.typicalCycleMinutes;
   const [swingMin, swingMax] = coin.typicalSwingPct;
   return `~${cycleMin}–${cycleMax} min cycles · ±${swingMin}–${swingMax}% swings`;
+}
+
+// Issue #13 detail view: the two halves of the typical profile as separate
+// rows. Same public signal fields, never hidden timing — only the per-cycle
+// length and swing size the backend already publishes on the card.
+export function formatTypicalCycle(
+  coin: Pick<MarketSignalCoin, 'typicalCycleMinutes'>
+): string {
+  if (!coin.typicalCycleMinutes) return '—';
+  const [cycleMin, cycleMax] = coin.typicalCycleMinutes;
+  return `~${cycleMin}–${cycleMax} min per cycle`;
+}
+
+export function formatTypicalSwing(
+  coin: Pick<MarketSignalCoin, 'typicalSwingPct'>
+): string {
+  if (!coin.typicalSwingPct) return '—';
+  const [swingMin, swingMax] = coin.typicalSwingPct;
+  return `±${swingMin}–${swingMax}% per swing`;
 }
 
 // Signed percentage with an explicit sign, e.g. "+13.6%" / "-2.4%".

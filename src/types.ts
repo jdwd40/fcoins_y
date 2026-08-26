@@ -1,4 +1,8 @@
-export type TimeRange = '24H' | '7D' | '30D' | 'ALL';
+// Per-coin price-history windows. The backend's coins.controller validRanges
+// are 10M/30M/1H/2H/24H/7D/30D/ALL: the four short cycle windows are
+// first-class for the V2 coin detail view (issue #13), the longer windows
+// remain as secondary options.
+export type TimeRange = '10M' | '30M' | '1H' | '2H' | '24H' | '7D' | '30D' | 'ALL';
 
 export interface Coin {
   coin_id: number;
