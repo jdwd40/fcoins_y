@@ -2,10 +2,10 @@
 
 ## Current checkpoint
 
-- **Stage:** Stage 2 complete — compact dip→boom→dip sparkline checkpoint
-- **Active frontend issue:** `jdwd40/fcoins_y#13` (next implementation stage after branch backup)
+- **Stage:** Stage 3 complete — V2 coin-detail/modal and short-range chart checkpoint
+- **Active frontend issue:** frontend final verification/deployment (after branch backup)
 - **Frontend branch:** `v2-ui-polish-20260825`
-- **Current frontend checkpoint SHA:** `6a2ff11ae22aa1814a2865959de784cea1420f39`
+- **Current frontend checkpoint SHA:** `6296460e1aa2a72b53a78dffd7efc80d82ecf390`
 - **Frontend baseline SHA before this checkpoint:** `0fe1b23c85fa1bc773450e0f8e4a3f1d74caf4f9`
 - **Backend cleanup issue:** `jdwd40/back_coins_x#22` (blocked until UI polish is deployed)
 - **Canonical tracker:** `jdwd40/back_coins_x#23`
@@ -29,7 +29,7 @@
 - **Result:** `#8` commented with evidence and closed as **COMPLETED**. `#23` updated so its #8 row is **COMPLETED**, with a tracker comment.
 - **Deployment state:** unchanged; no production deployment.
 - **Unresolved:** none for #8. Remaining UI stages are still open and must not be closed before human Pixel 8 Pro acceptance.
-- **Exact next action:** commit/push this progress-file SHA, then launch one fresh Kimi K3 implementation task for `fcoins_y#13`; no writer may overlap the completed #12 stage.
+- **Exact next action:** commit/push this progress-file SHA, then run final frontend gates against the complete branch, review branch/master diff, merge/push current `master`, verify the normal deployment workflow and live smoke, and only then begin backend cleanup #22.
 
 ## Checkpoint: issue #14 narrow-mobile readability
 
@@ -55,9 +55,21 @@
 - **Unresolved:** authenticated owned-position entry-marker rendering was reviewed statically/contractually without credentials; no dead coin appeared in the live sample, so its no-fetch flatline is covered by unit/UI-contract tests; initial render makes one deduped request per active coin/range (10 in the live sample), which is acceptable for the current roster but worth watching if the roster grows; no subjective Pixel 8 Pro acceptance claimed.
 - **Deployment state:** code committed locally; branch backup not yet pushed; `master` and live deployment unchanged.
 
+## Checkpoint: issue #13 V2 coin-detail interaction and short-range chart
+
+- **Issue / stage:** `jdwd40/fcoins_y#13`, Stage 3
+- **Branch / commit SHA:** `v2-ui-polish-20260825` at `6296460e1aa2a72b53a78dffd7efc80d82ecf390` (`7f014e58ff18980df2228820d60776ba1e779d0b` detail implementation plus `6296460e1aa2a72b53a78dffd7efc80d82ecf390` copy correction)
+- **Files changed:** `src/App.tsx`, `scripts/ui-contract.mjs`, `src/components/CoinSignalCard.tsx`, `src/components/GameMarketGrid.tsx`, `src/components/GameCoinDetail.tsx`, `src/components/PriceChart.tsx`, `src/components/RoundTradePanel.tsx`, `src/index.css`, `src/types.ts`, `src/utils/gameLogic.ts`, `src/utils/gameV2.test.ts`, `src/utils/sparkline.test.ts`, `src/utils/sparkline.ts`.
+- **Implementation:** existing modal/detail/chart/trade infrastructure reused; every active/owned/dead primary card opens the correct live-signal coin detail from non-trade areas; explicit labelled Details button with focus styling; trade click guard; V2 phase/momentum/archetype/risk/movement/typical ranges and owned cost-basis/P&L fields; dead £0 non-buyable state; shared authoritative RoundTradePanel with Power estimate/free sell; primary detail ranges `10M/30M/1H/2H`, secondary `24H/7D/30D/ALL`, archetype-aware default, shared live-cycle clipping, and in-window average-entry marker. Surrounding copy now calls the old surface historical market drill-down and explicitly says recent cyclical history is core V2 gameplay. No backend/API, future-data, seed, hidden-timing, or gameplay-engine changes.
+- **Luna review:** read the complete combined diff and new detail component; verified correct signal/holding data flow, dead-card handling, existing modal reuse, short-range endpoint usage, no new chart library, and trade-control isolation. Correction pass fixed stale exchange framing and raised narrow Details target to 44px.
+- **Verification:** controller reran `npm run test:unit` (**156/156 pass**), `npm run test:ui` (**passed**), `npm run lint` (**0 errors, same 6 pre-existing warnings**), `npm run build` (**passed**), `npx tsc --noEmit` (**passed**), and `git diff --check` (**passed**). Controller-owned headless Chromium/CDP live-data probe: at 390px, 10 cards/10 detail triggers/10 sparkline paths, no overflow; detail opened the correct `FutureCoin`, rendered V2 phase/momentum/archetype/risk/typical cycle/typical swing, short primary ranges with `10M` pressed by default, secondary long ranges, no forbidden fields, no modal overflow; close restored 10 cards; quick-buy click did not open the modal; signal-surface click opened the matching detail. At 1280px, no overflow and all 10 detail triggers/sparkline paths remained present.
+- **Result:** `#13` is **IMPLEMENTED — AWAITING HUMAN PIXEL ACCEPTANCE**. It remains open. Automated checks and DOM interaction do not claim the user's subjective Pixel 8 Pro acceptance.
+- **Unresolved:** authenticated Cash/Power/owned P&L and owned average-entry marker were reviewed statically/contractually without credentials; no dead coin appeared in the live sample, so dead-detail behavior is covered by UI-contract/static tests; signed-out live probe correctly did not render authenticated Power content; no subjective Pixel 8 Pro acceptance claimed.
+- **Deployment state:** code committed locally; branch backup not yet pushed; `master` and live deployment unchanged.
+
 ## Result
 
-- Production baseline remains preserved; Stage 1 #14 and Stage 2 #12 implementations are committed on the safe UI-polish branch.
+- Production baseline remains preserved; Stages 1–3 (#14, #12, #13) are committed on the safe UI-polish branch.
 - Issue #8 reconciliation is complete without a K3 implementation stage.
 - No UI-polish code has been pushed to `master`, merged, or deployed.
 - No production-data changes, migrations, or gameplay-engine changes have been made.
@@ -71,10 +83,10 @@
 
 ## Deployment state
 
-- UI-polish branch exists locally only; not pushed yet.
-- Current live deployment has not been changed.
+- UI-polish implementation is committed locally at `6296460e1aa2a72b53a78dffd7efc80d82ecf390`; final progress update is being checkpointed before safe-branch push.
+- Current live deployment has not been changed; frontend `master` remains at `0fe1b23`.
 - Cleanup has not started.
 
 ## Exact next action
 
-Commit and push this progress-file checkpoint, verify the branch remains clean and synchronized, then prepare and launch one fresh pinned Kimi K3 task for `fcoins_y#13` on `v2-ui-polish-20260825`. Do not begin frontend deployment or backend cleanup until #13 is independently reviewed, gated, committed, pushed, and checkpointed.
+Commit and push this progress-file checkpoint, verify the safe branch head, then update #13/#23 and execute the final frontend release: rerun clean-branch gates, merge `v2-ui-polish-20260825` into current `master`, push `master`, verify the normal workflow against the exact master SHA, smoke-test the live V2 UI, and only then start backend cleanup #22.
