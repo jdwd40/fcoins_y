@@ -5,8 +5,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  DEFAULT_MONITOR_PLAYBACK_SPEED,
   MONITOR_ATTRIBUTION_LABEL,
   MONITOR_CHART_MODE_LABEL,
+  MONITOR_PLAYBACK_SPEEDS,
+  advanceReplayTime,
   attributionLabel,
   buildMonitorSeries,
   clampReplayTime,
@@ -16,8 +19,11 @@ import {
   formatMonitorPrice,
   getCoinStateAtTime,
   getPriceAtTime,
+  isMonitorPlaybackSpeed,
   monitorReplayBounds,
   pickNewestCycle,
+  playbackSpeedLabel,
+  resolveReplayPlayStart,
   summariseMonitorCoin
 } from './apocalypseMonitor.ts';
 import type {
@@ -533,4 +539,156 @@ test('formatInspecting renders the "Inspecting: elapsed / total" readout', () =>
   assert.equal(formatInspecting(3_661_000, 7_200_000), 'Inspecting: 1:01:01 / 2:00:00');
   // A negative cursor clamps to zero elapsed via formatElapsed.
   assert.equal(formatInspecting(-1_000, 1_800_000), 'Inspecting: 00:00 / 30:00');
+});
+
+// =============================================================================
+// Apocalypse Monitor Phase 5: automatic replay playback helpers.
+// Playback advances the SAME cursor (`currentReplayTime`, elapsed ms since the
+// cycle start) by real elapsed browser time * speed. The helpers are pure and
+// timestamp-injected so the timing logic is deterministic under node --test.
+// =============================================================================
+
+const PLAY_BOUNDS = { minMs: 0, maxMs: 1_800_000, defaultMs: 1_800_000 };
+
+// --- Speed vocabulary ----------------------------------------------------------
+
+test('MONITOR_PLAYBACK_SPEEDS is exactly 1/5/10/30/60 with 10x the default', () => {
+  assert.deepEqual([...MONITOR_PLAYBACK_SPEEDS], [1, 5, 10, 30, 60]);
+  assert.equal(DEFAULT_MONITOR_PLAYBACK_SPEED, 10);
+  for (const speed of MONITOR_PLAYBACK_SPEEDS) {
+    assert.equal(isMonitorPlaybackSpeed(speed), true);
+  }
+  assert.equal(isMonitorPlaybackSpeed(2), false);
+  assert.equal(isMonitorPlaybackSpeed(0), false);
+  assert.equal(isMonitorPlaybackSpeed(Number.NaN), false);
+});
+
+test('playbackSpeedLabel renders the operator-facing Nx labels', () => {
+  assert.equal(playbackSpeedLabel(1), '1x');
+  assert.equal(playbackSpeedLabel(5), '5x');
+  assert.equal(playbackSpeedLabel(10), '10x');
+  assert.equal(playbackSpeedLabel(30), '30x');
+  assert.equal(playbackSpeedLabel(60), '60x');
+});
+
+// --- Timestamp-delta advancement ---------------------------------------------------
+
+test('advanceReplayTime advances by real elapsed ms * speed at the default 10x', () => {
+  // 100ms of real browser time at 10x = 1s of replay time.
+  const next = advanceReplayTime(60_000, 100, DEFAULT_MONITOR_PLAYBACK_SPEED, PLAY_BOUNDS);
+  assert.equal(next.cursorMs, 61_000);
+  assert.equal(next.reachedEnd, false);
+});
+
+test('advanceReplayTime scales every supported speed by the same real delta', () => {
+  const deltaMs = 250; // a delayed RAF callback advances proportionally — no drift
+  const expected: Record<number, number> = { 1: 250, 5: 1_250, 10: 2_500, 30: 7_500, 60: 15_000 };
+  for (const speed of MONITOR_PLAYBACK_SPEEDS) {
+    const next = advanceReplayTime(0, deltaMs, speed, PLAY_BOUNDS);
+    assert.equal(next.cursorMs, expected[speed], `speed ${speed}x`);
+    assert.equal(next.reachedEnd, false);
+  }
+});
+
+test('advanceReplayTime clamps EXACTLY at the upper bound and reports reachedEnd — no overshoot, no looping', () => {
+  const next = advanceReplayTime(1_799_000, 500, 10, PLAY_BOUNDS); // would land at 1_804_000
+  assert.equal(next.cursorMs, 1_800_000); // clamped exactly, never past the bound
+  assert.equal(next.reachedEnd, true);
+  // A huge delayed callback (background tab) still clamps exactly — no drift.
+  const delayed = advanceReplayTime(0, 999_999_999, 60, PLAY_BOUNDS);
+  assert.equal(delayed.cursorMs, 1_800_000);
+  assert.equal(delayed.reachedEnd, true);
+  // Already at the bound: stays pinned, still reachedEnd (never wraps to min).
+  const pinned = advanceReplayTime(1_800_000, 16, 10, PLAY_BOUNDS);
+  assert.equal(pinned.cursorMs, 1_800_000);
+  assert.equal(pinned.reachedEnd, true);
+});
+
+test('advanceReplayTime clamps at the lower bound for a negative delta', () => {
+  const next = advanceReplayTime(100, -5_000, 10, PLAY_BOUNDS);
+  assert.equal(next.cursorMs, 0);
+  assert.equal(next.reachedEnd, false);
+});
+
+test('advanceReplayTime recovers safely from invalid input — never NaN, never a crash', () => {
+  // NaN cursor recovers to the bounds default (same rule as clampReplayTime).
+  const nanCursor = advanceReplayTime(Number.NaN, 16, 10, PLAY_BOUNDS);
+  assert.equal(nanCursor.cursorMs, PLAY_BOUNDS.defaultMs);
+  assert.equal(nanCursor.reachedEnd, true); // default IS the upper bound here
+  // Non-finite / non-positive deltas and speeds are a deterministic no-op
+  // (clamped cursor), so a bad frame can never corrupt the timeline.
+  for (const [delta, speed] of [
+    [Number.NaN, 10],
+    [Number.POSITIVE_INFINITY, 10],
+    [16, Number.NaN],
+    [16, 0],
+    [16, -5]
+  ] as const) {
+    const next = advanceReplayTime(60_000, delta, speed, PLAY_BOUNDS);
+    assert.equal(next.cursorMs, 60_000);
+    assert.equal(next.reachedEnd, false);
+  }
+});
+
+test('advanceReplayTime over zero-width bounds (malformed snapshot / empty history) pins at 0 and ends', () => {
+  const zero = { minMs: 0, maxMs: 0, defaultMs: 0 };
+  const next = advanceReplayTime(0, 16, 10, zero);
+  assert.equal(next.cursorMs, 0);
+  assert.equal(next.reachedEnd, true);
+});
+
+// --- Play-start resolution -----------------------------------------------------------
+
+test('resolveReplayPlayStart resumes a finished cycle from mid-cycle cursor', () => {
+  assert.equal(resolveReplayPlayStart(300_000, PLAY_BOUNDS, 'COMPLETED'), 300_000);
+  assert.equal(resolveReplayPlayStart(300_000, PLAY_BOUNDS, 'SETTLING'), 300_000);
+});
+
+test('resolveReplayPlayStart restarts a finished cycle from the beginning when pressed at the upper bound', () => {
+  assert.equal(resolveReplayPlayStart(1_800_000, PLAY_BOUNDS, 'COMPLETED'), 0);
+  assert.equal(resolveReplayPlayStart(1_800_000, PLAY_BOUNDS, 'SETTLING'), 0);
+  // NaN cursor recovers to the default (= the upper bound) → restart.
+  assert.equal(resolveReplayPlayStart(Number.NaN, PLAY_BOUNDS, 'COMPLETED'), 0);
+});
+
+test('resolveReplayPlayStart on an ACTIVE cycle plays from the cursor and never restarts', () => {
+  const activeBounds = { minMs: 0, maxMs: 1_500_000, defaultMs: 1_500_000 };
+  assert.equal(resolveReplayPlayStart(600_000, activeBounds, 'ACTIVE'), 600_000);
+  // At the ACTIVE upper bound the cursor stays put — playback immediately
+  // clamps at the existing bound and pauses (no restart, no future prices).
+  assert.equal(resolveReplayPlayStart(1_500_000, activeBounds, 'ACTIVE'), 1_500_000);
+});
+
+test('resolveReplayPlayStart clamps an out-of-range cursor before deciding', () => {
+  assert.equal(resolveReplayPlayStart(-5_000, PLAY_BOUNDS, 'ACTIVE'), 0);
+  // Beyond the bound on a finished cycle behaves as "at the bound" → restart.
+  assert.equal(resolveReplayPlayStart(9_999_999, PLAY_BOUNDS, 'COMPLETED'), 0);
+});
+
+// --- Playback interacts correctly with the Phase 4 point-in-time helpers --------------
+
+test('playback advancing across a zero-priced COLLAPSE sample transitions the point-in-time state to collapsed', () => {
+  // REPLAY_COIN collapses at 05:00 elapsed. Playing from 04:00 at 60x for
+  // 1s of real time lands at 05:00 — at the collapse.
+  const next = advanceReplayTime(240_000, 1_000, 60, PLAY_BOUNDS);
+  assert.equal(next.cursorMs, 300_000);
+  const state = getCoinStateAtTime(REPLAY_COIN, CYCLE_START, next.cursorMs);
+  assert.equal(state.collapsed, true);
+  assert.equal(state.price, 0);
+  // One frame earlier (59.9s) the coin still shows its pre-collapse price.
+  const before = advanceReplayTime(240_000, 998, 60, PLAY_BOUNDS);
+  const beforeState = getCoinStateAtTime(REPLAY_COIN, CYCLE_START, before.cursorMs);
+  assert.equal(beforeState.collapsed, false);
+  assert.equal(beforeState.price, 15);
+});
+
+test('playback over a snapshot with empty coin histories stays bounded and point-in-time stays unavailable', () => {
+  const bounds = monitorReplayBounds(makeSnapshot({ coins: [] }));
+  const next = advanceReplayTime(0, 60_000, 10, bounds);
+  assert.equal(next.cursorMs, 600_000); // 60s real × 10x = 10:00 elapsed replay
+  assert.equal(next.reachedEnd, false);
+  const empty = coin({ coinId: 19, symbol: 'EMP', name: 'Empty' });
+  const state = getCoinStateAtTime(empty, CYCLE_START, next.cursorMs);
+  assert.equal(state.available, false);
+  assert.equal(state.price, null);
 });

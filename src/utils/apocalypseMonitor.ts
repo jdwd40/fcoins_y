@@ -18,6 +18,7 @@
 import type {
   MonitorAttribution,
   MonitorCoin,
+  MonitorCycleStatus,
   MonitorCycleSummary,
   MonitorPricePoint,
   MonitorSnapshot
@@ -345,4 +346,73 @@ export function getCoinStateAtTime(
 // "Inspecting: elapsed / total" readout next to the replay slider.
 export function formatInspecting(cursorMs: number, totalMs: number): string {
   return `Inspecting: ${formatElapsed(cursorMs)} / ${formatElapsed(totalMs)}`;
+}
+
+// =============================================================================
+// Apocalypse Monitor Phase 5: automatic replay playback helpers.
+//
+// Playback advances the SAME Phase 4 cursor (`currentReplayTime`, elapsed ms
+// since the cycle start) by REAL ELAPSED BROWSER TIME * SPEED:
+//   replayAdvance = (frameTimestamp - previousFrameTimestamp) * speed.
+// The component feeds requestAnimationFrame timestamps into advanceReplayTime,
+// so a delayed callback (busy tab, background throttling) advances
+// proportionally and can never drift or accumulate error. Everything here is
+// pure with injected timestamps — deterministic under `node --test`.
+// =============================================================================
+
+// Supported playback speeds (multipliers over real time). 10x is the default:
+// a 30-minute apocalypse replays in ~3 minutes of operator time.
+export const MONITOR_PLAYBACK_SPEEDS = [1, 5, 10, 30, 60] as const;
+export type MonitorPlaybackSpeed = (typeof MONITOR_PLAYBACK_SPEEDS)[number];
+export const DEFAULT_MONITOR_PLAYBACK_SPEED: MonitorPlaybackSpeed = 10;
+
+export function isMonitorPlaybackSpeed(value: number): value is MonitorPlaybackSpeed {
+  return (MONITOR_PLAYBACK_SPEEDS as readonly number[]).includes(value);
+}
+
+// Operator-facing speed button label: 1x / 5x / 10x / 30x / 60x.
+export function playbackSpeedLabel(speed: number): string {
+  return `${speed}x`;
+}
+
+export interface MonitorReplayAdvance {
+  /** Cursor after the advance, clamped exactly into the bounds. */
+  cursorMs: number;
+  /** True when the clamped cursor sits at the upper bound: the component
+   *  pauses there — no looping, never a wrap to the start. */
+  reachedEnd: boolean;
+}
+
+// Advance the replay cursor by `elapsedRealMs * speed`, clamped exactly into
+// the bounds. Invalid input is a deterministic no-op (the cursor is merely
+// clamped into range; NaN recovers to the default), so one bad frame can
+// never corrupt the timeline. A negative delta clamps at the lower bound.
+export function advanceReplayTime(
+  cursorMs: number,
+  elapsedRealMs: number,
+  speed: number,
+  bounds: MonitorReplayBounds
+): MonitorReplayAdvance {
+  const base = Number.isFinite(cursorMs) ? cursorMs : bounds.defaultMs;
+  const validDelta = Number.isFinite(elapsedRealMs) && Number.isFinite(speed) && speed > 0;
+  const advanced = validDelta ? base + elapsedRealMs * speed : base;
+  const clamped = Math.min(bounds.maxMs, Math.max(bounds.minMs, advanced));
+  return { cursorMs: clamped, reachedEnd: clamped >= bounds.maxMs };
+}
+
+// Where playback begins when Play is pressed. A finished cycle
+// (COMPLETED/SETTLING) parked at the upper bound RESTARTS from the cycle
+// start; anywhere before the bound it resumes from the cursor. An ACTIVE
+// cycle always plays from the cursor and stops at its existing replay upper
+// bound (the latest observable time) — never restarted, never the future.
+export function resolveReplayPlayStart(
+  cursorMs: number,
+  bounds: MonitorReplayBounds,
+  status: MonitorCycleStatus
+): number {
+  const clamped = clampReplayTime(cursorMs, bounds);
+  if (status !== 'ACTIVE' && clamped >= bounds.maxMs && bounds.maxMs > bounds.minMs) {
+    return bounds.minMs;
+  }
+  return clamped;
 }

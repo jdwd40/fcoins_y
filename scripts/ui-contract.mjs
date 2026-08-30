@@ -740,13 +740,12 @@ assert.match(apocalypseMonitor, /setCurrentReplayTime\(null\)/); // reset on cyc
 assert.match(apocalypseMonitor, /type="range"/);
 assert.match(apocalypseMonitor, /aria-valuetext/);
 assert.match(apocalypseMonitor, /aria-label="Replay position in the cycle"/);
-// Readout plus the only two transport controls: Start and End/Latest. No
-// Play/Pause, no speed control, no auto movement, no live polling.
+// Readout plus the transport controls (Start / Play-Pause / End-Latest) and
+// speed buttons. No auto cycle switching, no live polling, no player surface.
 assert.match(apocalypseMonitor, /formatInspecting\(/);
 assert.match(apocalypseMonitor, />Start</);
 assert.match(apocalypseMonitor, /'Latest' : 'End'/);
 assert.doesNotMatch(apocalypseMonitor, /setInterval|setTimeout/);
-assert.doesNotMatch(apocalypseMonitor, /Play|Pause/);
 // Bounds + point-in-time helpers are pure and single-sourced in the util.
 assert.match(monitorUtil, /export function monitorReplayBounds/);
 assert.match(monitorUtil, /export function clampReplayTime/);
@@ -765,6 +764,51 @@ assert.match(apocalypseMonitor, /Cursor Δ/);
 // PRICE / % CHANGE modes and the full-history chart are preserved.
 assert.match(apocalypseMonitor, /MONITOR_CHART_MODE_LABEL/);
 assert.match(apocalypseMonitor, /buildMonitorSeries\(coin, monitorData\.cycle\.startTime, chartMode\)/);
+
+// --- Apocalypse Monitor Phase 5: automatic replay playback ------------------
+// Playback advances the SAME cursor (`currentReplayTime`) by real frame-time
+// deltas * speed — only two new pieces of state: isPlaying / playbackSpeed.
+assert.match(apocalypseMonitor, /isPlaying/);
+assert.match(apocalypseMonitor, /playbackSpeed/);
+assert.match(apocalypseMonitor, /useState<MonitorPlaybackSpeed>\(DEFAULT_MONITOR_PLAYBACK_SPEED\)/);
+// requestAnimationFrame loop with timestamp deltas; every exit path cancels
+// the pending frame — no orphan callbacks, and still no timer-based polling.
+assert.match(apocalypseMonitor, /requestAnimationFrame\(tick\)/);
+assert.match(apocalypseMonitor, /cancelAnimationFrame\(rafId\)/);
+assert.match(apocalypseMonitor, /advanceReplayTime\(base, frameTimestamp - lastTs, playbackSpeedRef\.current, replayBounds\)/);
+assert.doesNotMatch(apocalypseMonitor, /setInterval|setTimeout/);
+// Accessible transport: Start / Play-Pause / End-Latest with pressed state,
+// labels and endpoint-disabled states.
+assert.match(apocalypseMonitor, /aria-label="Replay transport"/);
+assert.match(apocalypseMonitor, /aria-pressed=\{isPlaying\}/);
+assert.match(apocalypseMonitor, /'Pause replay' : 'Play replay'/);
+assert.match(apocalypseMonitor, /\{isPlaying \? 'Pause' : 'Play'\}/);
+assert.match(apocalypseMonitor, /disabled=\{!isPlaying && effectiveReplayMs === replayBounds\.minMs\}/);
+assert.match(apocalypseMonitor, /disabled=\{!isPlaying && effectiveReplayMs === replayBounds\.maxMs\}/);
+// Speed controls: exactly 1x/5x/10x/30x/60x from the shared vocabulary.
+assert.match(apocalypseMonitor, /aria-label="Playback speed"/);
+assert.match(apocalypseMonitor, /MONITOR_PLAYBACK_SPEEDS\.map/);
+assert.match(apocalypseMonitor, /aria-pressed=\{playbackSpeed === speed\}/);
+assert.match(apocalypseMonitor, /Playback speed \$\{playbackSpeedLabel\(speed\)\}/);
+assert.match(monitorUtil, /export const MONITOR_PLAYBACK_SPEEDS = \[1, 5, 10, 30, 60\] as const/);
+assert.match(monitorUtil, /export const DEFAULT_MONITOR_PLAYBACK_SPEED: MonitorPlaybackSpeed = 10/);
+assert.match(monitorUtil, /export function isMonitorPlaybackSpeed/);
+assert.match(monitorUtil, /export function playbackSpeedLabel/);
+// Timing + play-start logic is pure and timestamp-injected in the util.
+assert.match(monitorUtil, /export function advanceReplayTime/);
+assert.match(monitorUtil, /export function resolveReplayPlayStart/);
+// Lifecycle cleanup: one pause helper routed through every exit — cycle
+// change, data load success/failure, auth failure, token reset, manual
+// scrub — plus a visibilitychange pause (hidden pauses, never auto-resumes).
+assert.match(apocalypseMonitor, /const pausePlayback = useCallback/);
+assert.match(apocalypseMonitor, /visibilitychange/);
+assert.match(apocalypseMonitor, /document\.visibilityState === 'hidden'\) pausePlayback\(\)/);
+assert.match(apocalypseMonitor, /const handleScrub = \(ms: number\) => \{\n    pausePlayback\(\);/);
+assert.match(apocalypseMonitor, /const handlePlayPause = \(\)/);
+assert.match(apocalypseMonitor, /resolveReplayPlayStart\(/);
+// The chart mode buttons still never touch the cursor or playback: the mode
+// onClick only sets chartMode.
+assert.match(apocalypseMonitor, /onClick=\{\(\) => setChartMode\(mode\)\}/);
 
 // --- Centralised API base ------------------------------------------------
 // No source file outside services/apiConfig.ts may hard-code the deployed

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Activity, ShieldCheck, AlertTriangle } from 'lucide-react';
 import {
@@ -21,7 +21,10 @@ import {
   type MonitorSnapshot
 } from '../services/monitorService.ts';
 import {
+  DEFAULT_MONITOR_PLAYBACK_SPEED,
   MONITOR_CHART_MODE_LABEL,
+  MONITOR_PLAYBACK_SPEEDS,
+  advanceReplayTime,
   attributionLabel,
   buildMonitorSeries,
   clampReplayTime,
@@ -32,8 +35,11 @@ import {
   getCoinStateAtTime,
   monitorReplayBounds,
   pickNewestCycle,
+  playbackSpeedLabel,
+  resolveReplayPlayStart,
   summariseMonitorCoin,
-  type MonitorChartMode
+  type MonitorChartMode,
+  type MonitorPlaybackSpeed
 } from '../utils/apocalypseMonitor.ts';
 
 ChartJS.register(LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
@@ -54,8 +60,16 @@ ChartJS.register(LinearScale, PointElement, LineElement, Title, Tooltip, Legend)
 // slider. `currentReplayTime` is elapsed ms since the cycle start (null =
 // the bounds default: cycle end for finished cycles, latest observable for
 // ACTIVE). Scrubbing NEVER refetches or mutates monitorData — it is a pure
-// read over the loaded snapshot. No auto movement, no live polling: the page
-// still fetches one historical snapshot per selected cycle on demand.
+// read over the loaded snapshot.
+//
+// Phase 5 playback: Play advances that SAME cursor with a
+// requestAnimationFrame loop driven by real frame timestamps —
+// replayAdvance = (frameTs - previousFrameTs) * playbackSpeed — so delayed
+// callbacks advance proportionally and never drift. Playback touches ONLY
+// the cursor state: no refetch, no timer-based live polling, no competing
+// timeline. Reaching the upper bound clamps exactly and pauses
+// (no looping). Hiding the tab pauses and drops the timing reference; a
+// visible tab never auto-resumes. Unmount cancels the pending frame.
 
 // Deterministic per-coin line palette (index-cycled); legible on the paper
 // theme in both light and dark.
@@ -86,15 +100,35 @@ export function ApocalypseMonitor() {
   // Replay cursor: elapsed ms since the cycle start. Null = the bounds
   // default (cycle end for finished cycles, latest observable for ACTIVE).
   const [currentReplayTime, setCurrentReplayTime] = useState<number | null>(null);
+  // Phase 5 playback: only two extra pieces of state. The cursor itself
+  // remains `currentReplayTime` — playback advances it arithmetically.
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState<MonitorPlaybackSpeed>(DEFAULT_MONITOR_PLAYBACK_SPEED);
 
   // Stale-response guard: a slow fetch for a previously selected cycle can
   // never overwrite the newer selection.
   const requestSeq = useRef(0);
+  // Playback bookkeeping (refs — they mutate per frame without re-rendering):
+  //   replayTimeRef    mirrors the cursor so the RAF tick never reads stale state
+  //   lastFrameTsRef   previous RAF timestamp; null = no live timing reference
+  //   playbackSpeedRef speed read inside the tick (speed changes apply live)
+  const replayTimeRef = useRef<number | null>(null);
+  const lastFrameTsRef = useRef<number | null>(null);
+  const playbackSpeedRef = useRef<number>(playbackSpeed);
+
+  // Pause playback and drop the timing reference. Stable: every cleanup path
+  // (cycle change, auth reset, data failure, visibility hidden, manual scrub)
+  // routes through this single helper.
+  const pausePlayback = useCallback(() => {
+    setIsPlaying(false);
+    lastFrameTsRef.current = null;
+  }, []);
 
   const handleAuthFailure = (err: unknown): boolean => {
     if (err instanceof MonitorApiError && err.status === 401) {
       // Back to the token screen; the message is the fixed invalid-token
       // copy from the service (never the token itself).
+      pausePlayback();
       setToken('');
       setCycles(null);
       setSelectedCycle(null);
@@ -113,13 +147,16 @@ export function ApocalypseMonitor() {
     try {
       const snapshot = await getMonitorSnapshot(activeToken, cycleId);
       if (seq !== requestSeq.current) return;
+      // New cycle data: playback pauses and the replay cursor resets to the
+      // bounds default (cycle end for finished cycles, latest observable for
+      // ACTIVE).
+      pausePlayback();
       setMonitorData(snapshot);
-      // New cycle data: the replay cursor resets to the bounds default
-      // (cycle end for finished cycles, latest observable for ACTIVE).
       setCurrentReplayTime(null);
     } catch (err) {
       if (seq !== requestSeq.current) return;
       if (handleAuthFailure(err)) return;
+      pausePlayback();
       setMonitorData(null);
       setCurrentReplayTime(null);
       setMonitorError(err instanceof Error ? err.message : 'Failed to load monitor data');
@@ -154,6 +191,9 @@ export function ApocalypseMonitor() {
   };
 
   const handleCycleChange = (cycleId: string) => {
+    // Changing cycle pauses/resets playback BEFORE the fetch begins, so the
+    // monitor never refetches while playing.
+    pausePlayback();
     setSelectedCycle(cycleId);
     void loadMonitor(token, cycleId);
   };
@@ -161,6 +201,7 @@ export function ApocalypseMonitor() {
   const handleReset = () => {
     // Drop every trace of the token from memory and return to the gate.
     requestSeq.current += 1;
+    pausePlayback();
     setToken('');
     setTokenInput('');
     setCycles(null);
@@ -190,6 +231,87 @@ export function ApocalypseMonitor() {
     replayBounds === null
       ? null
       : clampReplayTime(currentReplayTime ?? replayBounds.defaultMs, replayBounds);
+
+  // --- Phase 5 playback -------------------------------------------------------
+  // The RAF loop is the ONLY thing that moves the cursor automatically. It
+  // advances by real frame-timestamp deltas (never a fixed step), so delayed
+  // or throttled callbacks advance proportionally — no drift, no catch-up
+  // burst. It touches only cursor state: monitorData is never refetched
+  // while playing. On reaching the upper bound the cursor clamps exactly and
+  // playback pauses — no looping.
+  useEffect(() => {
+    if (!isPlaying || replayBounds === null) return undefined;
+    let rafId = 0;
+    lastFrameTsRef.current = null;
+    const tick = (frameTimestamp: number) => {
+      const lastTs = lastFrameTsRef.current;
+      lastFrameTsRef.current = frameTimestamp;
+      if (lastTs === null) {
+        // First frame after Play/resume: establish the timing reference only.
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      const base = replayTimeRef.current ?? replayBounds.defaultMs;
+      const next = advanceReplayTime(base, frameTimestamp - lastTs, playbackSpeedRef.current, replayBounds);
+      replayTimeRef.current = next.cursorMs;
+      setCurrentReplayTime(next.cursorMs);
+      if (next.reachedEnd) {
+        // Clamp exactly at the upper bound and pause — no looping.
+        setIsPlaying(false);
+        lastFrameTsRef.current = null;
+        return; // no further frame scheduled
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    // Cleanup cancels the pending frame: pause, unmount and bounds changes
+    // can never leave an orphan RAF callback behind.
+    return () => cancelAnimationFrame(rafId);
+  }, [isPlaying, replayBounds]);
+
+  // Hiding the tab pauses playback and drops the timing reference; becoming
+  // visible again never auto-resumes (the operator presses Play).
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') pausePlayback();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [pausePlayback]);
+
+  const handlePlayPause = () => {
+    if (isPlaying) {
+      pausePlayback();
+      return;
+    }
+    if (replayBounds === null || monitorData === null) return;
+    // Play-start resolution: finished cycle parked at the upper bound
+    // restarts from the cycle start; otherwise playback resumes from the
+    // cursor. ACTIVE plays from the cursor and stops at its existing bound.
+    const start = resolveReplayPlayStart(
+      effectiveReplayMs ?? replayBounds.defaultMs,
+      replayBounds,
+      monitorData.cycle.status
+    );
+    replayTimeRef.current = start;
+    lastFrameTsRef.current = null;
+    setCurrentReplayTime(start);
+    setIsPlaying(true);
+  };
+
+  // Manual slider scrub: pause first, then move the cursor.
+  const handleScrub = (ms: number) => {
+    pausePlayback();
+    replayTimeRef.current = ms;
+    setCurrentReplayTime(ms);
+  };
+
+  // Speed changes apply live (the RAF tick reads playbackSpeedRef); playback
+  // continues at the new speed without disturbing the timing reference.
+  const handleSpeedChange = (speed: MonitorPlaybackSpeed) => {
+    playbackSpeedRef.current = speed;
+    setPlaybackSpeed(speed);
+  };
 
   const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
   const axisColor = isDark ? '#85899e' : '#686b82';
@@ -470,24 +592,55 @@ export function ApocalypseMonitor() {
                         max={replayBounds.maxMs}
                         step={1000}
                         value={effectiveReplayMs}
-                        onChange={(event) => setCurrentReplayTime(Number(event.target.value))}
+                        onChange={(event) => handleScrub(Number(event.target.value))}
                         aria-label="Replay position in the cycle"
                         aria-valuetext={`${formatElapsed(effectiveReplayMs)} elapsed of ${formatElapsed(replayBounds.maxMs)}`}
                         className="w-full accent-gold"
                       />
-                      <div className="flex gap-2 mt-3">
-                        <button
-                          type="button"
-                          className="btn-ink"
-                          onClick={() => setCurrentReplayTime(replayBounds.minMs)}
-                        >Start</button>
-                        <button
-                          type="button"
-                          className="btn-ink"
-                          onClick={() => setCurrentReplayTime(replayBounds.maxMs)}
-                        >
-                          {monitorData.cycle.status === 'ACTIVE' ? 'Latest' : 'End'}
-                        </button>
+                      <div className="flex flex-wrap items-center gap-2 mt-3">
+                        <div className="flex gap-2" role="group" aria-label="Replay transport">
+                          <button
+                            type="button"
+                            className="btn-ink"
+                            disabled={!isPlaying && effectiveReplayMs === replayBounds.minMs}
+                            onClick={() => handleScrub(replayBounds.minMs)}
+                          >Start</button>
+                          <button
+                            type="button"
+                            className="btn-ink"
+                            aria-pressed={isPlaying}
+                            aria-label={isPlaying ? 'Pause replay' : 'Play replay'}
+                            onClick={handlePlayPause}
+                          >
+                            {isPlaying ? 'Pause' : 'Play'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ink"
+                            disabled={!isPlaying && effectiveReplayMs === replayBounds.maxMs}
+                            onClick={() => handleScrub(replayBounds.maxMs)}
+                          >
+                            {monitorData.cycle.status === 'ACTIVE' ? 'Latest' : 'End'}
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2" role="group" aria-label="Playback speed">
+                          {MONITOR_PLAYBACK_SPEEDS.map((speed) => (
+                            <button
+                              key={speed}
+                              type="button"
+                              aria-pressed={playbackSpeed === speed}
+                              aria-label={`Playback speed ${playbackSpeedLabel(speed)}`}
+                              onClick={() => handleSpeedChange(speed)}
+                              className={`font-mono text-[0.7rem] tracking-caps uppercase px-3 py-1.5 border transition-all ${
+                                playbackSpeed === speed
+                                  ? 'border-gold text-gold bg-paper-alt'
+                                  : 'border-transparent text-ink-mute hover:text-ink hover:border-rule'
+                              }`}
+                            >
+                              {playbackSpeedLabel(speed)}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}
