@@ -148,3 +148,16 @@ The backend progress file is authoritative for the complete V2-3 file list, risk
 - Unresolved: baseline backend deadlock flake, existing frontend warnings/build advisories; no new V2 gate failures.
 
 The backend progress file is the authoritative complete morning report and contains final parameters, all strategy/bot metrics, regression evidence and readiness assessment. Do not merge, deploy or begin another milestone.
+
+---
+
+## Apocalypse Monitor Phase 3 Plan 1 — COMPLETE (internal frontend dashboard)
+
+- Scope: internal operator dashboard and historical multi-coin viewer for the backend diagnostics monitor API (backend issue #21, Phase 2/2.5). Frontend only; no backend, gameplay, player-facing chart or navigation changes. No push, no deploy.
+- Route: `/internal/apocalypse-monitor` under the existing `/coins` BrowserRouter basename; deliberately absent from player navigation and mounted WITHOUT the player providers (no player-API polling on the operator page).
+- Token handling: the diagnostics token is entered manually on the operator gate screen and held ONLY in React memory. Never hard-coded, never Vite env, never Web Storage, never logged, never embedded in error strings (401 surfaces the fixed `INVALID_MONITOR_TOKEN_MESSAGE`). It leaves the page solely as `Authorization: Bearer <token>` on the two diagnostics calls in `src/services/monitorService.ts`; the player-facing `gameService` remains contractually barred from `/game/diagnostics/*`.
+- Flow: token gate → `GET /game/diagnostics/monitor/cycles` → newest cycle auto-selected → `GET /game/diagnostics/monitor?cycleId=…`. Cycle switching shows a loading state; empty cycles, unknown-cycle 404s, fail-closed 404s, network failures and malformed payloads all surface cleanly. Clean state concepts: `selectedCycle`, `monitorData`, `chartMode`; no playback/scrubber/live logic.
+- Chart: existing Chart.js/react-chartjs-2 dependency; one line per coin; x-axis is elapsed Apocalypse time (MM:SS / H:MM:SS) derived from backend timestamps and the cycle start; tooltips show elapsed time plus price/%. PRICE mode renders raw points verbatim (no interpolation; `source` COLLAPSE tags preserved). % CHANGE mode normalises each coin against its first observed price `((price - start) / start) * 100`; a zero starting price yields null values and `n/a` — never divide-by-zero.
+- Summary table: per-coin start/end/latest/high/low/change/samples, provenance chip (Exact / Time-window derived / Mixed / No data), backend warnings panel, and a visually obvious `COLLAPSED · £0.00` state for coins whose final observed price is zero. Coins with no history render safely.
+- New files: `src/services/monitorService.ts`, `src/utils/apocalypseMonitor.ts`, `src/components/ApocalypseMonitor.tsx`, `src/services/monitorService.test.ts`, `src/utils/apocalypseMonitor.test.ts`. Modified: `src/App.tsx` (route), `scripts/ui-contract.mjs` (monitor contract section), `package.json` (test:unit list).
+- Gates: `npm run test:unit` 181/181 passed; `npm run test:ui` passed; `npm run lint` 0 errors (six pre-existing warnings); `npx tsc --noEmit` passed; `npm run build` passed; `git diff --check` passed.

@@ -21,6 +21,7 @@ import { GameTopBar } from './components/GameTopBar.tsx';
 import { PlayerStatusStrip } from './components/PlayerStatusStrip.tsx';
 import { LeaderboardPressure } from './components/LeaderboardPressure.tsx';
 import { GameMarketGrid } from './components/GameMarketGrid.tsx';
+import { ApocalypseMonitor } from './components/ApocalypseMonitor.tsx';
 import { API_BASE_URL } from './services/apiConfig.ts';
 import type { Coin, MarketStatus as MarketStatusType, MarketStats as MarketStatsType } from './types';
 
@@ -203,6 +204,16 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
   );
 }
 
+function PlayerShell({ children }: { children: React.ReactNode }) {
+  return (
+    <AuthProvider>
+      <ToastProvider>
+        <GameProvider>{children}</GameProvider>
+      </ToastProvider>
+    </AuthProvider>
+  );
+}
+
 function App() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -212,18 +223,16 @@ function App() {
   }, []);
 
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <GameProvider>
-          <Router basename="/coins">
-            <Routes>
-              <Route path="/" element={<Market refreshTrigger={refreshTrigger} />} />
-              <Route path="/profile" element={<Profile />} />
-            </Routes>
-          </Router>
-        </GameProvider>
-      </ToastProvider>
-    </AuthProvider>
+    <Router basename="/coins">
+      <Routes>
+        {/* Internal operator tooling (Apocalypse Monitor Phase 3 Plan 1):
+            unlinked from player navigation, and mounted WITHOUT the player
+            providers so no player-API polling runs on the operator page. */}
+        <Route path="/internal/apocalypse-monitor" element={<ApocalypseMonitor />} />
+        <Route path="/" element={<PlayerShell><Market refreshTrigger={refreshTrigger} /></PlayerShell>} />
+        <Route path="/profile" element={<PlayerShell><Profile /></PlayerShell>} />
+      </Routes>
+    </Router>
   );
 }
 

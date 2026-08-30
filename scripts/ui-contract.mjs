@@ -28,6 +28,9 @@ const coinSparkline = readFileSync(new URL('../src/components/CoinSparkline.tsx'
 const useCoinSparkline = readFileSync(new URL('../src/hooks/useCoinSparkline.ts', import.meta.url), 'utf8');
 const gameCoinDetail = readFileSync(new URL('../src/components/GameCoinDetail.tsx', import.meta.url), 'utf8');
 const typesTs = readFileSync(new URL('../src/types.ts', import.meta.url), 'utf8');
+const monitorService = readFileSync(new URL('../src/services/monitorService.ts', import.meta.url), 'utf8');
+const monitorUtil = readFileSync(new URL('../src/utils/apocalypseMonitor.ts', import.meta.url), 'utf8');
+const apocalypseMonitor = readFileSync(new URL('../src/components/ApocalypseMonitor.tsx', import.meta.url), 'utf8');
 
 // --- Core Crypto Chaos surface ------------------------------------------
 // V2-5: the primary screen is the mobile-first game — compact top bar,
@@ -666,6 +669,68 @@ assert.doesNotMatch(chart, /market\/price-history/);
 assert.match(sparklineUtil, /export function entryMarkerVisible/);
 // The classic modal chart defaults are unchanged (24H first, long ranges).
 assert.match(chart, /initialRange \?\? primaryRanges\[0\]/);
+
+// --- Apocalypse Monitor Phase 3 Plan 1: internal operator dashboard --------
+// Internal route under the existing /coins basename, never linked from the
+// player navigation.
+assert.match(app, /path="\/internal\/apocalypse-monitor"/);
+assert.match(app, /ApocalypseMonitor/);
+// The player-facing game client still never touches the diagnostics API;
+// the operator token boundary lives in its own service module.
+assert.doesNotMatch(gameService, /\/game\/diagnostics/);
+assert.match(monitorService, /\/game\/diagnostics\/monitor\/cycles/);
+assert.match(monitorService, /\/game\/diagnostics\/monitor\?cycleId=/);
+assert.match(monitorService, /API_BASE_URL/);
+assert.match(monitorService, /Authorization: `Bearer \$\{trimmed\}`/);
+assert.match(monitorService, /export class MonitorApiError/);
+assert.match(monitorService, /INVALID_MONITOR_TOKEN_MESSAGE/);
+assert.match(monitorService, /export async function getMonitorCycles/);
+assert.match(monitorService, /export async function getMonitorSnapshot/);
+assert.match(monitorService, /export function parseMonitorCycles/);
+assert.match(monitorService, /export function parseMonitorSnapshot/);
+assert.match(monitorService, /'exact' \| 'time_window_derived' \| 'mixed'/);
+// The diagnostics service never logs (a log line could carry the token).
+assert.doesNotMatch(monitorService, /console\.(log|error|warn|info|debug)/);
+// Token handling: manual entry only, React memory only. Never hard-coded,
+// never env, never persisted to any Web Storage, never on the player routes.
+assert.doesNotMatch(apocalypseMonitor, /localStorage|sessionStorage/);
+assert.doesNotMatch(apocalypseMonitor, /import\.meta\.env|VITE_/);
+assert.match(apocalypseMonitor, /type="password"/);
+assert.match(apocalypseMonitor, /autoComplete="off"/);
+assert.match(apocalypseMonitor, /Diagnostics token/);
+assert.match(apocalypseMonitor, /held in memory only/);
+// Clean state concepts: selectedCycle / monitorData / chartMode.
+assert.match(apocalypseMonitor, /selectedCycle/);
+assert.match(apocalypseMonitor, /monitorData/);
+assert.match(apocalypseMonitor, /chartMode/);
+// Newest cycle auto-selected; switching shows loading and failures surface.
+assert.match(apocalypseMonitor, /pickNewestCycle\(result\.cycles\)/);
+assert.match(apocalypseMonitor, /Loading monitor data/);
+// Chart: one line per coin, elapsed apocalypse time, PRICE / % CHANGE modes.
+assert.match(apocalypseMonitor, /react-chartjs-2/);
+assert.match(apocalypseMonitor, /buildMonitorSeries\(coin, monitorData\.cycle\.startTime, chartMode\)/);
+assert.match(apocalypseMonitor, /MONITOR_CHART_MODE_LABEL/);
+assert.match(apocalypseMonitor, /aria-pressed/);
+assert.match(apocalypseMonitor, /role="group"/);
+assert.match(apocalypseMonitor, /Elapsed \$\{formatElapsed/);
+// Summary table: start/end/latest/high/low/change/sample count, provenance,
+// collapsed final zero obvious, warnings rendered.
+assert.match(apocalypseMonitor, /summariseMonitorCoin\(coin, monitorData\.cycle\.endTime\)/);
+assert.match(apocalypseMonitor, /attributionLabel\(/);
+assert.match(apocalypseMonitor, /COLLAPSED/);
+assert.match(apocalypseMonitor, /monitorData\.warnings\.map/);
+assert.match(apocalypseMonitor, /Samples/);
+// Pure helpers single-source the transformation and summary behaviour.
+assert.match(monitorUtil, /export function buildMonitorSeries/);
+assert.match(monitorUtil, /export function summariseMonitorCoin/);
+assert.match(monitorUtil, /export function formatElapsed/);
+assert.match(monitorUtil, /export function pickNewestCycle/);
+assert.match(monitorUtil, /export function attributionLabel/);
+assert.match(monitorUtil, /export const MONITOR_ATTRIBUTION_LABEL/);
+assert.match(monitorUtil, /export const MONITOR_CHART_MODE_LABEL/);
+assert.match(monitorUtil, /\(\(point\.price - startPrice\) \/ startPrice\) \* 100/);
+// No replay/scrubber/live logic on the monitor surface.
+assert.doesNotMatch(apocalypseMonitor, /setInterval|setTimeout|replay|scrubber/i);
 
 // --- Centralised API base ------------------------------------------------
 // No source file outside services/apiConfig.ts may hard-code the deployed
