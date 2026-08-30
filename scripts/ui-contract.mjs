@@ -729,8 +729,42 @@ assert.match(monitorUtil, /export function attributionLabel/);
 assert.match(monitorUtil, /export const MONITOR_ATTRIBUTION_LABEL/);
 assert.match(monitorUtil, /export const MONITOR_CHART_MODE_LABEL/);
 assert.match(monitorUtil, /\(\(point\.price - startPrice\) \/ startPrice\) \* 100/);
-// No replay/scrubber/live logic on the monitor surface.
-assert.doesNotMatch(apocalypseMonitor, /setInterval|setTimeout|replay|scrubber/i);
+// --- Apocalypse Monitor Phase 4: replay cursor (scrubbing) ------------------
+// One React-memory cursor, `currentReplayTime` (elapsed ms since cycle start,
+// matching the chart x-axis so Phase 5 playback can advance it
+// arithmetically). Loaded monitorData is never refetched while scrubbing.
+assert.match(apocalypseMonitor, /currentReplayTime/);
+assert.match(apocalypseMonitor, /setCurrentReplayTime\(null\)/); // reset on cycle selection/data load
+// Accessible slider below the full-history chart (native range input: mouse,
+// touch and keyboard work out of the box) bounded to the selected cycle.
+assert.match(apocalypseMonitor, /type="range"/);
+assert.match(apocalypseMonitor, /aria-valuetext/);
+assert.match(apocalypseMonitor, /aria-label="Replay position in the cycle"/);
+// Readout plus the only two transport controls: Start and End/Latest. No
+// Play/Pause, no speed control, no auto movement, no live polling.
+assert.match(apocalypseMonitor, /formatInspecting\(/);
+assert.match(apocalypseMonitor, />Start</);
+assert.match(apocalypseMonitor, /'Latest' : 'End'/);
+assert.doesNotMatch(apocalypseMonitor, /setInterval|setTimeout/);
+assert.doesNotMatch(apocalypseMonitor, /Play|Pause/);
+// Bounds + point-in-time helpers are pure and single-sourced in the util.
+assert.match(monitorUtil, /export function monitorReplayBounds/);
+assert.match(monitorUtil, /export function clampReplayTime/);
+assert.match(monitorUtil, /export function getPriceAtTime/);
+assert.match(monitorUtil, /export function getCoinStateAtTime/);
+assert.match(monitorUtil, /export function formatInspecting/);
+// Completed cycles default to the cycle end; ACTIVE cycles are capped at the
+// latest legitimately observable time (snapshot observedAt / latest sample),
+// never invented future prices.
+assert.match(monitorUtil, /status === 'ACTIVE'/);
+// The summary table gains point-in-time columns at the replay cursor while
+// retaining the whole-cycle Start/End/High/Low/Change/Samples columns.
+assert.match(apocalypseMonitor, /getCoinStateAtTime\(coin, monitorData\.cycle\.startTime/);
+assert.match(apocalypseMonitor, /At cursor/);
+assert.match(apocalypseMonitor, /Cursor Δ/);
+// PRICE / % CHANGE modes and the full-history chart are preserved.
+assert.match(apocalypseMonitor, /MONITOR_CHART_MODE_LABEL/);
+assert.match(apocalypseMonitor, /buildMonitorSeries\(coin, monitorData\.cycle\.startTime, chartMode\)/);
 
 // --- Centralised API base ------------------------------------------------
 // No source file outside services/apiConfig.ts may hard-code the deployed

@@ -1,6 +1,11 @@
-// Apocalypse Monitor Phase 3 Plan 1: pure helpers for the internal operator
-// monitor dashboard. Everything here is deterministic and DOM-free so it
-// runs under plain `node --test`.
+// Apocalypse Monitor Phase 3 Plan 1 + Phase 4: pure helpers for the internal
+// operator monitor dashboard. Everything here is deterministic and DOM-free
+// so it runs under plain `node --test`.
+//
+// Phase 4 adds the replay cursor helpers (monitorReplayBounds /
+// clampReplayTime / getPriceAtTime / getCoinStateAtTime / formatInspecting):
+// pure reads over one loaded snapshot, used while scrubbing — never a
+// refetch, never an interpolation.
 //
 // Hard rules encoded here:
 //   * Raw backend points are preserved — sorting is defensive only, no
@@ -13,7 +18,9 @@
 import type {
   MonitorAttribution,
   MonitorCoin,
-  MonitorCycleSummary
+  MonitorCycleSummary,
+  MonitorPricePoint,
+  MonitorSnapshot
 } from '../services/monitorService.ts';
 
 export type MonitorChartMode = 'price' | 'percent';
@@ -192,4 +199,150 @@ export function formatMonitorChangePct(pct: number | null): string {
   if (pct === null) return 'n/a';
   const sign = pct > 0 ? '+' : '';
   return `${sign}${pct.toFixed(2)}%`;
+}
+
+// =============================================================================
+// Apocalypse Monitor Phase 4: replay cursor (scrubbing) helpers.
+//
+// The replay cursor is ELAPSED MILLISECONDS since the cycle start — the same
+// unit as the chart x-axis — so a future playback phase can advance it
+// arithmetically without timestamp bookkeeping. Scrubbing never refetches or
+// mutates the loaded snapshot; everything below is a pure read over it.
+// =============================================================================
+
+export interface MonitorReplayBounds {
+  /** Slider lower bound: the cycle start (always 0 elapsed). */
+  minMs: number;
+  /** Slider upper bound: cycle end for finished cycles; the latest
+   *  legitimately observable time for ACTIVE cycles (never the future). */
+  maxMs: number;
+  /** Cursor position after a cycle selection / data load. */
+  defaultMs: number;
+}
+
+// Replay bounds for one loaded snapshot. COMPLETED/SETTLING cycles span the
+// whole cycle and default the cursor to the cycle end. ACTIVE cycles are
+// capped at the latest legitimately observable time — the later of the
+// snapshot's database-clock read (observedAt) and the newest real sample
+// across all coins, clamped to the cycle end — so the operator can never
+// scrub into the future over invented prices. Malformed timestamps are
+// ignored; unparseable cycle bounds degrade to a zero-width safe range.
+export function monitorReplayBounds(snapshot: MonitorSnapshot): MonitorReplayBounds {
+  const zero: MonitorReplayBounds = { minMs: 0, maxMs: 0, defaultMs: 0 };
+  const startMs = new Date(snapshot.cycle.startTime).getTime();
+  const endMs = new Date(snapshot.cycle.endTime).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
+    return zero;
+  }
+  const cycleLengthMs = endMs - startMs;
+  if (snapshot.cycle.status === 'ACTIVE') {
+    let observableMs = startMs;
+    const observedMs = new Date(snapshot.cycle.observedAt).getTime();
+    if (Number.isFinite(observedMs)) observableMs = Math.max(observableMs, observedMs);
+    for (const coin of snapshot.coins) {
+      for (const point of coin.history.points) {
+        const pointMs = new Date(point.time).getTime();
+        if (Number.isFinite(pointMs) && pointMs > observableMs) observableMs = pointMs;
+      }
+    }
+    const maxMs = Math.max(0, Math.min(cycleLengthMs, observableMs - startMs));
+    return { minMs: 0, maxMs, defaultMs: maxMs };
+  }
+  return { minMs: 0, maxMs: cycleLengthMs, defaultMs: cycleLengthMs };
+}
+
+// Clamp a cursor into the bounds; NaN input recovers to the default (cycle
+// end / latest observable) rather than propagating.
+export function clampReplayTime(ms: number, bounds: MonitorReplayBounds): number {
+  if (!Number.isFinite(ms)) return bounds.defaultMs;
+  return Math.min(bounds.maxMs, Math.max(bounds.minMs, ms));
+}
+
+// Valid samples of one coin, ascending by time — the shared defensive
+// filter/sort used by every point-in-time lookup. Malformed timestamps are
+// dropped, so one bad row (or a whole bad coin) can never crash the lookup.
+function sortedValidPoints(coin: MonitorCoin): MonitorPricePoint[] {
+  return [...coin.history.points]
+    .filter((point) => Number.isFinite(new Date(point.time).getTime()))
+    .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+}
+
+// Latest sample at or before the cursor — step semantics, never
+// interpolated. Null before the first observation (or with no valid
+// samples); past the final sample the latest observed price answers.
+export function getPriceAtTime(
+  coin: MonitorCoin,
+  cycleStartTime: string,
+  cursorMs: number
+): number | null {
+  const startMs = new Date(cycleStartTime).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(cursorMs)) return null;
+  const points = sortedValidPoints(coin);
+  let price: number | null = null;
+  for (const point of points) {
+    if (new Date(point.time).getTime() - startMs > cursorMs) break;
+    price = point.price;
+  }
+  return price;
+}
+
+export interface MonitorCoinReplayState {
+  /** False before the first observation (or with no valid samples). */
+  available: boolean;
+  /** Price at the cursor (latest sample ≤ cursor). */
+  price: number | null;
+  /** Timestamp of the sample answering the cursor. */
+  time: string | null;
+  /** Source tag of that sample (COLLAPSE included). */
+  source: string | null;
+  /** % change vs the FIRST observed price; null when that price is zero or
+   *  the coin is unavailable — never Infinity/NaN. */
+  changePct: number | null;
+  /** True at/after a zero-priced COLLAPSE sample: the coin is collapsed. */
+  collapsed: boolean;
+}
+
+const UNAVAILABLE_REPLAY_STATE: MonitorCoinReplayState = {
+  available: false,
+  price: null,
+  time: null,
+  source: null,
+  changePct: null,
+  collapsed: false
+};
+
+// Full point-in-time state for one coin at the replay cursor. Before a
+// collapse the prior price answers; at/after a zero-priced sample whose
+// source is COLLAPSE the state is price 0 and collapsed. A COLLAPSE-tagged
+// sample with a non-zero price (a provenance tag on a surviving row) does
+// not collapse the point-in-time state.
+export function getCoinStateAtTime(
+  coin: MonitorCoin,
+  cycleStartTime: string,
+  cursorMs: number
+): MonitorCoinReplayState {
+  const startMs = new Date(cycleStartTime).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(cursorMs)) return UNAVAILABLE_REPLAY_STATE;
+  const points = sortedValidPoints(coin);
+  if (points.length === 0) return UNAVAILABLE_REPLAY_STATE;
+  let at: MonitorPricePoint | null = null;
+  for (const point of points) {
+    if (new Date(point.time).getTime() - startMs > cursorMs) break;
+    at = point;
+  }
+  if (at === null) return UNAVAILABLE_REPLAY_STATE;
+  const startPrice = points[0].price;
+  return {
+    available: true,
+    price: at.price,
+    time: at.time,
+    source: at.source,
+    changePct: startPrice > 0 ? ((at.price - startPrice) / startPrice) * 100 : null,
+    collapsed: at.source === 'COLLAPSE' && at.price === 0
+  };
+}
+
+// "Inspecting: elapsed / total" readout next to the replay slider.
+export function formatInspecting(cursorMs: number, totalMs: number): string {
+  return `Inspecting: ${formatElapsed(cursorMs)} / ${formatElapsed(totalMs)}`;
 }

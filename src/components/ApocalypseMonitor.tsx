@@ -8,7 +8,8 @@ import {
   LineElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  type Plugin
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 
@@ -23,9 +24,13 @@ import {
   MONITOR_CHART_MODE_LABEL,
   attributionLabel,
   buildMonitorSeries,
+  clampReplayTime,
   formatElapsed,
+  formatInspecting,
   formatMonitorChangePct,
   formatMonitorPrice,
+  getCoinStateAtTime,
+  monitorReplayBounds,
   pickNewestCycle,
   summariseMonitorCoin,
   type MonitorChartMode
@@ -45,8 +50,12 @@ ChartJS.register(LinearScale, PointElement, LineElement, Title, Tooltip, Legend)
 // page solely as `Authorization: Bearer <token>` on diagnostics calls inside
 // monitorService.
 //
-// No playback controls or live polling: the page fetches one historical
-// snapshot per selected cycle on demand.
+// Phase 4 replay cursor: the operator can scrub one loaded snapshot with a
+// slider. `currentReplayTime` is elapsed ms since the cycle start (null =
+// the bounds default: cycle end for finished cycles, latest observable for
+// ACTIVE). Scrubbing NEVER refetches or mutates monitorData — it is a pure
+// read over the loaded snapshot. No auto movement, no live polling: the page
+// still fetches one historical snapshot per selected cycle on demand.
 
 // Deterministic per-coin line palette (index-cycled); legible on the paper
 // theme in both light and dark.
@@ -74,6 +83,9 @@ export function ApocalypseMonitor() {
   const [monitorLoading, setMonitorLoading] = useState(false);
   const [monitorError, setMonitorError] = useState<string | null>(null);
   const [chartMode, setChartMode] = useState<MonitorChartMode>('price');
+  // Replay cursor: elapsed ms since the cycle start. Null = the bounds
+  // default (cycle end for finished cycles, latest observable for ACTIVE).
+  const [currentReplayTime, setCurrentReplayTime] = useState<number | null>(null);
 
   // Stale-response guard: a slow fetch for a previously selected cycle can
   // never overwrite the newer selection.
@@ -87,6 +99,7 @@ export function ApocalypseMonitor() {
       setCycles(null);
       setSelectedCycle(null);
       setMonitorData(null);
+      setCurrentReplayTime(null);
       setUnlockError(err.message);
       return true;
     }
@@ -101,10 +114,14 @@ export function ApocalypseMonitor() {
       const snapshot = await getMonitorSnapshot(activeToken, cycleId);
       if (seq !== requestSeq.current) return;
       setMonitorData(snapshot);
+      // New cycle data: the replay cursor resets to the bounds default
+      // (cycle end for finished cycles, latest observable for ACTIVE).
+      setCurrentReplayTime(null);
     } catch (err) {
       if (seq !== requestSeq.current) return;
       if (handleAuthFailure(err)) return;
       setMonitorData(null);
+      setCurrentReplayTime(null);
       setMonitorError(err instanceof Error ? err.message : 'Failed to load monitor data');
     } finally {
       if (seq === requestSeq.current) setMonitorLoading(false);
@@ -149,6 +166,7 @@ export function ApocalypseMonitor() {
     setCycles(null);
     setSelectedCycle(null);
     setMonitorData(null);
+    setCurrentReplayTime(null);
     setMonitorError(null);
     setUnlockError(null);
   };
@@ -161,9 +179,47 @@ export function ApocalypseMonitor() {
     [monitorData, chartMode]
   );
 
+  // Phase 4: replay bounds derive purely from the loaded snapshot; the
+  // effective cursor is the operator's scrub position (or the bounds
+  // default) clamped into range. Scrubbing never refetches monitorData.
+  const replayBounds = useMemo(
+    () => (monitorData ? monitorReplayBounds(monitorData) : null),
+    [monitorData]
+  );
+  const effectiveReplayMs =
+    replayBounds === null
+      ? null
+      : clampReplayTime(currentReplayTime ?? replayBounds.defaultMs, replayBounds);
+
   const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
   const axisColor = isDark ? '#85899e' : '#686b82';
   const gridColor = isDark ? 'rgba(148, 151, 169, 0.10)' : 'rgba(104, 107, 130, 0.12)';
+
+  // Vertical replay-cursor marker: one dashed line drawn after the datasets
+  // at the cursor's x position. Deliberately tiny — no interaction logic.
+  const replayCursorPlugin = useMemo<Plugin<'line'>>(
+    () => ({
+      id: 'replayCursor',
+      afterDatasetsDraw(chart) {
+        if (effectiveReplayMs === null || !chart.chartArea) return;
+        const xScale = chart.scales.x;
+        if (!xScale) return;
+        const { top, bottom, left, right } = chart.chartArea;
+        const xPixel = Math.min(right, Math.max(left, xScale.getPixelForValue(effectiveReplayMs)));
+        const { ctx } = chart;
+        ctx.save();
+        ctx.strokeStyle = axisColor;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(xPixel, top);
+        ctx.lineTo(xPixel, bottom);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }),
+    [effectiveReplayMs, axisColor]
+  );
 
   const chartData = {
     datasets: series.map((entry, index) => ({
@@ -395,7 +451,44 @@ export function ApocalypseMonitor() {
                     </div>
                   ) : (
                     <div className="h-[320px] sm:h-[420px]">
-                      <Line data={chartData} options={chartOptions} />
+                      <Line data={chartData} options={chartOptions} plugins={[replayCursorPlugin]} />
+                    </div>
+                  )}
+
+                  {replayBounds !== null && effectiveReplayMs !== null && replayBounds.maxMs > 0 && (
+                    <div className="mt-6 border-t border-rule pt-5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <label htmlFor="replay-cursor" className="label">Replay cursor</label>
+                        <span className="font-mono text-xs text-ink-mute" aria-live="polite">
+                          {formatInspecting(effectiveReplayMs, replayBounds.maxMs)}
+                        </span>
+                      </div>
+                      <input
+                        id="replay-cursor"
+                        type="range"
+                        min={replayBounds.minMs}
+                        max={replayBounds.maxMs}
+                        step={1000}
+                        value={effectiveReplayMs}
+                        onChange={(event) => setCurrentReplayTime(Number(event.target.value))}
+                        aria-label="Replay position in the cycle"
+                        aria-valuetext={`${formatElapsed(effectiveReplayMs)} elapsed of ${formatElapsed(replayBounds.maxMs)}`}
+                        className="w-full accent-gold"
+                      />
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          type="button"
+                          className="btn-ink"
+                          onClick={() => setCurrentReplayTime(replayBounds.minMs)}
+                        >Start</button>
+                        <button
+                          type="button"
+                          className="btn-ink"
+                          onClick={() => setCurrentReplayTime(replayBounds.maxMs)}
+                        >
+                          {monitorData.cycle.status === 'ACTIVE' ? 'Latest' : 'End'}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -424,6 +517,8 @@ export function ApocalypseMonitor() {
                           <th className="py-2 pr-4 text-right">Start</th>
                           <th className="py-2 pr-4 text-right">End</th>
                           <th className="py-2 pr-4 text-right">Latest</th>
+                          <th className="py-2 pr-4 text-right">At cursor</th>
+                          <th className="py-2 pr-4 text-right">Cursor Δ</th>
                           <th className="py-2 pr-4 text-right">High</th>
                           <th className="py-2 pr-4 text-right">Low</th>
                           <th className="py-2 pr-4 text-right">Change</th>
@@ -434,6 +529,11 @@ export function ApocalypseMonitor() {
                       <tbody>
                         {monitorData.coins.map((coin) => {
                           const summary = summariseMonitorCoin(coin, monitorData.cycle.endTime);
+                          // Point-in-time state at the replay cursor (pure
+                          // read over the loaded snapshot — no refetch).
+                          const replayState = effectiveReplayMs === null
+                            ? null
+                            : getCoinStateAtTime(coin, monitorData.cycle.startTime, effectiveReplayMs);
                           return (
                             <tr
                               key={coin.coinId}
@@ -450,6 +550,24 @@ export function ApocalypseMonitor() {
                               <td className="py-2 pr-4 text-right tnum">{formatMonitorPrice(summary.endPrice)}</td>
                               <td className={`py-2 pr-4 text-right tnum ${summary.collapsed ? 'text-oxblood font-bold' : ''}`}>
                                 {formatMonitorPrice(summary.latestPrice)}
+                              </td>
+                              <td className="py-2 pr-4 text-right tnum">
+                                {replayState === null || !replayState.available ? (
+                                  'n/a'
+                                ) : replayState.collapsed ? (
+                                  <span className="text-oxblood font-bold">£0.00 COLLAPSED</span>
+                                ) : (
+                                  formatMonitorPrice(replayState.price)
+                                )}
+                              </td>
+                              <td className={`py-2 pr-4 text-right tnum ${
+                                replayState === null || replayState.changePct === null
+                                  ? ''
+                                  : replayState.changePct >= 0
+                                    ? 'text-verdigris'
+                                    : 'text-oxblood'
+                              }`}>
+                                {formatMonitorChangePct(replayState === null ? null : replayState.changePct)}
                               </td>
                               <td className="py-2 pr-4 text-right tnum">{formatMonitorPrice(summary.highPrice)}</td>
                               <td className="py-2 pr-4 text-right tnum">{formatMonitorPrice(summary.lowPrice)}</td>
