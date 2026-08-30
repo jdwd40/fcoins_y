@@ -28,6 +28,7 @@ import {
   attributionLabel,
   buildMonitorSeries,
   clampReplayTime,
+  filterMonitorCoins,
   formatElapsed,
   formatInspecting,
   formatMonitorChangePct,
@@ -212,12 +213,20 @@ export function ApocalypseMonitor() {
     setUnlockError(null);
   };
 
+  // Temporary monitor-only exclusion (HAD / CBT / HDW): ONE filtered,
+  // render-derived coin list feeds BOTH the chart series and the per-coin
+  // summary table below. Pure read — monitorData itself is never mutated.
+  const visibleCoins = useMemo(
+    () => (monitorData ? filterMonitorCoins(monitorData.coins) : []),
+    [monitorData]
+  );
+
   const series = useMemo(
     () =>
       monitorData
-        ? monitorData.coins.map((coin) => buildMonitorSeries(coin, monitorData.cycle.startTime, chartMode))
+        ? visibleCoins.map((coin) => buildMonitorSeries(coin, monitorData.cycle.startTime, chartMode))
         : [],
-    [monitorData, chartMode]
+    [monitorData, visibleCoins, chartMode]
   );
 
   // Phase 4: replay bounds derive purely from the loaded snapshot; the
@@ -680,7 +689,7 @@ export function ApocalypseMonitor() {
                         </tr>
                       </thead>
                       <tbody>
-                        {monitorData.coins.map((coin) => {
+                        {visibleCoins.map((coin) => {
                           const summary = summariseMonitorCoin(coin, monitorData.cycle.endTime);
                           // Point-in-time state at the replay cursor (pure
                           // read over the loaded snapshot — no refetch).

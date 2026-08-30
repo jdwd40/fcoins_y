@@ -3,16 +3,20 @@
 // so it runs under plain `node --test`.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import {
   DEFAULT_MONITOR_PLAYBACK_SPEED,
   MONITOR_ATTRIBUTION_LABEL,
   MONITOR_CHART_MODE_LABEL,
   MONITOR_PLAYBACK_SPEEDS,
+  TEMPORARY_MONITOR_EXCLUDED_SYMBOLS,
   advanceReplayTime,
   attributionLabel,
   buildMonitorSeries,
   clampReplayTime,
+  filterMonitorCoins,
   formatElapsed,
   formatInspecting,
   formatMonitorChangePct,
@@ -691,4 +695,84 @@ test('playback over a snapshot with empty coin histories stays bounded and point
   const state = getCoinStateAtTime(empty, CYCLE_START, next.cursorMs);
   assert.equal(state.available, false);
   assert.equal(state.price, null);
+});
+
+// =============================================================================
+// Temporary monitor-only exclusion (HAD / CBT / HDW)
+//
+// Retired legacy coins are hidden from the Apocalypse Monitor chart and
+// per-coin summary table ONLY. The filter is a pure render-side helper: the
+// loaded snapshot (monitorData) is never mutated, and the exclusion list
+// lives in apocalypseMonitor.ts so no player-facing code can import it by
+// accident.
+// =============================================================================
+
+const EXCLUDED_COIN_FIXTURE: MonitorCoin[] = [
+  coin({ coinId: 1, symbol: 'HAD', name: 'HashAd' }),
+  coin({ coinId: 2, symbol: 'CBT', name: 'ChrisByte' }),
+  coin({ coinId: 3, symbol: 'HDW', name: 'HodlWayne' }),
+  coin({ coinId: 4, symbol: 'BTC', name: 'ByteCoin' }),
+  coin({ coinId: 5, symbol: 'ETH', name: 'EtherBit' })
+];
+
+test('TEMPORARY_MONITOR_EXCLUDED_SYMBOLS is exactly HAD, CBT and HDW', () => {
+  assert.deepEqual([...TEMPORARY_MONITOR_EXCLUDED_SYMBOLS].sort(), ['CBT', 'HAD', 'HDW']);
+});
+
+test('filterMonitorCoins excludes HAD, CBT and HDW and retains the current coins', () => {
+  const filtered = filterMonitorCoins(EXCLUDED_COIN_FIXTURE);
+  const symbols = filtered.map((entry) => entry.symbol);
+  assert.deepEqual(symbols, ['BTC', 'ETH']);
+  assert.ok(!symbols.includes('HAD'));
+  assert.ok(!symbols.includes('CBT'));
+  assert.ok(!symbols.includes('HDW'));
+});
+
+test('filterMonitorCoins never mutates the input — the loaded history stays untouched', () => {
+  const input = EXCLUDED_COIN_FIXTURE.map((entry) => Object.freeze(entry));
+  Object.freeze(input);
+  const filtered = filterMonitorCoins(input as MonitorCoin[]);
+  // Input length and order are untouched after the call.
+  assert.equal(input.length, 5);
+  assert.deepEqual(
+    input.map((entry) => entry.symbol),
+    ['HAD', 'CBT', 'HDW', 'BTC', 'ETH']
+  );
+  // The output is a NEW array sharing the same coin object references (no
+  // copying of the history, no in-place removal).
+  assert.notEqual(filtered, input);
+  assert.equal(filtered[0], input[3]);
+  assert.equal(filtered[1], input[4]);
+});
+
+test('filterMonitorCoins handles empty input safely', () => {
+  assert.deepEqual(filterMonitorCoins([]), []);
+});
+
+test('the exclusion is monitor-only: the component filters chart AND table from one derived list', () => {
+  const here = fileURLToPath(import.meta.url);
+  const srcDir = here.slice(0, here.indexOf('/src/') + 5);
+  const componentSource = readFileSync(`${srcDir}components/ApocalypseMonitor.tsx`, 'utf8');
+
+  // The component imports the pure helper…
+  assert.match(componentSource, /import\s*\{[^}]*filterMonitorCoins[^}]*\}\s*from\s*'\.\.\/utils\/apocalypseMonitor\.ts'/s);
+  // …derives ONE filtered coin list from monitorData…
+  assert.match(componentSource, /filterMonitorCoins\(monitorData\.coins\)/);
+  // …feeds the CHART series from that filtered list (not raw coins)…
+  assert.doesNotMatch(componentSource, /monitorData\.coins\.map\(\(coin\)\s*=>\s*buildMonitorSeries/);
+  // …and feeds the TABLE from the same filtered list (not raw coins).
+  assert.doesNotMatch(componentSource, /monitorData\.coins\.map\(\(coin\)\s*=>\s*\{/);
+
+  // No player-facing component may reference the exclusion: the helper and
+  // the constant are only referenced by the monitor util, its test and the
+  // monitor component.
+  const componentFiles = readdirSync(`${srcDir}components`).filter((name) => name.endsWith('.tsx'));
+  for (const name of componentFiles) {
+    if (name === 'ApocalypseMonitor.tsx') continue;
+    const source = readFileSync(`${srcDir}components/${name}`, 'utf8');
+    assert.ok(
+      !source.includes('filterMonitorCoins') && !source.includes('TEMPORARY_MONITOR_EXCLUDED_SYMBOLS'),
+      `${name} must not reference the monitor-only exclusion`
+    );
+  }
 });

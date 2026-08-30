@@ -203,6 +203,26 @@ export function formatMonitorChangePct(pct: number | null): string {
 }
 
 // =============================================================================
+// Temporary monitor-only exclusion (HAD / CBT / HDW)
+//
+// Retired legacy coins HashAd (HAD), ChrisByte (CBT) and HodlWayne (HDW) are
+// TEMPORARILY hidden from the Apocalypse Monitor chart and per-coin summary
+// table. This is a render-side filter ONLY: it never mutates the loaded
+// snapshot (monitorData), never touches the service/API response, and must
+// never be imported by player-facing code. Remove this block to restore the
+// full history display.
+// =============================================================================
+
+export const TEMPORARY_MONITOR_EXCLUDED_SYMBOLS: readonly string[] = ['HAD', 'CBT', 'HDW'];
+
+// Pure filter: returns a NEW array with the temporarily excluded symbols
+// removed, sharing the same coin object references. The input array (the
+// loaded snapshot's coin list) is never mutated.
+export function filterMonitorCoins(coins: MonitorCoin[]): MonitorCoin[] {
+  return coins.filter((coin) => !TEMPORARY_MONITOR_EXCLUDED_SYMBOLS.includes(coin.symbol));
+}
+
+// =============================================================================
 // Apocalypse Monitor Phase 4: replay cursor (scrubbing) helpers.
 //
 // The replay cursor is ELAPSED MILLISECONDS since the cycle start — the same
