@@ -610,6 +610,49 @@
   .quick-buy-amount { font-family: 'Inter', system-ui, sans-serif; font-size: 0.85rem; font-weight: 800; }
   .quick-buy-power { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.62rem; color: var(--fg-mute); }
 
+  /* SIM-16/17: the public market-phase banner and per-coin event list. The
+     WORD carries the meaning (phase name, tailwind/headwind, ▲/▼ direction
+     with the direction word); colour only reinforces. Wraps cleanly on
+     narrow phones; long event names break instead of overflowing. No
+     animation — the surface-wide reduced-motion restraint stands. */
+  .market-phase-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.75rem;
+    border: 1px solid var(--card-edge);
+    border-radius: 10px;
+    background: var(--card);
+    padding: 0.55rem 0.75rem;
+  }
+  .market-phase-positive { border-color: color-mix(in srgb, var(--verdigris) 45%, var(--card-edge)); }
+  .market-phase-negative { border-color: color-mix(in srgb, var(--oxblood) 45%, var(--card-edge)); }
+  .market-phase-neutral { border-style: dashed; }
+  .coin-event-list {
+    display: grid;
+    gap: 0.35rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .coin-event {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.2rem 0.5rem;
+  }
+  .coin-event-name {
+    min-width: 0;
+    flex: 1 1 8rem;
+    overflow-wrap: anywhere;
+    font-size: 0.75rem;
+    color: var(--fg);
+  }
+  .coin-event-time { margin-left: auto; }
+  .event-positive { color: var(--verdigris); border-color: color-mix(in srgb, var(--verdigris) 45%, var(--card-edge)); }
+  .event-negative { color: var(--oxblood); border-color: color-mix(in srgb, var(--oxblood) 45%, var(--card-edge)); }
+
   /* Comfortable primary-action tap targets (>=44px). */
   .tap-target { min-height: 44px; }
   .tap-target-lg { min-height: 48px; font-size: 0.85rem; }

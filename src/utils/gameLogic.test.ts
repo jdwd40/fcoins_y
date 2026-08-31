@@ -47,9 +47,14 @@ import {
   formatActivityTimestamp,
   normalizeCashEvents,
   findNewCashEvents,
-  summariseDrainToast
+  summariseDrainToast,
+  derivedServerNowMs,
+  remainingUntilIso,
+  marketPhaseSentiment,
+  MARKET_PHASE_SENTIMENT_LABEL,
+  COIN_EVENT_DIRECTION_LABEL
 } from './gameLogic.ts';
-import type { CashEvent, LeaderboardEntry, RoundParticipant } from '../services/gameService.ts';
+import type { CashEvent, LeaderboardEntry, MarketPhaseInfo, RoundParticipant } from '../services/gameService.ts';
 
 // --- Countdown authority (sections 2) --------------------------------------
 
@@ -75,6 +80,47 @@ test('resync re-anchors and corrects drift automatically', () => {
   assert.notEqual(displayRemainingMs(first, 1_090_000), 540_000); // drift visible on old anchor
   assert.equal(displayRemainingMs(second, 1_090_000), 540_000); // corrected instantly
   assert.equal(displayRemainingMs(second, 1_090_000 + 10_000), 530_000);
+});
+
+// --- SIM-16/17: market phase + coin-event countdown display -------------------
+
+const PHASE: MarketPhaseInfo = { id: 'BULL', name: 'Bull', endsAt: '2026-08-21T10:06:00.000Z' };
+const PHASE_SERVER_TIME = '2026-08-21T10:00:00.000Z';
+const PHASE_SYNCED_LOCAL = 5_000_000;
+
+test('the phase/event countdown derives from serverTime plus real local elapsed time', () => {
+  // At the sync instant the derived server time IS the payload serverTime.
+  assert.equal(derivedServerNowMs(PHASE_SERVER_TIME, PHASE_SYNCED_LOCAL, PHASE_SYNCED_LOCAL), Date.parse(PHASE_SERVER_TIME));
+  // 30s of real local elapsed time advances the derived server clock by 30s.
+  assert.equal(
+    derivedServerNowMs(PHASE_SERVER_TIME, PHASE_SYNCED_LOCAL, PHASE_SYNCED_LOCAL + 30_000),
+    Date.parse(PHASE_SERVER_TIME) + 30_000
+  );
+  // A local clock reading before the sync instant never rewinds the basis.
+  assert.equal(derivedServerNowMs(PHASE_SERVER_TIME, PHASE_SYNCED_LOCAL, PHASE_SYNCED_LOCAL - 60_000), Date.parse(PHASE_SERVER_TIME));
+  // endsAt minus the derived server instant, clamped at zero.
+  assert.equal(remainingUntilIso(PHASE.endsAt, Date.parse(PHASE_SERVER_TIME)), 360_000);
+  assert.equal(remainingUntilIso(PHASE.endsAt, Date.parse(PHASE_SERVER_TIME) + 300_000), 60_000);
+  assert.equal(remainingUntilIso(PHASE.endsAt, Date.parse(PHASE_SERVER_TIME) + 400_000), 0);
+  // ...and the combined display stays formatted by the shared countdown rule.
+  assert.equal(formatCountdown(remainingUntilIso(PHASE.endsAt, Date.parse(PHASE_SERVER_TIME) + 300_000)), '01:00');
+  assert.equal(formatCountdown(remainingUntilIso(PHASE.endsAt, Date.parse(PHASE_SERVER_TIME) + 400_000)), '00:00');
+});
+
+test('market phase sentiment follows the public design sign; null is neutral', () => {
+  assert.equal(marketPhaseSentiment(null), 'neutral');
+  for (const id of ['GOLDEN_AGE', 'BOOM', 'BULL'] as const) {
+    assert.equal(marketPhaseSentiment({ ...PHASE, id }), 'positive');
+  }
+  for (const id of ['BEAR', 'BUST', 'RECESSION'] as const) {
+    assert.equal(marketPhaseSentiment({ ...PHASE, id }), 'negative');
+  }
+  // Every treatment has player-facing WORDS — colour is never the only cue.
+  for (const sentiment of ['positive', 'negative', 'neutral'] as const) {
+    assert.ok(MARKET_PHASE_SENTIMENT_LABEL[sentiment].length > 0);
+  }
+  assert.match(COIN_EVENT_DIRECTION_LABEL.POSITIVE, /▲ Positive/);
+  assert.match(COIN_EVENT_DIRECTION_LABEL.NEGATIVE, /▼ Negative/);
 });
 
 test('a null anchor yields zero rather than a confident lie', () => {

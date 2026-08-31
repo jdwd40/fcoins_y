@@ -853,18 +853,23 @@ const VALID_SIGNALS = {
   apocalypseId: 'APOC-0001',
   apocalypsePercent: 42.5,
   serverTime: '2026-08-20T10:12:45.000Z',
+  marketPhase: { id: 'BULL', name: 'Bull', endsAt: '2026-08-20T10:18:45.000Z' },
   coins: [
     {
       coinId: 2, name: 'NovaCash', symbol: 'NVC', archetype: 'MOON',
       currentPrice: 1.42, recentChangePct: 2.35, phase: 'RISE', momentum: 'UP',
       typicalCycleMinutes: [3, 5], typicalSwingPct: [8, 15],
-      collapseRisk: 'STABLE', dead: false
+      collapseRisk: 'STABLE', dead: false,
+      events: [
+        { name: 'Whale Accumulation', direction: 'POSITIVE', endsAt: '2026-08-20T10:14:45.000Z' },
+        { name: 'Rumour of Exchange Delisting and Regulatory Scrutiny in Three Jurisdictions', direction: 'NEGATIVE', endsAt: '2026-08-20T10:16:45.000Z' }
+      ]
     },
     {
       coinId: 3, name: 'Byteon', symbol: 'BYT', archetype: 'RUG',
       currentPrice: 0, recentChangePct: null, phase: 'DEAD', momentum: 'FLAT',
       typicalCycleMinutes: null, typicalSwingPct: null,
-      collapseRisk: 'DEAD', dead: true
+      collapseRisk: 'DEAD', dead: true, events: []
     }
   ]
 };
@@ -881,19 +886,49 @@ test('getMarketSignals fetches the public signals envelope and parses live + dea
     assert.equal(seen?.init?.method, 'GET');
     assert.equal(signals.apocalypseId, 'APOC-0001');
     assert.equal(signals.coins.length, 2);
+    // SIM-15: the current public market phase — id, display name, expiry.
+    assert.deepEqual(signals.marketPhase, {
+      id: 'BULL', name: 'Bull', endsAt: '2026-08-20T10:18:45.000Z'
+    });
     const live = signals.coins[0];
     assert.equal(live.phase, 'RISE');
     assert.equal(live.momentum, 'UP');
     assert.equal(live.collapseRisk, 'STABLE');
     assert.deepEqual(live.typicalCycleMinutes, [3, 5]);
+    // SIM-15: active public events — name, direction, expiry only.
+    assert.deepEqual(live.events, [
+      { name: 'Whale Accumulation', direction: 'POSITIVE', endsAt: '2026-08-20T10:14:45.000Z' },
+      { name: 'Rumour of Exchange Delisting and Regulatory Scrutiny in Three Jurisdictions', direction: 'NEGATIVE', endsAt: '2026-08-20T10:16:45.000Z' }
+    ]);
     const dead = signals.coins[1];
     assert.equal(dead.dead, true);
     assert.equal(dead.currentPrice, 0);
     assert.equal(dead.phase, 'DEAD');
     assert.equal(dead.recentChangePct, null);
+    assert.deepEqual(dead.events, []);
   } finally {
     restore();
   }
+});
+
+test('market signals parser accepts marketPhase null (between phases) and empty/five-event lists', () => {
+  const parsed = parseMarketSignals({ ...VALID_SIGNALS, marketPhase: null });
+  assert.equal(parsed.marketPhase, null);
+  assert.equal(parsed.coins[0].events.length, 2);
+  // The five-event cap is inclusive — exactly five active events is legal.
+  const five = {
+    ...VALID_SIGNALS,
+    coins: [{
+      ...VALID_SIGNALS.coins[0],
+      events: [1, 2, 3, 4, 5].map((n) => ({
+        name: `Event ${n}`, direction: n % 2 === 0 ? 'NEGATIVE' : 'POSITIVE',
+        endsAt: `2026-08-20T10:1${n}:00.000Z`
+      }))
+    }]
+  };
+  const parsedFive = parseMarketSignals(five);
+  assert.equal(parsedFive.coins[0].events.length, 5);
+  assert.equal(parsedFive.coins[0].events[1].direction, 'NEGATIVE');
 });
 
 test('market signals parser rejects malformed coins, unknown vocabularies and DEAD inconsistencies', () => {
@@ -930,4 +965,68 @@ test('market signals parser rejects malformed coins, unknown vocabularies and DE
   const parsed = parseMarketSignals(withLeak);
   assert.equal('seed' in parsed.coins[0], false);
   assert.equal('nextPhaseAt' in parsed.coins[0], false);
+});
+
+test('market signals parser rejects malformed marketPhase and event payloads', () => {
+  const coin = VALID_SIGNALS.coins[0];
+  const event = coin.events[0];
+  // marketPhase must be null or a conforming object — anything else fails.
+  assert.throws(() => parseMarketSignals({ ...VALID_SIGNALS, marketPhase: 'BULL' }), /marketPhase/);
+  assert.throws(
+    () => parseMarketSignals({ ...VALID_SIGNALS, marketPhase: { ...VALID_SIGNALS.marketPhase, id: 'MOONING' } }),
+    /market phase id/
+  );
+  assert.throws(
+    () => parseMarketSignals({ ...VALID_SIGNALS, marketPhase: { ...VALID_SIGNALS.marketPhase, name: '' } }),
+    /name/
+  );
+  // endsAt must be a real ISO 8601 timestamp with an explicit offset.
+  assert.throws(
+    () => parseMarketSignals({ ...VALID_SIGNALS, marketPhase: { ...VALID_SIGNALS.marketPhase, endsAt: 'soon' } }),
+    /ISO 8601/
+  );
+  assert.throws(
+    () => parseMarketSignals({ ...VALID_SIGNALS, marketPhase: { ...VALID_SIGNALS.marketPhase, endsAt: '2026-08-20 10:18:45' } }),
+    /ISO 8601/
+  );
+  assert.throws(
+    () => parseMarketSignals({ ...VALID_SIGNALS, marketPhase: { ...VALID_SIGNALS.marketPhase, endsAt: 1234 } }),
+    /ISO 8601/
+  );
+  // The events list is a hard contract: always an array, at most five.
+  assert.throws(
+    () => parseMarketSignals({ ...VALID_SIGNALS, coins: [{ ...coin, events: 'nope' }] }),
+    /events must be an array/
+  );
+  const six = [1, 2, 3, 4, 5, 6].map((n) => ({ ...event, name: `Event ${n}` }));
+  assert.throws(
+    () => parseMarketSignals({ ...VALID_SIGNALS, coins: [{ ...coin, events: six }] }),
+    /cannot exceed 5/
+  );
+  // Event fields fail closed: name, direction vocabulary, ISO expiry.
+  assert.throws(
+    () => parseMarketSignals({ ...VALID_SIGNALS, coins: [{ ...coin, events: [{ ...event, name: '' }] }] }),
+    /name/
+  );
+  assert.throws(
+    () => parseMarketSignals({ ...VALID_SIGNALS, coins: [{ ...coin, events: [{ ...event, direction: 'SIDEWAYS' }] }] }),
+    /direction/
+  );
+  assert.throws(
+    () => parseMarketSignals({ ...VALID_SIGNALS, coins: [{ ...coin, events: [{ ...event, endsAt: 'not-a-date' }] }] }),
+    /ISO 8601/
+  );
+  assert.throws(
+    () => parseMarketSignals({ ...VALID_SIGNALS, coins: [{ ...coin, events: [null] }] }),
+    /event must be an object/
+  );
+  // Leaked internals on the phase/events are stripped, never retained: no
+  // lifecycle state, sequence, modifier, event id, strength or start time.
+  const leaky = parseMarketSignals({
+    ...VALID_SIGNALS,
+    marketPhase: { ...VALID_SIGNALS.marketPhase, lifecycleState: 'DECLINE', sequence: 7, modifier: 0.012 },
+    coins: [{ ...coin, events: [{ ...event, eventId: 42, strength: 'EXTREME', startedAt: '2026-08-20T10:10:00.000Z' }] }]
+  });
+  assert.deepEqual(Object.keys(leaky.marketPhase ?? {}).sort(), ['endsAt', 'id', 'name']);
+  assert.deepEqual(Object.keys(leaky.coins[0].events[0]).sort(), ['direction', 'endsAt', 'name']);
 });

@@ -212,6 +212,30 @@ export type MarketPhase = 'DIP' | 'RISE' | 'BOOM' | 'FALL' | 'DEAD';
 export type MarketMomentum = 'UP' | 'DOWN' | 'FLAT';
 export type CollapseRiskLevel = 'STABLE' | 'SHAKY' | 'DANGER' | 'CRITICAL' | 'DEAD';
 
+// SIM-15/16/17: the public market-phase + coin-event vocabulary. These are
+// coarse player-facing signals only — the hidden lifecycle state, phase
+// sequence/chain position, modifier magnitudes, event ids/strength and any
+// future timing never survive the backend DTO or this parser.
+export type PublicMarketPhaseId = 'GOLDEN_AGE' | 'BOOM' | 'BULL' | 'BEAR' | 'BUST' | 'RECESSION';
+
+export interface MarketPhaseInfo {
+  id: PublicMarketPhaseId;
+  /** Public display name supplied by the backend (e.g. "Golden Age"). */
+  name: string;
+  /** ISO 8601 instant the current phase ends. */
+  endsAt: string;
+}
+
+export type CoinEventDirection = 'POSITIVE' | 'NEGATIVE';
+
+export interface CoinSignalEvent {
+  /** Public event name supplied by the backend. */
+  name: string;
+  direction: CoinEventDirection;
+  /** ISO 8601 instant the event expires; it disappears on the next poll. */
+  endsAt: string;
+}
+
 export interface MarketSignalCoin {
   coinId: number;
   name: string;
@@ -230,12 +254,18 @@ export interface MarketSignalCoin {
   /** V2-3 coarse, imperfect collapse-risk level. */
   collapseRisk: CollapseRiskLevel;
   dead: boolean;
+  /** SIM-15: up to five currently active public events, chronological order.
+   *  Always present — a dead coin's list is empty by contract. */
+  events: CoinSignalEvent[];
 }
 
 export interface MarketSignals {
   apocalypseId: string;
   apocalypsePercent: number;
   serverTime: string;
+  /** SIM-15: the current public market phase, or null when no persisted
+   *  phase covers the server instant (a legitimate between-phases gap). */
+  marketPhase: MarketPhaseInfo | null;
   coins: MarketSignalCoin[];
 }
 
@@ -534,6 +564,64 @@ const MARKET_PHASES: readonly MarketPhase[] = ['DIP', 'RISE', 'BOOM', 'FALL', 'D
 const MARKET_MOMENTA: readonly MarketMomentum[] = ['UP', 'DOWN', 'FLAT'];
 const COLLAPSE_RISK_LEVELS: readonly CollapseRiskLevel[] = ['STABLE', 'SHAKY', 'DANGER', 'CRITICAL', 'DEAD'];
 
+// SIM-15/16/17 public vocabularies (mirrors the backend redaction contract).
+const PUBLIC_MARKET_PHASE_IDS: readonly PublicMarketPhaseId[] = [
+  'GOLDEN_AGE', 'BOOM', 'BULL', 'BEAR', 'BUST', 'RECESSION'
+];
+const COIN_EVENT_DIRECTIONS: readonly CoinEventDirection[] = ['POSITIVE', 'NEGATIVE'];
+// Matches the engine's simultaneous-activity cap: the backend never publishes
+// more than five active events per coin, so a longer list is not the contract.
+export const PUBLIC_MAX_EVENTS_PER_COIN = 5;
+
+// Strict ISO 8601 with an explicit offset — the backend serialises with
+// Date.toISOString(), and a timestamp that does not parse can never anchor a
+// client countdown.
+const ISO_8601_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+function requireIsoTimestamp(payload: Record<string, unknown>, field: string, contract: string): void {
+  const value = payload[field];
+  if (typeof value !== 'string' || !ISO_8601_PATTERN.test(value) || !Number.isFinite(Date.parse(value))) {
+    throw new Error(`Invalid ${contract} response: ${field} must be an ISO 8601 timestamp`);
+  }
+}
+
+// The public market-phase block. Built field-by-field: id, display name and
+// expiry ONLY — any leaked lifecycle state, sequence, modifier or start time
+// is stripped at the boundary.
+function parseMarketPhaseInfo(payload: unknown, contract: string): MarketPhaseInfo | null {
+  if (payload === null) return null;
+  if (!isRecord(payload)) {
+    throw new Error(`Invalid ${contract} response: marketPhase must be null or an object`);
+  }
+  if (!PUBLIC_MARKET_PHASE_IDS.includes(payload.id as PublicMarketPhaseId)) {
+    throw new Error(`Invalid ${contract} response: unknown market phase id ${JSON.stringify(payload.id)}`);
+  }
+  requireString(payload, 'name', contract);
+  requireIsoTimestamp(payload, 'endsAt', contract);
+  return {
+    id: payload.id as PublicMarketPhaseId,
+    name: payload.name as string,
+    endsAt: payload.endsAt as string
+  };
+}
+
+// One active coin event. Built field-by-field: name, direction, expiry ONLY —
+// event ids, sequences, strength categories, signed modifiers and start times
+// never survive.
+function parseCoinSignalEvent(payload: unknown, contract: string): CoinSignalEvent {
+  if (!isRecord(payload)) throw new Error(`Invalid ${contract} response: event must be an object`);
+  requireString(payload, 'name', contract);
+  if (!COIN_EVENT_DIRECTIONS.includes(payload.direction as CoinEventDirection)) {
+    throw new Error(`Invalid ${contract} response: unknown event direction ${JSON.stringify(payload.direction)}`);
+  }
+  requireIsoTimestamp(payload, 'endsAt', contract);
+  return {
+    name: payload.name as string,
+    direction: payload.direction as CoinEventDirection,
+    endsAt: payload.endsAt as string
+  };
+}
+
 function parseTypicalRange(value: unknown, field: string, contract: string): void {
   if (value === null) return;
   if (!Array.isArray(value) || value.length !== 2) {
@@ -575,6 +663,15 @@ function parseMarketSignalCoin(payload: unknown, contract: string): MarketSignal
   if (payload.dead === false && (payload.phase === 'DEAD' || payload.collapseRisk === 'DEAD')) {
     throw new Error(`Invalid ${contract} response: a live coin cannot carry the DEAD phase or risk markers`);
   }
+  // SIM-15: the active public events list is a hard contract (always present,
+  // at most five entries); a dead coin's list is empty by contract.
+  if (!Array.isArray(payload.events)) {
+    throw new Error(`Invalid ${contract} response: events must be an array`);
+  }
+  if (payload.events.length > PUBLIC_MAX_EVENTS_PER_COIN) {
+    throw new Error(`Invalid ${contract} response: events cannot exceed ${PUBLIC_MAX_EVENTS_PER_COIN} per coin`);
+  }
+  const events = (payload.events as unknown[]).map((event) => parseCoinSignalEvent(event, contract));
   // Build the result from contract fields only: any legacy/extra keys — a
   // seed, future phase timing, collapse schedule hints — are stripped at the
   // boundary and can never reach the UI.
@@ -590,7 +687,8 @@ function parseMarketSignalCoin(payload: unknown, contract: string): MarketSignal
     typicalCycleMinutes: payload.typicalCycleMinutes as [number, number] | null,
     typicalSwingPct: payload.typicalSwingPct as [number, number] | null,
     collapseRisk: payload.collapseRisk as CollapseRiskLevel,
-    dead: payload.dead as boolean
+    dead: payload.dead as boolean,
+    events
   };
 }
 
@@ -600,6 +698,9 @@ export function parseMarketSignals(payload: unknown): MarketSignals {
   requireString(payload, 'apocalypseId', contract);
   requireFiniteNumber(payload, 'apocalypsePercent', contract);
   requireString(payload, 'serverTime', contract);
+  // SIM-15: null is the legitimate between-phases state; anything else that
+  // is not a conforming phase object fails closed.
+  const marketPhase = parseMarketPhaseInfo(payload.marketPhase, contract);
   if (!Array.isArray(payload.coins)) {
     throw new Error(`Invalid ${contract} response: coins must be an array`);
   }
@@ -608,6 +709,7 @@ export function parseMarketSignals(payload: unknown): MarketSignals {
     apocalypseId: payload.apocalypseId as string,
     apocalypsePercent: Math.min(100, Math.max(0, payload.apocalypsePercent as number)),
     serverTime: payload.serverTime as string,
+    marketPhase,
     coins
   };
 }

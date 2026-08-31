@@ -9,9 +9,11 @@
 import type {
   CashEvent,
   CashEventType,
+  CoinEventDirection,
   GameState,
   GameCycleStatus,
   LeaderboardEntry,
+  MarketPhaseInfo,
   MarketSignalCoin,
   PowerState,
   RoundHolding,
@@ -59,6 +61,53 @@ export function formatCountdown(ms: number): string {
   if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}:${ss}`;
   return `${mm}:${ss}`;
 }
+
+// --- SIM-16/17: market phase + coin-event display --------------------------------
+//
+// Every phase/event countdown derives from the SERVER clock, never the local
+// one: the payload's serverTime plus real local elapsed time since that
+// payload synced. The 5s shared poll re-anchors the basis, so drift, laptop
+// sleep and backgrounding self-correct. The local clock is only ever a
+// display interpolator — never authoritative.
+
+// The derived current server instant (epoch ms): what the server said the
+// time was, plus the real time elapsed since that answer arrived.
+export function derivedServerNowMs(serverTime: string, syncedAtLocal: number, nowLocal: number): number {
+  return Date.parse(serverTime) + Math.max(0, nowLocal - syncedAtLocal);
+}
+
+// Milliseconds until an ISO expiry instant on the derived server clock;
+// clamped to >= 0 so an expiring phase/event can never count negative before
+// the next poll removes it.
+export function remainingUntilIso(endsAt: string, serverNowMs: number): number {
+  return Math.max(0, Date.parse(endsAt) - serverNowMs);
+}
+
+// The public market-phase sentiment treatment. The sign of each phase's
+// modifier is part of the game design (backend simulationConfig):
+// GOLDEN_AGE/BOOM/BULL are strictly positive, BEAR/BUST/RECESSION strictly
+// negative. A null phase (between phases) is neutral. The WORD carries the
+// meaning in the UI; colour only reinforces.
+export type MarketPhaseSentiment = 'positive' | 'negative' | 'neutral';
+
+export function marketPhaseSentiment(phase: MarketPhaseInfo | null): MarketPhaseSentiment {
+  if (phase === null) return 'neutral';
+  if (phase.id === 'GOLDEN_AGE' || phase.id === 'BOOM' || phase.id === 'BULL') return 'positive';
+  return 'negative';
+}
+
+export const MARKET_PHASE_SENTIMENT_LABEL: Record<MarketPhaseSentiment, string> = {
+  positive: 'Tailwind — prices pushed up',
+  negative: 'Headwind — prices pushed down',
+  neutral: 'No active market phase'
+};
+
+// Player-facing direction label for an active coin event: arrow plus word,
+// never colour alone.
+export const COIN_EVENT_DIRECTION_LABEL: Record<CoinEventDirection, string> = {
+  POSITIVE: '▲ Positive',
+  NEGATIVE: '▼ Negative'
+};
 
 // --- Connection freshness -------------------------------------------------------
 

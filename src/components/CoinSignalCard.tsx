@@ -7,11 +7,13 @@ import { RoundTradePanel } from './RoundTradePanel.tsx';
 import { CoinSparkline, DeadCoinSparkline } from './CoinSparkline.tsx';
 import { SessionExpiredError, formatCurrency } from '../services/transactionService.ts';
 import { GameApiError } from '../services/gameService.ts';
-import type { MarketSignalCoin, RoundHolding } from '../services/gameService.ts';
+import type { CoinSignalEvent, MarketSignalCoin, RoundHolding } from '../services/gameService.ts';
 import {
   archetypePersonality,
+  COIN_EVENT_DIRECTION_LABEL,
   displayRoundCash,
   estimateBuyPowerCost,
+  formatCountdown,
   formatQuantity,
   formatRecentChangePct,
   formatSignedGbp,
@@ -22,6 +24,7 @@ import {
   quantityForNotional,
   quickBuyBlockReason,
   quickBuyLabel,
+  remainingUntilIso,
   QUICK_BUY_BLOCK_LABEL,
   QUICK_BUY_NOTIONALS
 } from '../utils/gameLogic.ts';
@@ -30,9 +33,54 @@ import type { Coin } from '../types';
 interface CoinSignalCardProps {
   coin: MarketSignalCoin;
   holding: RoundHolding | null;
+  /** SIM-16/17: the derived current server instant (epoch ms) from the shared
+   *  GameContext poll — event countdowns interpolate from this; no per-card
+   *  timers or fetching. */
+  signalsNowMs: number;
   /** Issue #13: opens this coin's detailed V2 view (modal owned by
    *  GameMarketGrid). Fired from the card's non-trade areas only. */
   onOpenDetail: () => void;
+}
+
+// SIM-15/17: the coin's currently active PUBLIC events — name, direction and
+// server-clock time remaining for each. Expiry is self-correcting: an event
+// clamps to 00:00 and disappears from the payload on the next shared poll
+// (never a client-side removal guess). Text and accessible labels carry the
+// meaning; colour only reinforces. No hidden lifecycle, modifiers, exact
+// probabilities, ids or future events are ever rendered.
+function CoinEventList({ events, signalsNowMs }: { events: CoinSignalEvent[]; signalsNowMs: number }) {
+  if (events.length === 0) {
+    return (
+      <div className="flex items-center justify-between gap-2">
+        <span className="label">Events</span>
+        <span className="text-xs text-ink-mute">None active</span>
+      </div>
+    );
+  }
+  return (
+    <div className="coin-events" aria-label="Active coin events">
+      <div className="label mb-1">Events</div>
+      <ul className="coin-event-list">
+        {events.map((event) => {
+          const remainingMs = remainingUntilIso(event.endsAt, signalsNowMs);
+          const countdown = formatCountdown(remainingMs);
+          return (
+            <li
+              key={`${event.name}::${event.endsAt}`}
+              className="coin-event"
+              aria-label={`${event.name}, ${COIN_EVENT_DIRECTION_LABEL[event.direction]}, ends in ${countdown}`}
+            >
+              <span className="coin-event-name">{event.name}</span>
+              <span className={`signal-chip event-${event.direction.toLowerCase()}`}>
+                {COIN_EVENT_DIRECTION_LABEL[event.direction]}
+              </span>
+              <span className="font-mono text-xs text-ink-dim tnum coin-event-time">{countdown}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
 }
 
 // V2-5 coin card. One card per gameplay coin driven by the public
@@ -45,7 +93,7 @@ interface CoinSignalCardProps {
 // (1 + floor(notional / £125)), labelled as an estimate. The server remains
 // authoritative: trades confirm first, fake success is never shown, and a
 // domain rejection renders verbatim.
-export function CoinSignalCard({ coin, holding, onOpenDetail }: CoinSignalCardProps) {
+export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: CoinSignalCardProps) {
   const { user, handleSessionExpired } = useAuth();
   const { showToast } = useToast();
   const { joined, myEntry, myParticipant, lifecycle, connection, trade, gameState } = useGame();
@@ -163,6 +211,7 @@ export function CoinSignalCard({ coin, holding, onOpenDetail }: CoinSignalCardPr
         <span className="label">Collapse risk</span>
         <span className={`signal-chip risk-${coin.collapseRisk.toLowerCase()}`}>{coin.collapseRisk}</span>
       </div>
+      <CoinEventList events={coin.events} signalsNowMs={signalsNowMs} />
     </div>
   );
 

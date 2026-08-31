@@ -88,8 +88,16 @@ interface GameContextValue {
    *  archetype, typical ranges, collapse risk). null = not synced yet; the
    *  previous round's signals are never adopted across a rollover. */
   signals: MarketSignals | null;
+  /** Local timestamp of the last successful signals adoption (null = never).
+   *  SIM-16/17 phase/event countdowns derive from signals.serverTime plus
+   *  local elapsed time since this instant. */
+  signalsSyncedAt: number | null;
   /** Last market-signals failure message; the last good payload is kept. */
   signalsError: string | null;
+  /** Shared 1s display tick (local epoch ms) for derived countdown/staleness
+   *  display. NEVER an authoritative clock — consumers re-derive from the
+   *  server-anchored basis. */
+  nowTick: number;
   joined: boolean;
   trade: (side: TradeSide, coinId: number, amount: number) => Promise<void>;
   /** Force an immediate resync (focus/visibility/post-trade/error recovery). */
@@ -120,6 +128,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [cashEvents, setCashEvents] = useState<CashEvent[] | null>(null);
   const [cashEventsError, setCashEventsError] = useState<string | null>(null);
   const [signals, setSignals] = useState<MarketSignals | null>(null);
+  const [signalsSyncedAt, setSignalsSyncedAt] = useState<number | null>(null);
   const [signalsError, setSignalsError] = useState<string | null>(null);
   // Tick that only drives DERIVED display state (staleness); never a clock.
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -234,6 +243,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         // read, and the previous round's market must never render as current.
         if (liveId && payload.apocalypseId === liveId) {
           setSignals(payload);
+          // SIM-16/17: anchor the phase/event countdown basis — the payload's
+          // serverTime plus real local elapsed time from this instant.
+          setSignalsSyncedAt(Date.now());
           setSignalsError(null);
         }
       } else {
@@ -293,6 +305,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       setCashEvents(null); // drain history is per-cycle too
       setCashEventsError(null);
       setSignals(null); // market signals belong to the completed round
+      setSignalsSyncedAt(null);
       setSignalsError(null);
       economySeenRef.current = null; // the new round re-baselines the feed
     }
@@ -424,7 +437,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     cashEvents,
     cashEventsError,
     signals,
+    signalsSyncedAt,
     signalsError,
+    nowTick,
     joined,
     trade,
     syncNow,
