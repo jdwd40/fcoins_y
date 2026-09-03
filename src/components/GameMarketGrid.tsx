@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useGame } from '../context/GameContext.tsx';
+import { usePersistent } from '../context/PersistentContext.tsx';
 import { CoinSignalCard } from './CoinSignalCard.tsx';
 import { GameCoinDetail } from './GameCoinDetail.tsx';
 import { Modal } from './Modal.tsx';
@@ -64,7 +65,10 @@ function MarketPhaseBanner({ phase, serverNowMs }: { phase: MarketPhaseInfo | nu
 // exact market location (the grid never unmounts and round state is
 // untouched).
 export function GameMarketGrid() {
-  const { signals, signalsError, signalsSyncedAt, nowTick, lifecycle, myParticipant } = useGame();
+  const { signals, signalsError, signalsSyncedAt, nowTick, lifecycle } = useGame();
+  // Persistent Stage 6: ownership comes from the persistent account — round
+  // participants no longer decide what the player owns.
+  const { account } = usePersistent();
   const [detailCoinId, setDetailCoinId] = useState<number | null>(null);
 
   if (signals === null) {
@@ -87,7 +91,7 @@ export function GameMarketGrid() {
     ? derivedServerNowMs(signals.serverTime, signalsSyncedAt, nowTick)
     : Date.parse(signals.serverTime);
 
-  const holdings = myParticipant?.holdings ?? [];
+  const holdings = account?.holdings ?? [];
   const holdingByCoinId = new Map(holdings.map((holding) => [holding.coinId, holding]));
   const active = signals.coins
     .filter((coin) => !coin.dead)
@@ -142,7 +146,7 @@ export function GameMarketGrid() {
 
       {dead.length > 0 && (
         <div className="mt-6">
-          <div className="label mb-2 text-oxblood">Collapsed this apocalypse — dead coins cannot be bought</div>
+          <div className="label mb-2 text-oxblood">Dead coins — trading has stopped permanently</div>
           <div className="game-grid">
             {dead.map((coin) => (
               <CoinSignalCard

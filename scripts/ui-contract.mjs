@@ -27,6 +27,10 @@ const priceHistoryService = readFileSync(new URL('../src/services/priceHistorySe
 const coinSparkline = readFileSync(new URL('../src/components/CoinSparkline.tsx', import.meta.url), 'utf8');
 const useCoinSparkline = readFileSync(new URL('../src/hooks/useCoinSparkline.ts', import.meta.url), 'utf8');
 const gameCoinDetail = readFileSync(new URL('../src/components/GameCoinDetail.tsx', import.meta.url), 'utf8');
+const persistentService = readFileSync(new URL('../src/services/persistentService.ts', import.meta.url), 'utf8');
+const persistentContext = readFileSync(new URL('../src/context/PersistentContext.tsx', import.meta.url), 'utf8');
+const persistentTradePanel = readFileSync(new URL('../src/components/PersistentTradePanel.tsx', import.meta.url), 'utf8');
+const persistentTrading = readFileSync(new URL('../src/utils/persistentTrading.ts', import.meta.url), 'utf8');
 const typesTs = readFileSync(new URL('../src/types.ts', import.meta.url), 'utf8');
 const monitorService = readFileSync(new URL('../src/services/monitorService.ts', import.meta.url), 'utf8');
 const monitorUtil = readFileSync(new URL('../src/utils/apocalypseMonitor.ts', import.meta.url), 'utf8');
@@ -105,7 +109,7 @@ assert.match(roundTrade, /aria-pressed/);
 assert.doesNotMatch(playerRound, /JOIN APOCALYPSE/);
 assert.doesNotMatch(playerRound, /joinPending|\bjoin\b/);
 assert.match(playerRound, /Sign in to play/); // logged-out route is sign-in UX, not a join gate
-assert.match(playerRound, /Syncing your position/); // neutral loading, no fabricated Cash
+assert.match(playerRound, /Syncing your account/); // neutral loading, no fabricated Cash
 assert.match(gameContext, /joinGame\(token\)/); // automatic ensure, not a button handler
 assert.match(gameContext, /ensureAttemptRef/); // one attempt per (user, cycle)
 assert.doesNotMatch(gameContext, /joinPending/);
@@ -115,7 +119,12 @@ assert.doesNotMatch(gameContext, /Sign in to join/);
 assert.match(gameLogic, /GAME_STARTING_CASH_LABEL = '£10,000'/);
 assert.match(gameLogic, /export function displayRoundCash/);
 assert.match(roundTrade, /displayRoundCash\(myEntry, myParticipant\)/);
-assert.match(playerRound, /displayRoundCash\(myEntry, myParticipant\)/);
+// Persistent Stage 6: the gameplay money surface reads the server-owned
+// PERSISTENT account verbatim — never the round participant.
+assert.match(playerRound, /account\.cash/);
+assert.match(playerRound, /account\.netWealth/);
+assert.match(playerRound, /account\.holdingsValue/);
+assert.match(playerRound, /Your persistent account/);
 assert.match(playerRound, /Wallet className="w-3 h-3" \/> Cash/);
 assert.doesNotMatch(roundTrade, /Round cash/);
 assert.doesNotMatch(playerRound, /Round cash|round wallet/);
@@ -124,10 +133,15 @@ for (const [name, text] of Object.entries({ gameLogic, roundTrade, playerRound, 
   assert.doesNotMatch(text, /£1,000/, `£1,000-era copy remains in ${name}`);
 }
 // Legacy users.funds is classic account data, never game money: it stays off
-// the main nav and is explicitly quarantined in Profile copy.
+// the main nav, and Profile is now the PERSISTENT account surface — legacy
+// funds/holdings are historical archive and no longer rendered there.
 assert.doesNotMatch(userMenu, /user\?\.funds/);
-assert.match(profile, /historical account data only/);
-assert.match(profile, /nothing here is spendable in the game/);
+assert.doesNotMatch(profile, /user\?\.funds|user\.funds/);
+assert.match(profile, /Persistent market account/);
+assert.match(profile, /exactly once/);
+assert.match(profile, /account\?\.cash|account\.cash/);
+assert.match(profile, /account\?\.holdingsValue|account\.holdingsValue/);
+assert.match(profile, /account\.netWealth - account\.startingCash/); // debt-adjusted (humans carry debt = 0)
 // Profitable-only completed leaderboards (backend #19): contract fields,
 // win-condition copy and a legitimate empty board.
 assert.match(gameService, /leaderboardEligible/);
@@ -188,20 +202,21 @@ assert.match(gameLogic, /export function formatCashEventAmount/);
 assert.match(gameLogic, /export function findNewCashEvents/);
 assert.match(gameLogic, /export function summariseDrainToast/);
 assert.match(gameLogic, /export function formatActivityTimestamp/);
-// The activity surface: source/type label, amount, human description and
-// timestamp per row; trades are distinguished from passive drains in copy.
-assert.match(playerRound, /Round activity/);
-assert.match(playerRound, /CASH_EVENT_TYPE_LABEL\[event\.type\]/);
-assert.match(playerRound, /formatCashEventAmount\(event\.amount\)/);
-assert.match(playerRound, /event\.description/);
-assert.match(playerRound, /formatActivityTimestamp\(event\.createdAt/);
+// The activity surface (Persistent Stage 6): the player's own persistent
+// buys/sells at server-locked prices — type, symbol, quantity @ price,
+// amount and timestamp per row; the Cash figure stays the single
+// authoritative number.
+assert.match(playerRound, /Account activity/);
+assert.match(playerRound, /formatQuantity\(tx\.quantity\)/);
+assert.match(playerRound, /formatCurrency\(tx\.price\)/);
+assert.match(playerRound, /formatActivityTimestamp\(tx\.createdAt/);
 assert.match(playerRound, /aria-live="polite"/);
-assert.match(playerRound, /aria-label="Recent Cash drains"/);
-assert.match(playerRound, /No drains yet this round/); // clean empty state
-assert.match(playerRound, /Syncing round activity/); // neutral loading state
+assert.match(playerRound, /aria-label="Recent persistent trades"/);
+assert.match(playerRound, /No trades yet/); // clean empty state
+assert.match(playerRound, /Syncing account activity/); // neutral loading state
 assert.match(playerRound, /Activity update failed/); // stale state keeps last good feed
 assert.match(playerRound, /still authoritative/); // a feed failure never shakes Cash
-assert.match(playerRound, /confirmed in the trade panel/); // drains ≠ trades
+assert.match(playerRound, /server-locked live price/); // execution provenance
 // Internal identifiers and ledger internals stay out of the primary UX.
 assert.doesNotMatch(playerRound, /eventKey|event_key/);
 assert.doesNotMatch(playerRound, /balanceBefore|balanceAfter/);
@@ -332,20 +347,18 @@ for (const [name, text] of Object.entries({ coinSignalCard, gameMarketGrid, lead
 }
 
 // --- V2-5: the 13-answer readability gate -------------------------------------
-// 1. How much Cash do I have? — dominant, server-sourced, never fabricated.
-assert.match(playerStatusStrip, /displayRoundCash\(myEntry, myParticipant\)/);
+// 1. How much Cash do I have? — dominant, server-sourced PERSISTENT account
+//    figure, never fabricated.
+assert.match(playerStatusStrip, /account\.cash/);
 assert.match(playerStatusStrip, /Cash/);
-assert.match(playerStatusStrip, /aria-label=\{`Cash \$\{formatCurrency\(roundCash\)\}`\}/);
-assert.match(playerStatusStrip, /Syncing your position/); // never fabricate £10,000
-// 2. How much Power do I have?
-assert.match(playerStatusStrip, /power\.current/);
-assert.match(playerStatusStrip, /\{power\.max\}/);
-// 3. When does Power regenerate? — server rate + next-point hint.
-assert.match(playerStatusStrip, /formatPowerRegenRate\(power\)/);
-assert.match(playerStatusStrip, /formatPowerNextHint\(power, now\)/);
-assert.match(gameLogic, /\+1 Power \/ \$\{seconds\}s/);
-assert.match(gameLogic, /next \+1 in \$\{seconds\}s/);
-assert.match(gameLogic, /Power full/);
+assert.match(playerStatusStrip, /aria-label=\{`Cash \$\{formatCurrency\(cash\)\}`\}/);
+assert.match(playerStatusStrip, /Syncing your account/); // never fabricate £10,000
+// 2./3. Power is gone: the persistent economy has no Power — the strip shows
+//    holdings value and the uncapped open-position count instead.
+assert.doesNotMatch(playerStatusStrip, /⚡|power\.current|formatPowerRegenRate|formatPowerNextHint/);
+assert.match(playerStatusStrip, /account\.holdingsValue/);
+assert.match(playerStatusStrip, /account\.holdings\.length/);
+assert.match(playerStatusStrip, /open · no cap/);
 // 4. How long until the apocalypse ends? — server-anchored countdown.
 assert.match(header, /Time left/);
 assert.match(header, /formatCountdown\(remaining\)/);
@@ -376,17 +389,19 @@ assert.match(coinSignalCard, /quick-buy-grid/);
 assert.match(coinSignalCard, /QUICK_BUY_NOTIONALS\.map/);
 assert.match(gameLogic, /QUICK_BUY_NOTIONALS: readonly number\[\] = \[250, 500, 1000, 2500\]/);
 assert.match(gameLogic, /£2\.5K/);
-// 10. What will that buy cost in Power? — visible estimate BEFORE committing,
-//     the shared V2 formula, labelled as an estimate.
+// 10. What will the trade execute at? — the server-locked live price is
+//     stated BEFORE committing; there is no Power cost in the persistent
+//     economy (the retired V2 estimate formula stays in gameLogic for the
+//     retained legacy panel only).
 assert.match(gameLogic, /1 \+ Math\.floor\(notional \/ BUY_POWER_COST_DIVISOR\)/);
 assert.match(gameLogic, /BUY_POWER_COST_DIVISOR = 125/);
-assert.match(coinSignalCard, /⚡\{powerCost\} est\./);
-assert.match(coinSignalCard, /estimated \$\{powerCost\} Power/);
-assert.match(coinSignalCard, /server confirms the final cost/);
-// 11. How do I sell? — one dominant SELL POSITION action; selling is free.
+assert.match(coinSignalCard, /Executes at the server-locked live price/);
+assert.match(coinSignalCard, /Server-locked live price/);
+assert.doesNotMatch(coinSignalCard, /⚡|estimateBuyPowerCost|Power \(estimate\)/);
+// 11. How do I sell? — one dominant SELL POSITION action at the live price.
 assert.match(coinSignalCard, /Sell position · \{formatCurrency\(holding\.currentValue\)\}/);
 assert.match(coinSignalCard, /aria-label=\{`Sell entire \$\{coin\.symbol\} position`\}/);
-assert.match(coinSignalCard, /0 — selling is always free/);
+assert.doesNotMatch(coinSignalCard, /selling is always free/);
 // 12. Which positions are dangerous? — the collapse-risk chip, in words.
 assert.match(coinSignalCard, /Collapse risk/);
 assert.match(coinSignalCard, /risk-\$\{coin\.collapseRisk\.toLowerCase\(\)\}/);
@@ -409,21 +424,25 @@ assert.match(coinSignalCard, /trade\('SELL', coin\.coinId, holding\.quantity\)/)
 assert.match(coinSignalCard, /Confirm quick buy/);
 assert.match(coinSignalCard, /Confirm sale/);
 assert.match(coinSignalCard, /err\.message/);
-// Stale/offline/limit states disable with explicit explanations.
-assert.match(coinSignalCard, /quickBuyBlockReason/);
-assert.match(coinSignalCard, /QUICK_BUY_BLOCK_LABEL/);
+// Stale/offline/unauthenticated states disable with explicit explanations —
+// via the persistent gate helpers (no lifecycle/Power/position-cap gates).
+assert.match(coinSignalCard, /persistentTradeBlockReason/);
+assert.match(coinSignalCard, /PERSISTENT_TRADE_BLOCK_LABEL/);
+assert.match(persistentTrading, /export function persistentTradeBlockReason/);
+assert.match(persistentTrading, /'not-authenticated'/);
+assert.match(persistentTrading, /'account-syncing'/);
+assert.match(persistentTrading, /'account-unavailable'/);
+assert.match(persistentTrading, /'insufficient-cash'/);
 assert.match(gameLogic, /Connection stale — refusing to trade on old data/);
 assert.match(gameLogic, /Not enough Cash/);
-assert.match(gameLogic, /Not enough Power/);
-assert.match(gameLogic, /Position limit reached/);
-// Dead coins: £0.00, DEAD/COLLAPSED, no BUY; a held dead position stays
-// visible with the existing £0 sell path.
-assert.match(coinSignalCard, /DEAD · COLLAPSED/);
+// Persistent death is PERMANENT and stops trading both ways: a held dead
+// position stays visible as £0.00 history with no sell path.
+assert.match(coinSignalCard, /DEAD/);
 assert.match(coinSignalCard, /£0\.00/);
-assert.match(coinSignalCard, /cannot be bought/);
-assert.match(coinSignalCard, /Sell dead position for £0\.00/);
-assert.match(coinSignalCard, /Confirm £0 sell/);
-assert.match(gameMarketGrid, /Collapsed this apocalypse — dead coins cannot be bought/);
+assert.match(coinSignalCard, /cannot be bought or sold/);
+assert.match(coinSignalCard, /Position destroyed/);
+assert.doesNotMatch(coinSignalCard, /Sell dead position|Confirm £0 sell/);
+assert.match(gameMarketGrid, /Dead coins — trading has stopped permanently/);
 // Archetype personality and typical ranges are public-signal derived.
 assert.match(coinSignalCard, /archetypePersonality\(coin\.archetype\)/);
 assert.match(coinSignalCard, /formatTypicalProfile\(coin\)/);
@@ -493,8 +512,8 @@ assert.match(chart, /role="group"/);
 // --- Issue #12: compact dip→boom→dip sparklines on the V2 cards ----------------
 // Every card variant carries the sparkline: live cards fetch through the
 // shared service; dead cards get a deterministic flatline and never fetch.
-assert.match(coinSignalCard, /<CoinSparkline coin=\{coin\} cycleStartTime=\{gameState\?\.startTime \?\? null\} \/>/);
-assert.match(coinSignalCard, /<CoinSparkline coin=\{coin\} averageEntryPrice=\{holding\.averageEntryPrice\} cycleStartTime=\{gameState\?\.startTime \?\? null\} \/>/);
+assert.match(coinSignalCard, /<CoinSparkline coin=\{coin\} cycleStartTime=\{null\} \/>/);
+assert.match(coinSignalCard, /<CoinSparkline coin=\{coin\} averageEntryPrice=\{holding\.averageEntryPrice\} cycleStartTime=\{null\} \/>/);
 assert.match(coinSignalCard, /<DeadCoinSparkline symbol=\{coin\.symbol\} \/>/);
 // No heavyweight chart library is instantiated on compact cards.
 assert.doesNotMatch(coinSparkline, /chart\.js|react-chartjs-2/);
@@ -551,9 +570,9 @@ assert.match(styles, /\.sparkline-down path \{ stroke: var\(--oxblood\)/);
 assert.match(styles, /\.sparkline-entry \{/);
 assert.match(styles, /\.sparkline-state \{/);
 
-// Sparkline points are clipped to the LIVE apocalypse start — prices reset
-// to a persisted baseline at every cycle boundary, so a trailing window must
-// never render the previous round's dead regime as current movement.
+// Sparkline clipping is cycle-legacy: the persistent market has no cycle
+// boundary, so the cards pass cycleStartTime={null} (no clip); the helper
+// stays for the retained chart components.
 assert.match(coinSparkline, /clipPointsSince\(points, sinceMs\)/);
 assert.match(coinSparkline, /cycleStartTime/);
 
@@ -618,21 +637,22 @@ assert.match(gameCoinDetail, /holding\.costBasis/);
 assert.match(gameCoinDetail, /holding\.currentValue/);
 assert.match(gameCoinDetail, /formatSignedGbp\(holding\.unrealizedPnl\)/);
 assert.match(gameCoinDetail, /formatSignedPct\(holding\.unrealizedPnlPct\)/);
-// Dead/collapsed state: £0.00, explicitly non-buyable, and the alive trade
-// panel is never rendered for a dead coin (only the owned £0 sell path).
-assert.match(gameCoinDetail, /DEAD · COLLAPSED/);
+// Dead/collapsed state: £0.00, permanent death, and trading has stopped in
+// both directions (no sell path for dead persistent holdings).
+assert.match(gameCoinDetail, /DEAD · PERMANENT/);
 assert.match(gameCoinDetail, /£0\.00/);
-assert.match(gameCoinDetail, /cannot be bought/);
+assert.match(gameCoinDetail, /trading has stopped permanently/);
 assert.match(gameCoinDetail, /\{coin\.dead \? \(/);
-// Detail trade area: the shared authoritative RoundTradePanel with the
-// per-order Power cost estimate; selling is explicitly free.
-assert.match(gameCoinDetail, /<RoundTradePanel coin=\{legacyCoin\} showPowerEstimate \/>/);
-assert.match(gameCoinDetail, /⚡ Power \{power\.current\}\/\{power\.max\}/);
-assert.match(gameCoinDetail, /selling is always free/);
-assert.match(roundTrade, /showPowerEstimate\?: boolean/);
-assert.match(roundTrade, /estimateBuyPowerCost\(total\)/);
-assert.match(roundTrade, /⚡0 — selling is always free/);
-assert.match(roundTrade, /server confirms the final cost/);
+// Detail trade area: the shared authoritative PERSISTENT trade panel; there
+// is no Power estimate and no per-order Power cost in the persistent path.
+assert.match(gameCoinDetail, /<PersistentTradePanel coin=\{legacyCoin\} \/>/);
+assert.doesNotMatch(gameCoinDetail, /⚡|showPowerEstimate|selling is always free/);
+assert.match(persistentTradePanel, /Server-locked live price/);
+assert.match(persistentTradePanel, /parseTradeQuantity\(amount\)/);
+assert.match(persistentTradePanel, /minTradeValueError\(total, currentPrice\)/);
+assert.match(persistentTradePanel, /trade\(side, coin\.coin_id, amountValue\)/);
+assert.match(persistentTradePanel, /aria-pressed/);
+assert.match(persistentTradePanel, /err\.message/); // GameApiError surfaces server text
 // The detail rides the shared context — no independent fetch, timer, or
 // second charting library (Chart.js only inside the existing PriceChart).
 assert.doesNotMatch(gameCoinDetail, /\bfetch\(|setInterval/);
@@ -654,7 +674,7 @@ assert.match(gameLogic, /reading the dip → rise → boom → fall cycle on the
 assert.match(gameCoinDetail, /DETAIL_PRIMARY_RANGES: readonly TimeRange\[\] = \['10M', '30M', '1H', '2H'\]/);
 assert.match(gameCoinDetail, /DETAIL_SECONDARY_RANGES: readonly TimeRange\[\] = \['24H', '7D', '30D', 'ALL'\]/);
 assert.match(gameCoinDetail, /initialRange = sparklineRangeForCoin\(coin\)/);
-assert.match(gameCoinDetail, /cycleStartTime=\{gameState\?\.startTime \?\? null\}/);
+assert.match(gameCoinDetail, /cycleStartTime=\{null\}/);
 assert.match(gameCoinDetail, /averageEntryPrice=\{owned && holding \? holding\.averageEntryPrice : null\}/);
 assert.match(typesTs, /'10M' \| '30M' \| '1H' \| '2H' \| '24H' \| '7D' \| '30D' \| 'ALL'/);
 assert.match(chart, /clipPointsSince\(result\.points \|\| \[\], sinceMs\)/);
@@ -809,6 +829,66 @@ assert.match(apocalypseMonitor, /resolveReplayPlayStart\(/);
 // The chart mode buttons still never touch the cursor or playback: the mode
 // onClick only sets chartMode.
 assert.match(apocalypseMonitor, /onClick=\{\(\) => setChartMode\(mode\)\}/);
+
+// --- Persistent-market Stage 6: THE persistent gameplay path ----------------
+// The new gameplay (buy/sell/account/portfolio/transactions) runs ONLY on
+// the additive /persistent surface. These assertions pin the load-bearing
+// contract: exact request shapes, server-owned prices, token-owned accounts,
+// explicit loading/error/empty states, and the total absence of any new
+// Apocalypse/cycle-ID dependency.
+assert.match(app, /PersistentProvider/); // the account context is mounted
+// Endpoints: account, bounded transactions, buy, sell.
+assert.match(persistentService, /\/persistent\/account/);
+assert.match(persistentService, /\/persistent\/transactions/);
+assert.match(persistentService, /\/persistent\/trades\/buy/);
+assert.match(persistentService, /\/persistent\/trades\/sell/);
+assert.match(persistentService, /export async function getPersistentAccount/);
+assert.match(persistentService, /export async function getPersistentTransactions/);
+assert.match(persistentService, /export async function buyPersistentTrade/);
+assert.match(persistentService, /export async function sellPersistentTrade/);
+// Trade requests are EXACTLY { coin_id, quantity }: no price (server-owned),
+// no user id (the token owns the account).
+assert.equal(
+  (persistentService.match(/body: \{ coin_id: coinId, quantity \}/g) || []).length,
+  2,
+  'buy AND sell must both send exactly { coin_id, quantity }'
+);
+// No Apocalypse/cycle identifier is ever SENT or READ by the persistent
+// client — and any leaked one in a payload fails loudly at the boundary.
+assert.doesNotMatch(persistentService, /body: \{[^}]*cycle/i);
+assert.doesNotMatch(persistentService, /payload\.(apocalypseId|cycleId)/);
+assert.match(persistentService, /forbidCycleFields/);
+assert.match(persistentService, /never carry/);
+// Registration/account states are first-class: provisioned:false is a real
+// result, never an error; a never-provisioned history reads empty.
+assert.match(persistentService, /provisioned: false/);
+assert.match(persistentService, /provisioned !== true/);
+// Boundary validation on every payload shape.
+assert.match(persistentService, /export function parsePersistentAccountResponse/);
+assert.match(persistentService, /export function parsePersistentTradeResult/);
+assert.match(persistentService, /export function parsePersistentTransactionsResponse/);
+// Session behaviour is preserved: 401 → SessionExpiredError everywhere.
+assert.match(persistentService, /SessionExpiredError/);
+assert.match(persistentService, /response\.status === 401/);
+// The context: one shared poll, post-trade adoption of the server-returned
+// account, identity-change reset, no fabricated balance.
+assert.match(persistentContext, /PERSISTENT_POLL_INTERVAL_MS/);
+assert.match(persistentContext, /setAccount\(result\.account\)/); // post-trade authoritative adoption
+assert.match(persistentContext, /never fabricate|never fabricated/i);
+assert.match(persistentContext, /\}, \[user\?\.id\]\)/); // identity-change reset
+assert.doesNotMatch(persistentContext, /apocalypseId|cycleId/);
+// The trade panel: server-owned-price copy, explicit gating states, no
+// Power/round/countdown language.
+assert.match(persistentTradePanel, /Persistent trading/);
+assert.match(persistentTradePanel, /Syncing your persistent account/);
+assert.match(persistentTradePanel, /persistent account is unavailable/);
+assert.match(persistentTradePanel, /permanently dead/);
+assert.match(persistentTradePanel, /Confirm persistent/);
+assert.doesNotMatch(persistentTradePanel, /⚡|showPowerEstimate/);
+// The persistent panels never fetch independently of the shared context,
+// except the bounded transaction-history read in the account panel/profile.
+assert.doesNotMatch(persistentTradePanel, /\bfetch\(|setInterval/);
+assert.doesNotMatch(persistentContext, /\bfetch\(/); // fetches ride the service
 
 // --- Centralised API base ------------------------------------------------
 // No source file outside services/apiConfig.ts may hard-code the deployed

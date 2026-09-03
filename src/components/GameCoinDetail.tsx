@@ -1,9 +1,9 @@
 import { Skull } from 'lucide-react';
-import { useGame } from '../context/GameContext.tsx';
 import { PriceChart } from './PriceChart';
-import { RoundTradePanel } from './RoundTradePanel.tsx';
+import { PersistentTradePanel } from './PersistentTradePanel.tsx';
 import { formatCurrency } from '../services/transactionService.ts';
-import type { MarketSignalCoin, RoundHolding } from '../services/gameService.ts';
+import type { MarketSignalCoin } from '../services/gameService.ts';
+import type { PersistentHolding } from '../services/persistentService.ts';
 import {
   archetypePersonality,
   formatQuantity,
@@ -35,14 +35,12 @@ const DETAIL_SECONDARY_RANGES: readonly TimeRange[] = ['24H', '7D', '30D', 'ALL'
 
 interface GameCoinDetailProps {
   coin: MarketSignalCoin;
-  holding: RoundHolding | null;
+  /** The player's PERSISTENT holding in this coin (server-owned economics). */
+  holding: PersistentHolding | null;
 }
 
 export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
-  const { gameState, myParticipant } = useGame();
-
   const owned = !!holding && holding.quantity > 0;
-  const power = myParticipant?.power ?? null;
 
   // The classic trade panel consumes the legacy Coin shape; only
   // coin_id/symbol/current_price are read from it. The price stays the
@@ -96,8 +94,8 @@ export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
         <div className="mb-4 border border-oxblood rounded-xl p-4 bg-paper-alt flex items-center gap-3" role="note">
           <Skull className="w-5 h-5 text-oxblood shrink-0" aria-hidden="true" />
           <p className="text-sm text-ink-dim">
-            <strong className="text-oxblood">DEAD · COLLAPSED.</strong>{' '}
-            This coin collapsed to £0.00 and stays dead for the rest of the apocalypse. It cannot be bought.
+            <strong className="text-oxblood">DEAD · PERMANENT.</strong>{' '}
+            This coin died in the persistent market and trading has stopped permanently. Its history is preserved.
           </p>
         </div>
       )}
@@ -169,45 +167,39 @@ export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
         </div>
       )}
 
-      {/* Larger authoritative per-coin chart: short cycle windows first,
-          clipped to the live apocalypse; the average-entry marker appears
-          only when it sits inside the visible window. */}
+      {/* Larger authoritative per-coin chart: short cycle windows first.
+          There is no cycle in the persistent market — the chart is never
+          clipped to an apocalypse; the average-entry marker appears only
+          when it sits inside the visible window. */}
       <div className="mb-5">
-        <div className="label mb-3">Price history · this apocalypse</div>
+        <div className="label mb-3">Price history</div>
         <PriceChart
           key={coin.coinId}
           coinId={coin.coinId}
           ranges={DETAIL_PRIMARY_RANGES}
           secondaryRanges={DETAIL_SECONDARY_RANGES}
           initialRange={initialRange}
-          cycleStartTime={gameState?.startTime ?? null}
+          cycleStartTime={null}
           averageEntryPrice={owned && holding ? holding.averageEntryPrice : null}
           heightClass="h-[280px] sm:h-[440px]"
         />
       </div>
 
-      {/* Trade area: explicit controls only. The shared round trade panel
-          owns confirmation, gating, the authoritative trade() call and
-          verbatim server rejections; the browser never derives Cash, P&L,
-          limits or trade success. */}
+      {/* Trade area: explicit controls only. The shared persistent trade
+          panel owns confirmation, gating, the authoritative trade() call
+          and verbatim server rejections; the browser never derives Cash,
+          P&L, limits or trade success. */}
       {coin.dead ? (
         owned && (
           <div>
-            <div className="label mb-2">Round trading</div>
-            <RoundTradePanel coin={legacyCoin} showPowerEstimate />
+            <div className="label mb-2">Persistent trading</div>
+            <PersistentTradePanel coin={legacyCoin} />
           </div>
         )
       ) : (
         <div>
-          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-            <div className="label">Round trading</div>
-            {power && (
-              <div className="font-mono text-xs text-ink-dim tnum">
-                ⚡ Power {power.current}/{power.max} · buys cost Power · selling is always free
-              </div>
-            )}
-          </div>
-          <RoundTradePanel coin={legacyCoin} showPowerEstimate />
+          <div className="label mb-2">Persistent trading</div>
+          <PersistentTradePanel coin={legacyCoin} />
         </div>
       )}
     </div>

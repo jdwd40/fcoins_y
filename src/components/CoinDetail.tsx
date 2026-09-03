@@ -1,6 +1,6 @@
 import type { Coin, MarketEvent } from '../types';
 import { PriceChart } from './PriceChart';
-import { RoundTradePanel } from './RoundTradePanel.tsx';
+import { PersistentTradePanel } from './PersistentTradePanel.tsx';
 import { formatCurrency, parsePrice } from '../services/transactionService.ts';
 import { isCoinCollapsed } from '../utils/gameLogic.ts';
 import { Skull } from 'lucide-react';
@@ -78,7 +78,7 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
           <span>Asset {String(coin.coin_id).padStart(3, '0')}</span>
           <span>·</span>
           <span>{coin.symbol}</span>
-          {dead && <span className="text-oxblood font-bold">DEAD · COLLAPSED</span>}
+          {dead && <span className="text-oxblood font-bold">DEAD · PERMANENT</span>}
         </div>
         <h2 className="font-display text-3xl sm:text-5xl lg:text-6xl font-semibold text-ink leading-none"
             style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 50" }}>
@@ -90,8 +90,8 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
         <div className="mb-6 border border-oxblood rounded-xl p-4 bg-paper-alt flex items-center gap-3" role="note">
           <Skull className="w-5 h-5 text-oxblood shrink-0" />
           <p className="text-sm text-ink-dim">
-            <strong className="text-oxblood">This coin collapsed to £0.00.</strong>{' '}
-            It can never be bought again. The chart below is its obituary.
+            <strong className="text-oxblood">This coin died permanently in the persistent market.</strong>{' '}
+            Trading has stopped. The chart below is its obituary.
           </p>
         </div>
       )}
@@ -126,9 +126,9 @@ export function CoinDetail({ coin, events = [], refreshTrigger }: CoinDetailProp
             </div>
           </div>
 
-          {/* Round trading (Core 4 round wallet) — replaces the legacy
-              account buy form inside the Crypto Chaos market experience. */}
-          <RoundTradePanel coin={coin} />
+          {/* Persistent trading (Stage 6 persistent account) — the one
+              writable economy inside the market experience. */}
+          <PersistentTradePanel coin={coin} />
 
           {/* Events */}
           {activeEvents.length > 0 && (

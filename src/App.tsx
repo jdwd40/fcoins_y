@@ -10,6 +10,7 @@ import { Modal } from './components/Modal';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { GameProvider } from './context/GameContext.tsx';
+import { PersistentProvider } from './context/PersistentContext.tsx';
 import { AuthForms } from './components/AuthForms';
 import { Profile } from './components/Profile';
 import { MarketValueChart } from './components/MarketValueChart';
@@ -119,7 +120,7 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
           </h2>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
             <LeaderboardPanel />
-            <PlayerRoundPanel coins={marketData?.coins ?? coinsData?.coins ?? []} onAuthRequest={() => setShowAuthModal(true)} />
+            <PlayerRoundPanel onAuthRequest={() => setShowAuthModal(true)} />
             <RecentResultsPanel />
           </div>
         </section>
@@ -208,7 +209,13 @@ function PlayerShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
       <ToastProvider>
-        <GameProvider>{children}</GameProvider>
+        {/* Persistent Stage 6: the persistent account context is the money
+            home for the new gameplay (cash/holdings/wealth/trades); the
+            cycle-shaped GameContext remains for the retained compatibility
+            surfaces (signals, leaderboard, results) until Stage 10/11/13. */}
+        <PersistentProvider>
+          <GameProvider>{children}</GameProvider>
+        </PersistentProvider>
       </ToastProvider>
     </AuthProvider>
   );
