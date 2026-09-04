@@ -42,9 +42,11 @@ import { useToast } from './ToastContext';
 // One shared 5s poll feeds account (when authenticated) AND the public
 // leaderboard. Do not add a second timer for the board.
 //
-// Account responses are gated by persistentSyncGate: a request started for
-// identity A that resolves after logout or an A→B switch never mutates B's
-// account (or restores state after logout). Leaderboard applies stay ungated.
+// Account responses (sync + post-trade) are gated by persistentSyncGate: a
+// request/trade started for identity A that resolves after logout or an A→B
+// switch never mutates B's account (or restores state after logout). The
+// server trade is never cancelled — only the client apply is skipped.
+// Leaderboard applies stay ungated.
 
 export const PERSISTENT_POLL_INTERVAL_MS = 5000;
 
@@ -205,21 +207,29 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
     async (side: PersistentTradeSide, coinId: number, quantity: number) => {
       const token = getAuthToken();
       if (!token) throw new SessionExpiredError();
+      // Capture identity at trade start (same gate as sync) so a late BUY/SELL
+      // response for A cannot overwrite cleared/B account after logout/switch.
+      const gate = gateRef.current;
+      const startedGen = gate.generation;
+      const startedUserId = userIdRef.current;
       try {
         const result = side === 'BUY'
           ? await buyPersistentTrade(token, { coinId, quantity })
           : await sellPersistentTrade(token, { coinId, quantity });
-        // Adopt the authoritative post-trade account from the response —
-        // the server-locked price and committed balances, never a guess.
-        setAccount(result.account);
-        setProvisioned(true);
-        setSynced(true);
-        setAccountError(null);
+        // Adopt the authoritative post-trade account only if this identity is
+        // still current — never cancel/reverse the server trade; just skip apply.
+        if (gate.shouldApplyAccount(startedGen, startedUserId, userIdRef.current)) {
+          setAccount(result.account);
+          setProvisioned(true);
+          setSynced(true);
+          setAccountError(null);
+        }
+        // Always resync so the current identity gets board (+ account if authed).
         await syncNow();
       } catch (err) {
         // A domain rejection happened BEFORE any mutation server-side;
         // reconcile local state immediately rather than leaving a stale
-        // balance behind.
+        // balance behind. syncNow is already identity-gated.
         if (err instanceof GameApiError) await syncNow();
         throw err;
       }

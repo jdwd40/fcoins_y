@@ -100,3 +100,79 @@ test('beginSync without contention clears a prior unused rerun flag', () => {
   assert.equal(gate.beginSync(), true);
   assert.equal(gate.endSync(), false);
 });
+
+// --- Trade identity gating (same shouldApplyAccount contract as sync) ---
+// trade() captures generation + userIdRef at start (after token check) and only
+// applies setAccount/setProvisioned/setSynced/setAccountError when shouldApply
+// is true. Server trade is never cancelled; syncNow always runs afterward.
+
+test('trade BUY: A starts → logout bump → shouldApply false (A never restored)', () => {
+  const gate = createPersistentSyncGate();
+  // Trade start: capture gate like PersistentContext.trade after token check.
+  const startedGen = gate.generation;
+  const startedUserId = 'user-A';
+
+  gate.bumpGeneration(); // logout while BUY is in flight
+  assert.equal(
+    gate.shouldApplyAccount(startedGen, startedUserId, undefined),
+    false,
+    'stale BUY result must not restore A after logout'
+  );
+  // Public-only syncNow for logged-out identity still runs (beginSync/endSync);
+  // it has no account fetch — shouldApply stays false for the trade apply path.
+  assert.equal(gate.beginSync(), true);
+  assert.equal(gate.shouldApplyAccount(startedGen, startedUserId, undefined), false);
+  assert.equal(gate.endSync(), false);
+});
+
+test('trade SELL: A starts → switch to B → shouldApply false; B gen may apply', () => {
+  const gate = createPersistentSyncGate();
+  const aGen = gate.generation;
+  const aUserId = 'user-A';
+
+  gate.bumpGeneration(); // A→B while SELL is in flight
+  const bGen = gate.generation;
+  assert.equal(
+    gate.shouldApplyAccount(aGen, aUserId, 'user-B'),
+    false,
+    'stale SELL for A must never mutate B account'
+  );
+  // B's new generation (post-bump immediate sync / B's own trade) may apply.
+  assert.equal(gate.shouldApplyAccount(bGen, 'user-B', 'user-B'), true);
+});
+
+test('same-user successful trade shouldApply true', () => {
+  const gate = createPersistentSyncGate();
+  const startedGen = gate.generation;
+  const startedUserId = 'user-A';
+  // No identity change — post-trade account apply is allowed.
+  assert.equal(
+    gate.shouldApplyAccount(startedGen, startedUserId, 'user-A'),
+    true,
+    'same-user trade response must apply account'
+  );
+});
+
+test('stale trade does not interfere with immediate sync for current identity', () => {
+  // Pattern: A trade in flight; identity bump queues sync via beginSync while
+  // (hypothetically) something else holds inFlight; endSync reruns for B.
+  const gate = createPersistentSyncGate();
+  const aTradeGen = gate.generation;
+  const aUserId = 'user-A';
+
+  // A's sync (or any in-flight sync) is running when identity switches.
+  assert.equal(gate.beginSync(), true);
+  gate.bumpGeneration(); // logout or A→B
+  // Immediate syncNow for new identity hits inFlight → queues one follow-up.
+  assert.equal(gate.beginSync(), false);
+
+  // Late trade resolve for A: must not apply.
+  assert.equal(gate.shouldApplyAccount(aTradeGen, aUserId, 'user-B'), false);
+
+  // endSync schedules immediate follow-up for current identity (not 5s wait).
+  assert.equal(gate.endSync(), true);
+  assert.equal(gate.beginSync(), true);
+  const bGen = gate.generation;
+  assert.equal(gate.shouldApplyAccount(bGen, 'user-B', 'user-B'), true);
+  assert.equal(gate.endSync(), false);
+});
