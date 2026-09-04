@@ -1,23 +1,21 @@
 import { Wallet, TrendingUp, Trophy, Package } from 'lucide-react';
-import { useGame } from '../context/GameContext.tsx';
 import { usePersistent } from '../context/PersistentContext.tsx';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../services/transactionService.ts';
 import { GAME_STARTING_CASH_LABEL } from '../utils/gameLogic.ts';
 
-// Persistent-market Stage 6 player status strip: the money truth of the
+// Persistent-market Stage 6/10B player status strip: the money truth of the
 // player's PERSISTENT account at a glance. Cash and Wealth are the
 // server-owned persistent figures only — legacy account funds and round
 // participants never appear here. There is no Power and no position cap in
 // the persistent economy, so those cells are gone; open positions are the
-// count of live persistent holdings. Rank still reads the retained legacy
-// live leaderboard (Stage 10 replaces it with the persistent board).
+// count of live persistent holdings. Rank reads the persistent leaderboard
+// entry matched by authenticated userId (backend rank, never a local sort).
 // Signing-in and syncing states are explicit and never fabricate the
 // £10,000 starting Cash.
 export function PlayerStatusStrip({ onAuthRequest }: { onAuthRequest: () => void }) {
   const { user } = useAuth();
-  const { myEntry } = useGame();
-  const { account, synced, provisioned, accountError, syncNow } = usePersistent();
+  const { account, synced, provisioned, accountError, syncNow, myEntry, leaderboard } = usePersistent();
 
   if (!user) {
     return (
@@ -112,15 +110,17 @@ export function PlayerStatusStrip({ onAuthRequest }: { onAuthRequest: () => void
           <div className="text-xs text-ink-mute">live value</div>
         </div>
 
-        <div className="stat-cell" aria-label={myEntry ? `Leaderboard rank ${myEntry.rank}` : 'Rank syncing'}>
+        <div className="stat-cell" aria-label={myEntry ? `Leaderboard rank ${myEntry.rank}` : leaderboard === null ? 'Rank syncing' : 'Unranked'}>
           <div className="label mb-1 flex items-center gap-1"><Trophy className="w-3 h-3" /> Rank</div>
           {myEntry ? (
             <>
               <div className="font-mono text-base font-bold text-ink tnum">#{myEntry.rank}</div>
               <div className="text-xs text-ink-mute tnum">live board</div>
             </>
-          ) : (
+          ) : leaderboard === null ? (
             <div className="text-xs text-ink-mute">Syncing rank…</div>
+          ) : (
+            <div className="text-xs text-ink-mute">Unranked</div>
           )}
         </div>
 

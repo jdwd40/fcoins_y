@@ -147,7 +147,12 @@ assert.match(profile, /account\.netWealth - account\.startingCash/); // debt-adj
 assert.match(gameService, /leaderboardEligible/);
 assert.match(gameService, /totalResultCount/);
 assert.match(gameLogic, /LEADERBOARD_RULE_COPY = `Finish above \$\{GAME_STARTING_CASH_LABEL\} to make the leaderboard\.`/);
-assert.match(leaderboard, /LEADERBOARD_RULE_COPY/);
+assert.match(leaderboard, /PERSISTENT_LEADERBOARD_RULE_COPY/);
+assert.doesNotMatch(leaderboard, /peakWealth|participantId|currentWealth|settling|lifecycle/);
+assert.doesNotMatch(leaderboard, /\.sort\(/);
+assert.match(leaderboard, /entry\.accountId/);
+assert.match(leaderboard, /entry\.netWorth/);
+assert.match(leaderboard, /usePersistent/);
 assert.match(resultsPanel, /leaderboardEligible/);
 assert.match(resultsPanel, /No qualifiers/);
 
@@ -408,10 +413,19 @@ assert.match(coinSignalCard, /risk-\$\{coin\.collapseRisk\.toLowerCase\(\)\}/);
 assert.match(styles, /\.risk-critical/);
 assert.match(styles, /\.risk-stable/);
 // 13. What is my leaderboard rank? — in the main status area AND the strip.
+// Stage 10B: rank comes from the persistent board (usePersistent / myEntry),
+// never a client re-sort of cycle wealth.
 assert.match(leaderboardPressure, /Your rank <strong>#\{myEntry\.rank\}<\/strong> of \{entries\.length\}/);
 assert.match(playerStatusStrip, /#\{myEntry\.rank\}/);
 assert.match(leaderboardPressure, /leaderboard-me/); // human row highlighted
 assert.match(leaderboardPressure, /Bot/); // bot marker preserved
+assert.match(leaderboardPressure, /usePersistent/);
+assert.match(playerStatusStrip, /usePersistent/);
+assert.doesNotMatch(leaderboardPressure, /useGame|peakWealth|participantId|settling|lifecycle/);
+assert.doesNotMatch(playerStatusStrip, /useGame/);
+assert.doesNotMatch(playerRound, /useGame/);
+assert.match(playerRound, /myEntry/);
+assert.doesNotMatch(leaderboardPressure, /\.sort\(/);
 
 // --- V2-5: trade safety on the new surface ------------------------------------
 // Quick buys convert notional -> quantity at the displayed price (the backend
@@ -889,6 +903,33 @@ assert.doesNotMatch(persistentTradePanel, /⚡|showPowerEstimate/);
 // except the bounded transaction-history read in the account panel/profile.
 assert.doesNotMatch(persistentTradePanel, /\bfetch\(|setInterval/);
 assert.doesNotMatch(persistentContext, /\bfetch\(/); // fetches ride the service
+
+
+// --- Persistent-market Stage 10B: persistent leaderboard --------------------
+// Player-facing live board migrates to GET /persistent/leaderboard. Backend
+// rank is authoritative; one shared PersistentContext poll feeds the board
+// (no second timer). Cycle leaderboard types remain in gameService for
+// ResultsOverlay / Stage 13 debt.
+assert.match(persistentService, /\/persistent\/leaderboard/);
+assert.match(persistentService, /export async function getPersistentLeaderboard/);
+assert.match(persistentService, /export function parsePersistentLeaderboard/);
+assert.match(persistentService, /export function parsePersistentLeaderboardEntry/);
+assert.match(persistentService, /netWorth/);
+assert.match(persistentService, /worldId/);
+assert.match(persistentContext, /getPersistentLeaderboard/);
+assert.match(persistentContext, /leaderboard/);
+assert.match(persistentContext, /myEntry/);
+assert.match(persistentContext, /findMyEntry\(leaderboard\?\.entries, user\?\.id\)/);
+assert.match(persistentContext, /PERSISTENT_POLL_INTERVAL_MS/);
+// Exactly one setInterval in PersistentContext — the shared poll.
+assert.equal(
+  (persistentContext.match(/setInterval\(/g) || []).length,
+  1,
+  'PersistentContext must keep a single shared poll timer'
+);
+assert.doesNotMatch(leaderboard, /setInterval|getLiveLeaderboard|useGame/);
+assert.doesNotMatch(leaderboardPressure, /setInterval|getLiveLeaderboard/);
+assert.match(gameLogic, /PERSISTENT_LEADERBOARD_RULE_COPY/);
 
 // --- Centralised API base ------------------------------------------------
 // No source file outside services/apiConfig.ts may hard-code the deployed
