@@ -40,6 +40,7 @@ import {
   GAME_STARTING_CASH_LABEL,
   displayRoundCash,
   LEADERBOARD_RULE_COPY,
+  PERSISTENT_LEADERBOARD_RULE_COPY,
   LEADERBOARD_BREAKEVEN_COPY,
   CASH_EVENT_TYPE_LABEL,
   formatCashEventAmount,
@@ -285,6 +286,18 @@ const ENTRIES: LeaderboardEntry[] = [
     currentCash: 9750, currentWealth: 9990, peakWealth: 10010
   }
 ];
+
+
+test('findMyEntry matches persistent-shaped rows by userId without depending on cycle fields', () => {
+  const persistentRows = [
+    { rank: 2, accountId: 7, userId: 501, username: 'bot', isBot: true, netWorth: 5000 },
+    { rank: 1, accountId: 12, userId: 1, username: 'player', isBot: false, netWorth: 9090 }
+  ];
+  const mine = findMyEntry(persistentRows, 1);
+  assert.equal(mine?.rank, 1);
+  assert.equal(mine?.accountId, 12);
+  assert.equal(findMyEntry(persistentRows, 999), null);
+});
 
 test('findMyEntry locates the signed-in human, whoever leads (bots can be #1)', () => {
   const mine = findMyEntry(ENTRIES, 1);
@@ -588,6 +601,8 @@ test('leaderboard qualification is profitable-only: above £10,000, exactly £10
   assert.match(cash.body, /Exactly £10,000 is break-even and does not qualify\./);
   // The same copy is single-sourced for the leaderboard/results surfaces.
   assert.equal(LEADERBOARD_RULE_COPY, 'Finish above £10,000 to make the leaderboard.');
+assert.match(PERSISTENT_LEADERBOARD_RULE_COPY, /net worth/i);
+assert.match(PERSISTENT_LEADERBOARD_RULE_COPY, /Backend rank/);
   assert.equal(LEADERBOARD_BREAKEVEN_COPY, 'Exactly £10,000 is break-even and does not qualify.');
 });
 

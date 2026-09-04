@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { TrendingUp, Wallet, Package, History } from 'lucide-react';
-import { useGame } from '../context/GameContext.tsx';
 import { usePersistent } from '../context/PersistentContext.tsx';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, SessionExpiredError } from '../services/transactionService.ts';
@@ -31,8 +30,7 @@ const ACTIVITY_LIMIT = 20;
 // so instead of fabricating the £10,000 start.
 export function PlayerRoundPanel({ onAuthRequest }: { onAuthRequest: () => void }) {
   const { user, getAuthToken, handleSessionExpired } = useAuth();
-  const { myEntry } = useGame();
-  const { account, synced, provisioned, lastSyncAt } = usePersistent();
+  const { account, synced, provisioned, lastSyncAt, myEntry } = usePersistent();
 
   const [activity, setActivity] = useState<PersistentTransaction[] | null>(null);
   const [activityError, setActivityError] = useState<string | null>(null);

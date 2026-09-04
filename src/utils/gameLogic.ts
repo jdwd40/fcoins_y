@@ -357,10 +357,10 @@ export function summariseDrainToast(events: CashEvent[]): string {
 
 // --- Leaderboard helpers ---------------------------------------------------------------------
 
-export function findMyEntry(
-  entries: LeaderboardEntry[] | undefined,
+export function findMyEntry<T extends { userId: number }>(
+  entries: T[] | undefined,
   userId: number | null | undefined
-): LeaderboardEntry | null {
+): T | null {
   if (!entries || userId === null || userId === undefined) return null;
   return entries.find((entry) => entry.userId === userId) ?? null;
 }
@@ -641,6 +641,10 @@ export const HOW_TO_PLAY_STARTING_CASH = GAME_STARTING_CASH_LABEL;
 // (backend #19: leaderboard_eligible = final_cash > starting_cash).
 export const LEADERBOARD_RULE_COPY = `Finish above ${GAME_STARTING_CASH_LABEL} to make the leaderboard.`;
 export const LEADERBOARD_BREAKEVEN_COPY = `Exactly ${GAME_STARTING_CASH_LABEL} is break-even and does not qualify.`;
+
+// Stage 10B persistent board: continuous net-worth ranking, no profitable-only filter.
+export const PERSISTENT_LEADERBOARD_RULE_COPY =
+  'Ranked by net worth (cash + holdings − debt). Backend rank is authoritative.';
 
 export interface HowToPlayStep {
   id: string;

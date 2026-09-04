@@ -17,8 +17,9 @@ import { GameApiError } from './gameService.ts';
 //     state — a malformed or non-conforming response fails loudly here.
 //
 // The old cycle-shaped client (gameService.ts) is untouched: it still serves
-// the retained compatibility surfaces (leaderboard/results/round panels)
-// until their post-deploy retirement (Stage 13 debt).
+// the retained compatibility surfaces (results/round panels and the legacy
+// cycle leaderboard) until their post-deploy retirement (Stage 13 debt).
+// Stage 10B moves the player-facing live board onto GET /persistent/leaderboard.
 
 export type PersistentTradeSide = 'BUY' | 'SELL';
 
@@ -95,6 +96,31 @@ export interface PersistentTradeResult {
   account: PersistentAccount;
 }
 
+// Stage 10B: GET /persistent/leaderboard — public ranking of every provisioned
+// persistent account in THE active world. Backend rank is authoritative;
+// the client never re-sorts or recalculates rank.
+export interface PersistentLeaderboardEntry {
+  rank: number;
+  accountId: number;
+  userId: number;
+  username: string;
+  isBot: boolean;
+  personality: string | null;
+  cash: number;
+  holdingsValue: number;
+  debt: number;
+  /** cash + holdingsValue − debt — the persistent score. May be negative. */
+  netWorth: number;
+}
+
+export interface PersistentLeaderboard {
+  /** Null when no active world is provisioned yet (entries will be []). */
+  worldId: number | null;
+  serverTime: string;
+  /** Backend order is authoritative — never re-sort client-side. */
+  entries: PersistentLeaderboardEntry[];
+}
+
 // --- Validation helpers ------------------------------------------------------
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -127,6 +153,12 @@ function forbidCycleFields(payload: Record<string, unknown>, contract: string): 
 function requireNullableFiniteNumber(payload: Record<string, unknown>, field: string, contract: string): void {
   if (payload[field] !== null && (typeof payload[field] !== 'number' || !Number.isFinite(payload[field] as number))) {
     throw new Error(`Invalid ${contract} response: ${field} must be null or a finite number`);
+  }
+}
+
+function requireBoolean(payload: Record<string, unknown>, field: string, contract: string): void {
+  if (typeof payload[field] !== 'boolean') {
+    throw new Error(`Invalid ${contract} response: ${field} must be a boolean`);
   }
 }
 
@@ -241,6 +273,52 @@ export function parsePersistentTransactionsResponse(payload: unknown): Persisten
   };
 }
 
+export function parsePersistentLeaderboardEntry(payload: unknown): PersistentLeaderboardEntry {
+  const contract = 'persistent leaderboard entry';
+  if (!isRecord(payload)) throw new Error(`Invalid ${contract} response: expected a JSON object`);
+  forbidCycleFields(payload, contract);
+  for (const field of ['rank', 'accountId', 'userId', 'cash', 'holdingsValue', 'debt', 'netWorth'] as const) {
+    requireFiniteNumber(payload, field, contract);
+  }
+  requireString(payload, 'username', contract);
+  requireBoolean(payload, 'isBot', contract);
+  if (payload.personality !== null && typeof payload.personality !== 'string') {
+    throw new Error(`Invalid ${contract} response: personality must be null or a string`);
+  }
+  return {
+    rank: payload.rank as number,
+    accountId: payload.accountId as number,
+    userId: payload.userId as number,
+    username: payload.username as string,
+    isBot: payload.isBot as boolean,
+    personality: payload.personality as string | null,
+    cash: payload.cash as number,
+    holdingsValue: payload.holdingsValue as number,
+    debt: payload.debt as number,
+    netWorth: payload.netWorth as number
+  };
+}
+
+export function parsePersistentLeaderboard(payload: unknown): PersistentLeaderboard {
+  const contract = 'persistent leaderboard';
+  if (!isRecord(payload)) throw new Error(`Invalid ${contract} response: expected a JSON object`);
+  forbidCycleFields(payload, contract);
+  if (payload.worldId !== null && (typeof payload.worldId !== 'number' || !Number.isFinite(payload.worldId as number))) {
+    throw new Error(`Invalid ${contract} response: worldId must be null or a finite number`);
+  }
+  requireString(payload, 'serverTime', contract);
+  if (!Array.isArray(payload.entries)) {
+    throw new Error(`Invalid ${contract} response: entries must be an array`);
+  }
+  // Preserve backend order verbatim — never re-sort or recompute rank here.
+  const entries = (payload.entries as unknown[]).map((row) => parsePersistentLeaderboardEntry(row));
+  return {
+    worldId: payload.worldId as number | null,
+    serverTime: payload.serverTime as string,
+    entries
+  };
+}
+
 // --- HTTP plumbing ------------------------------------------------------------
 
 async function parseJsonSafe(response: Response): Promise<unknown> {
@@ -264,13 +342,15 @@ function errorMessageFrom(body: unknown, fallback: string): string {
 
 async function persistentFetch<T>(
   path: string,
-  { token, method = 'GET', body, signal }: { token: string; method?: string; body?: unknown; signal?: AbortSignal },
+  { token, method = 'GET', body, signal }: { token?: string; method?: string; body?: unknown; signal?: AbortSignal },
   parse: (payload: unknown) => T
 ): Promise<T> {
   const headers: Record<string, string> = {
-    Accept: 'application/json',
-    Authorization: `Bearer ${token}`
+    Accept: 'application/json'
   };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
   const init: RequestInit = { method, headers, signal };
   if (body !== undefined) {
     headers['Content-Type'] = 'application/json';
@@ -341,4 +421,11 @@ export async function sellPersistentTrade(
     { token, method: 'POST', body: { coin_id: coinId, quantity }, signal },
     parsePersistentTradeResult
   );
+}
+
+// Stage 10B: public persistent leaderboard for THE active world. No auth —
+// matches the legacy GET /game/leaderboard convention. worldId may be null
+// with entries: [] when no world is provisioned; never fabricate rows.
+export async function getPersistentLeaderboard(signal?: AbortSignal): Promise<PersistentLeaderboard> {
+  return persistentFetch('/persistent/leaderboard', { signal }, parsePersistentLeaderboard);
 }

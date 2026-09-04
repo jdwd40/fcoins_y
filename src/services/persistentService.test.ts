@@ -18,15 +18,22 @@ import { API_BASE_URL } from './apiConfig.ts';
 import {
   buyPersistentTrade,
   getPersistentAccount,
+  getPersistentLeaderboard,
   getPersistentTransactions,
   parsePersistentAccount,
   parsePersistentAccountResponse,
+  parsePersistentLeaderboard,
+  parsePersistentLeaderboardEntry,
   parsePersistentTradeResult,
   parsePersistentTransaction,
   parsePersistentTransactionsResponse,
   sellPersistentTrade
 } from './persistentService.ts';
-import type { PersistentAccount, PersistentTransaction } from './persistentService.ts';
+import type {
+  PersistentAccount,
+  PersistentLeaderboard,
+  PersistentTransaction
+} from './persistentService.ts';
 import { GameApiError } from './gameService.ts';
 import { SessionExpiredError } from './transactionService.ts';
 
@@ -79,6 +86,52 @@ const VALID_TRADE_RESULT = {
     totalAmount: 5
   },
   account: VALID_ACCOUNT
+};
+
+
+const VALID_LEADERBOARD_ENTRY = {
+  rank: 1,
+  accountId: 12,
+  userId: 1,
+  username: 'player',
+  isBot: false,
+  personality: null,
+  cash: 9000,
+  holdingsValue: 90,
+  debt: 0,
+  netWorth: 9090
+};
+
+const VALID_LEADERBOARD: PersistentLeaderboard = {
+  worldId: 1,
+  serverTime: '2026-09-04T17:00:00.000Z',
+  entries: [
+    VALID_LEADERBOARD_ENTRY,
+    {
+      rank: 2,
+      accountId: 7,
+      userId: 501,
+      username: 'cool_conservative_bot',
+      isBot: true,
+      personality: 'conservative',
+      cash: 8000,
+      holdingsValue: 500,
+      debt: 1000,
+      netWorth: 7500
+    },
+    {
+      rank: 3,
+      accountId: 9,
+      userId: 502,
+      username: 'broke_bot',
+      isBot: true,
+      personality: 'dip_buyer',
+      cash: 100,
+      holdingsValue: 0,
+      debt: 10000,
+      netWorth: -9900
+    }
+  ]
 };
 
 type FetchArgs = { url: string; init?: RequestInit };
@@ -325,4 +378,98 @@ test('a network failure is a readable error, never a fabricated account', async 
   } finally {
     restore();
   }
+});
+
+// --- Stage 10B: persistent leaderboard -----------------------------------------
+
+test('leaderboard read hits /persistent/leaderboard with no auth header and no body', async () => {
+  let seen: FetchArgs | undefined;
+  const restore = stubFetch(async (args) => { seen = args; return jsonResponse(envelope(VALID_LEADERBOARD)); });
+  try {
+    await getPersistentLeaderboard();
+  } finally {
+    restore();
+  }
+  assert.equal(seen?.url, `${API_BASE_URL}/persistent/leaderboard`);
+  assert.equal(seen?.init?.method ?? 'GET', 'GET');
+  const headers = seen?.init?.headers as Record<string, string>;
+  assert.equal(headers.Authorization, undefined);
+  assert.equal(seen?.init?.body, undefined);
+});
+
+test('leaderboard parses humans, bots, personality, debt and negative net worth', async () => {
+  const restore = stubFetch(async () => jsonResponse(envelope(VALID_LEADERBOARD)));
+  try {
+    const board = await getPersistentLeaderboard();
+    assert.equal(board.worldId, 1);
+    assert.equal(board.entries.length, 3);
+    assert.equal(board.entries[0].username, 'player');
+    assert.equal(board.entries[0].isBot, false);
+    assert.equal(board.entries[1].isBot, true);
+    assert.equal(board.entries[1].personality, 'conservative');
+    assert.equal(board.entries[1].debt, 1000);
+    assert.equal(board.entries[2].netWorth, -9900);
+    assert.equal(board.entries[2].rank, 3);
+  } finally {
+    restore();
+  }
+});
+
+test('leaderboard preserves backend order — out-of-order ranks are not re-sorted', () => {
+  // Fixture deliberately lists rank 3 before rank 1 to prove the client
+  // never re-orders by netWorth or rank.
+  const outOfOrder = {
+    worldId: 1,
+    serverTime: '2026-09-04T17:00:00.000Z',
+    entries: [
+      { ...VALID_LEADERBOARD_ENTRY, rank: 3, accountId: 30, userId: 3, username: 'third', netWorth: 100 },
+      { ...VALID_LEADERBOARD_ENTRY, rank: 1, accountId: 10, userId: 1, username: 'first', netWorth: 9999 },
+      { ...VALID_LEADERBOARD_ENTRY, rank: 2, accountId: 20, userId: 2, username: 'second', netWorth: 5000 }
+    ]
+  };
+  const board = parsePersistentLeaderboard(outOfOrder);
+  assert.deepEqual(board.entries.map((e) => e.rank), [3, 1, 2]);
+  assert.deepEqual(board.entries.map((e) => e.username), ['third', 'first', 'second']);
+  assert.deepEqual(board.entries.map((e) => e.accountId), [30, 10, 20]);
+});
+
+test('empty board with worldId null is a first-class safe result', () => {
+  const board = parsePersistentLeaderboard({
+    worldId: null,
+    serverTime: '2026-09-04T17:00:00.000Z',
+    entries: []
+  });
+  assert.equal(board.worldId, null);
+  assert.deepEqual(board.entries, []);
+});
+
+test('a leaked cycle identifier in a leaderboard payload fails loudly', () => {
+  assert.throws(
+    () => parsePersistentLeaderboard({ ...VALID_LEADERBOARD, cycleId: 'APOC-0001' }),
+    /never carry cycleId/
+  );
+  assert.throws(
+    () => parsePersistentLeaderboardEntry({ ...VALID_LEADERBOARD_ENTRY, apocalypseId: 'APOC-0001' }),
+    /never carry apocalypseId/
+  );
+});
+
+test('malformed leaderboard payloads fail loudly at the boundary', () => {
+  assert.throws(() => parsePersistentLeaderboard(null), /expected a JSON object/);
+  assert.throws(
+    () => parsePersistentLeaderboard({ worldId: 1, serverTime: '2026-09-04T17:00:00.000Z', entries: {} }),
+    /entries must be an array/
+  );
+  assert.throws(
+    () => parsePersistentLeaderboardEntry({ ...VALID_LEADERBOARD_ENTRY, netWorth: 'rich' }),
+    /netWorth must be a finite number/
+  );
+  assert.throws(
+    () => parsePersistentLeaderboardEntry({ ...VALID_LEADERBOARD_ENTRY, isBot: 'yes' }),
+    /isBot must be a boolean/
+  );
+  assert.throws(
+    () => parsePersistentLeaderboard({ worldId: '1', serverTime: '2026-09-04T17:00:00.000Z', entries: [] }),
+    /worldId must be null or a finite number/
+  );
 });
