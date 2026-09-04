@@ -22,6 +22,7 @@ import type {
 import { GameApiError } from '../services/gameService.ts';
 import { SessionExpiredError } from '../services/transactionService.ts';
 import { findMyEntry } from '../utils/gameLogic.ts';
+import { createPersistentSyncGate } from '../utils/persistentSyncGate.ts';
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
 
@@ -40,6 +41,10 @@ import { useToast } from './ToastContext';
 //
 // One shared 5s poll feeds account (when authenticated) AND the public
 // leaderboard. Do not add a second timer for the board.
+//
+// Account responses are gated by persistentSyncGate: a request started for
+// identity A that resolves after logout or an A→B switch never mutates B's
+// account (or restores state after logout). Leaderboard applies stay ungated.
 
 export const PERSISTENT_POLL_INTERVAL_MS = 5000;
 
@@ -83,11 +88,16 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
   const [leaderboard, setLeaderboard] = useState<PersistentLeaderboard | null>(null);
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
 
-  const inFlight = useRef(false);
+  const gateRef = useRef(createPersistentSyncGate());
+  const userIdRef = useRef<string | undefined>(user?.id);
+  userIdRef.current = user?.id;
 
   const syncNow = useCallback(async () => {
-    if (inFlight.current) return; // never stack polls
-    inFlight.current = true;
+    const gate = gateRef.current;
+    if (!gate.beginSync()) return; // in-flight: exactly one follow-up queued
+
+    const startedGen = gate.generation;
+    const startedUserId = userIdRef.current;
     try {
       const token = getAuthToken();
       // One shared poll: public leaderboard always, account only when authed.
@@ -96,6 +106,7 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
         token ? getPersistentAccount(token) : Promise.resolve(null)
       ]);
 
+      // Leaderboard is public and identity-independent — always apply.
       if (boardResult.status === 'fulfilled') {
         setLeaderboard(boardResult.value);
         setLeaderboardError(null);
@@ -110,6 +121,11 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
 
       if (!token) {
         // Logged out: account state is owned by the identity-reset effect.
+        return;
+      }
+
+      // Stale A (after logout / A→B) must never touch account state or errors.
+      if (!gate.shouldApplyAccount(startedGen, startedUserId, userIdRef.current)) {
         return;
       }
 
@@ -153,9 +169,15 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
         }
       }
     } finally {
-      inFlight.current = false;
+      if (gate.endSync()) {
+        // Identity changed (or syncNow) while we were in flight — run once now.
+        void syncNow();
+      }
     }
   }, [getAuthToken, handleSessionExpired, showToast]);
+
+  const syncNowRef = useRef(syncNow);
+  syncNowRef.current = syncNow;
 
   // Central poll for the public board (always) and the authenticated account.
   // One shared fetch feeds every consumer — do not add a second timer.
@@ -166,14 +188,17 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
   }, [syncNow]);
 
   // Identity changes never leak another user's account: a logout or account
-  // switch drops all account state immediately; the next sync re-reads the
-  // current identity only. The public leaderboard is shared and kept.
+  // switch bumps the sync generation, drops all account state immediately, and
+  // triggers an immediate resync for the new identity (or logged-out board-only
+  // poll). The public leaderboard is shared and kept.
   useEffect(() => {
+    gateRef.current.bumpGeneration();
     setAccount(null);
     setSynced(false);
     setProvisioned(false);
     setLastSyncAt(null);
     setAccountError(null);
+    void syncNowRef.current();
   }, [user?.id]);
 
   const trade = useCallback(
