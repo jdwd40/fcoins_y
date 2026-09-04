@@ -77,7 +77,7 @@ export function GameMarketGrid() {
         <div className="label mb-2">Market</div>
         <p className="text-sm text-ink-dim">
           {lifecycle === 'SETTLING'
-            ? 'Market frozen — calculating the damage. The next apocalypse starts automatically.'
+            ? 'Market signals temporarily unavailable — holdings stay safe. Retrying…'
             : signalsError ?? 'Loading market signals…'}
         </p>
       </section>

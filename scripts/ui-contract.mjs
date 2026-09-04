@@ -7,6 +7,7 @@ const styles = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8'
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const chart = readFileSync(new URL('../src/components/PriceChart.tsx', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../src/components/ApocalypseHeader.tsx', import.meta.url), 'utf8');
+const persistentHeader = readFileSync(new URL('../src/components/PersistentMarketHeader.tsx', import.meta.url), 'utf8');
 const gameContext = readFileSync(new URL('../src/context/GameContext.tsx', import.meta.url), 'utf8');
 const gameLogic = readFileSync(new URL('../src/utils/gameLogic.ts', import.meta.url), 'utf8');
 const roundTrade = readFileSync(new URL('../src/components/RoundTradePanel.tsx', import.meta.url), 'utf8');
@@ -37,20 +38,28 @@ const monitorUtil = readFileSync(new URL('../src/utils/apocalypseMonitor.ts', im
 const apocalypseMonitor = readFileSync(new URL('../src/components/ApocalypseMonitor.tsx', import.meta.url), 'utf8');
 
 // --- Core Crypto Chaos surface ------------------------------------------
-// V2-5: the primary screen is the mobile-first game — compact top bar,
-// apocalypse status header, player status strip, leaderboard pressure and
-// scannable market grid. The historical market detail survives below as the
-// drill-down surface.
+// Stage 11: the primary screen is the mobile-first persistent market —
+// compact top bar, persistent market header, player status strip,
+// leaderboard pressure and scannable market grid. Apocalypse countdown /
+// settlement overlays are unmounted from primary Market (files retained).
 assert.match(app, /Crypto Chaos/);
 assert.match(app, /GameTopBar/);
 assert.match(app, /PlayerStatusStrip/);
 assert.match(app, /LeaderboardPressure/);
 assert.match(app, /GameMarketGrid/);
-assert.match(app, /ApocalypseHeader/);
+assert.match(app, /PersistentMarketHeader/);
+assert.doesNotMatch(app, /<ApocalypseHeader/);
+assert.doesNotMatch(app, /ApocalypseHeader coins=/);
 assert.match(app, /PlayerRoundPanel/);
 assert.match(app, /LeaderboardPanel/);
-assert.match(app, /ResultsOverlay/);
+assert.doesNotMatch(app, /<ResultsOverlay/);
+assert.doesNotMatch(app, /<RecentResultsPanel/);
 assert.match(app, /GameProvider/);
+assert.match(app, /Leaderboard & activity/);
+assert.doesNotMatch(app, /Round detail/);
+assert.doesNotMatch(app, /JOIN APOCALYPSE/);
+assert.doesNotMatch(app, /30-minute cycle/);
+assert.doesNotMatch(app, /a CoinX apocalypse/);
 assert.match(gameTopBar, /Virtual GBP/);
 assert.match(gameTopBar, /UserMenu/); // auth access preserved above the game
 // No dense desktop navigation above the gameplay.
@@ -67,18 +76,30 @@ assert.match(app, /MarketValueChart/);
 assert.match(app, /id="markets"/);
 assert.match(app, /Profile/); // profile route preserved
 
-// Persistent apocalypse header: identity, countdown, meter, phase, stale state.
+// Stage 13 compatibility: ApocalypseHeader file retained (countdown/meter),
+// but it is NOT mounted on the primary Market shell.
 assert.match(header, /progressbar/);
 assert.match(header, /aria-valuenow/);
 assert.match(header, /Connection stale/);
 assert.match(header, /Backend unavailable/);
 assert.match(header, /formatCountdown/);
 assert.match(header, /meterPhase/);
-// V2-3/V2-5: the escalation label uses the backend's shared band vocabulary.
 assert.match(header, /escalationBand/);
 assert.match(header, /ESCALATION_BAND_LABEL\[band\]/);
 assert.match(gameLogic, /export function escalationBand/);
 assert.match(gameLogic, /ESCALATION_BAND_LABEL/);
+
+// Stage 11 primary persistent market header: no countdown / cycle / settlement.
+assert.match(persistentHeader, /Persistent market/);
+assert.match(persistentHeader, /HowToPlay/);
+assert.match(persistentHeader, /usePersistent/);
+assert.doesNotMatch(persistentHeader, /formatCountdown|displayRemainingMs|apocalypsePercent|SETTLING|JOIN APOCALYPSE|30-minute/);
+assert.doesNotMatch(persistentHeader, /progressbar|role=\"progressbar\"|aria-valuenow/);
+assert.doesNotMatch(persistentHeader, /\bDirector\b|phase-dip|phase-rise|meterPhase/);
+assert.doesNotMatch(gameMarketGrid, /next apocalypse starts automatically/i);
+assert.match(gameMarketGrid, /Market signals temporarily unavailable/);
+assert.match(leaderboardPressure, /Full board and account activity/);
+assert.doesNotMatch(leaderboardPressure, /history and results/);
 
 // Central polling with focus/visibility resync; no per-component game timers.
 assert.match(gameContext, /GAME_POLL_INTERVAL_MS/);
@@ -225,10 +246,14 @@ assert.match(playerRound, /server-locked live price/); // execution provenance
 // Internal identifiers and ledger internals stay out of the primary UX.
 assert.doesNotMatch(playerRound, /eventKey|event_key/);
 assert.doesNotMatch(playerRound, /balanceBefore|balanceAfter/);
-// How to Play reinforces the strategic rule: idling bleeds, trading counters.
-assert.match(gameLogic, /doing nothing costs money/i);
-assert.match(gameLogic, /beat the drain/i);
-assert.match(gameLogic, /activity feed/i);
+// How to Play (Stage 11): continuous persistent market, no timer/reset.
+assert.match(gameLogic, /HOW TO PLAY THE PERSISTENT MARKET/);
+assert.match(gameLogic, /runs continuously/i);
+assert.match(gameLogic, /no game timer/i);
+assert.match(gameLogic, /no Apocalypse reset/i);
+assert.match(gameLogic, /replacement coins may enter/i);
+assert.match(gameLogic, /historical positions at £0/i);
+assert.doesNotMatch(gameLogic, /HOW TO SURVIVE THE APOCALYPSE/);
 
 // Styling: game escalation + reduced-motion respect.
 assert.match(styles, /--accent:\s*#7132f5/);
@@ -248,11 +273,13 @@ assert.match(reducedMotion, /scroll-behavior: auto/);
 assert.match(styles, /coin-dead/);
 assert.match(styles, /leaderboard-me/);
 
-// --- HOW TO PLAY (issue #7) -------------------------------------------------
-// Discoverable control in the persistent header; compact accessible dialog,
-// never a forced tutorial. Copy is single-sourced from gameLogic.
-assert.match(header, /HowToPlay/); // mounted in the persistent apocalypse header
+// --- HOW TO PLAY (issue #7 / Stage 11) --------------------------------------
+// Discoverable control in the persistent market header; compact accessible
+// dialog, never a forced tutorial. Copy is single-sourced from gameLogic.
+assert.match(persistentHeader, /HowToPlay/); // mounted in the primary persistent header
 assert.match(howToPlay, /How to play/); // visible, human-readable trigger label
+assert.match(howToPlay, /New to the persistent market/);
+assert.doesNotMatch(howToPlay, /end of the world/);
 assert.match(howToPlay, /aria-haspopup="dialog"/);
 assert.match(howToPlay, /aria-expanded=\{open\}/);
 // Dialog semantics + every close route: Escape, backdrop click, close button.
@@ -273,7 +300,8 @@ assert.match(howToPlay, /HOW_TO_PLAY_STEPS\.map/);
 assert.match(howToPlay, /aria-hidden="true"/);
 assert.match(gameLogic, /export const HOW_TO_PLAY_STEPS/);
 assert.match(gameLogic, /export const HOW_TO_PLAY_TITLE/);
-assert.match(gameLogic, /HOW TO SURVIVE THE APOCALYPSE/);
+assert.match(gameLogic, /HOW TO PLAY THE PERSISTENT MARKET/);
+assert.doesNotMatch(gameLogic, /HOW TO SURVIVE THE APOCALYPSE/);
 // Narrow-layout usability: bottom-sheet on mobile, centred panel from sm up,
 // scrollable with capped height.
 assert.match(howToPlay, /items-end sm:items-center/);
@@ -364,7 +392,9 @@ assert.doesNotMatch(playerStatusStrip, /⚡|power\.current|formatPowerRegenRate|
 assert.match(playerStatusStrip, /account\.holdingsValue/);
 assert.match(playerStatusStrip, /account\.holdings\.length/);
 assert.match(playerStatusStrip, /open · no cap/);
-// 4. How long until the apocalypse ends? — server-anchored countdown.
+// 4. Stage 11: primary shell has NO apocalypse countdown. Compatibility
+//    ApocalypseHeader still owns the countdown helpers for Stage 13.
+assert.doesNotMatch(persistentHeader, /Time left|formatCountdown|displayRemainingMs/);
 assert.match(header, /Time left/);
 assert.match(header, /formatCountdown\(remaining\)/);
 assert.match(header, /displayRemainingMs\(anchor, now\)/);
@@ -501,12 +531,13 @@ assert.match(narrowCss, /\.player-cash-figure \{ font-size: clamp\(/);
 assert.match(playerStatusStrip, /player-cash-figure/);
 assert.match(playerStatusStrip, /flex flex-wrap items-end justify-between/);
 // No sub-12px metadata survives on the V2 game surface components.
-for (const [name, text] of Object.entries({ coinSignalCard, playerStatusStrip, gameMarketGrid, header })) {
+for (const [name, text] of Object.entries({ coinSignalCard, playerStatusStrip, gameMarketGrid, header, persistentHeader })) {
   assert.doesNotMatch(text, /text-\[0\.[0-6][0-9]rem\]/, `${name} still has sub-0.7rem metadata text`);
 }
-// Header metadata rows wrap onto extra lines instead of overflowing.
+// Compatibility ApocalypseHeader still wraps; primary persistent header wraps too.
 assert.match(header, /flex flex-wrap items-center justify-between mt-1\.5 gap-x-3 gap-y-1/);
 assert.match(header, /flex flex-wrap items-center gap-x-4 gap-y-2/);
+assert.match(persistentHeader, /flex flex-wrap items-center gap-x-4 gap-y-2/);
 // Secondary grid chrome yields to the primary scan at narrow widths.
 assert.match(gameMarketGrid, /chip hidden sm:inline-flex/);
 // Confirmation rows keep label/value separated at narrow widths.
@@ -945,5 +976,31 @@ for (const entry of readdirSync(SRC, { recursive: true })) {
   if (text.includes('jdwd40.com')) violations.push(entry.toString());
 }
 assert.deepEqual(violations, [], `hard-coded API origin outside apiConfig.ts: ${violations.join(', ')}`);
+
+
+// --- Stage 11: Apocalypse chrome removed from primary player shell ----------
+// Primary App Market must not mount countdown / settlement / JOIN chrome.
+assert.doesNotMatch(app, /<ApocalypseHeader\b/);
+assert.doesNotMatch(app, /from '\.\/components\/ApocalypseHeader/);
+assert.doesNotMatch(app, /<ResultsOverlay\b/);
+assert.doesNotMatch(app, /<RecentResultsPanel\b/);
+assert.doesNotMatch(app, /from '\.\/components\/ResultsPanel/);
+assert.doesNotMatch(app, /JOIN APOCALYPSE/);
+assert.doesNotMatch(app, /30-minute cycle/);
+assert.doesNotMatch(app, /SETTLING/);
+assert.doesNotMatch(app, /Face the next apocalypse/);
+assert.match(app, /PersistentMarketHeader/);
+assert.match(app, /Persistent market|persistent market/);
+// Compatibility components intentionally retained on disk for Stage 13.
+assert.match(header, /export function ApocalypseHeader/);
+assert.match(resultsPanel, /export function ResultsOverlay/);
+assert.match(resultsPanel, /export function RecentResultsPanel/);
+assert.match(howToPlay, /export function HowToPlay/);
+// Persistent trading + leaderboard surfaces remain mounted.
+assert.match(app, /GameMarketGrid/);
+assert.match(app, /LeaderboardPressure/);
+assert.match(app, /LeaderboardPanel/);
+assert.match(app, /PlayerRoundPanel/);
+assert.match(app, /PlayerStatusStrip/);
 
 console.log('Crypto Chaos UI contract passed');

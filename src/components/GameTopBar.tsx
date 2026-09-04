@@ -1,9 +1,9 @@
 import { Skull } from 'lucide-react';
 import { UserMenu } from './UserMenu';
 
-// V2-5 slim top bar: brand + account access only. The dense desktop exchange
-// navigation no longer sits above the gameplay — the game status header
-// (ApocalypseHeader) and the player strip lead the screen instead.
+// V2-5 / Stage 11 slim top bar: brand + account access only. The dense
+// desktop exchange navigation no longer sits above the gameplay — the
+// persistent market header and the player strip lead the screen instead.
 export function GameTopBar({
   onAuthClick,
   isDark,

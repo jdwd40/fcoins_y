@@ -618,26 +618,24 @@ export function countLivingCoins(
 
 // --- How to play (first-time instructions) ----------------------------------
 //
-// The single source of truth for the HOW TO PLAY copy. The dialog component
-// renders this verbatim, and the unit tests pin the accuracy rules:
-//   - there is ALWAYS a current Apocalypse; signing in enters it automatically
-//     (no lobby, no JOIN gate — back_coins_x#17 / fcoins_y#10)
-//   - every Apocalypse starts the player at £10,000 Cash
-//   - collapse is permanent for the round (dead coins never recover)
-//   - collapse order/timing is never revealed
-//   - passive fees/taxes/events drain Cash; trading is how you beat them
-//   - bots have no hidden information
-//   - Cash is separate from legacy exchange account funds
-//   - final cash — not peak wealth — decides the winner, and only finishing
-//     ABOVE £10,000 qualifies for the leaderboard (£10,000 exactly does not)
-// Keep the tone apocalyptic crypto-bro, but never sacrifice clarity for a joke.
+// The single source of truth for the HOW TO PLAY copy (Stage 11 persistent
+// player chrome). The dialog component renders this verbatim, and the unit
+// tests pin the accuracy rules:
+//   - the market runs continuously — no game timer, no Apocalypse reset
+//   - coins rise and fall; buy/sell fantasy coins with Cash
+//   - portfolio + leaderboard are persistent across sessions
+//   - coins can permanently die; dead holdings stay historical at £0
+//   - replacement coins may enter the market
+//   - no real money / investment language
+//   - Cash starts at £10,000, server-owned, separate from legacy exchange funds
+// Keep the tone game-like and concise — never sacrifice clarity for a joke.
 
-export const HOW_TO_PLAY_TITLE = 'HOW TO SURVIVE THE APOCALYPSE';
-export const HOW_TO_PLAY_TAGLINE = 'CASH WINS. BAGS DIE.';
+export const HOW_TO_PLAY_TITLE = 'HOW TO PLAY THE PERSISTENT MARKET';
+export const HOW_TO_PLAY_TAGLINE = 'NO TIMER. NO RESET. CASH COMPOUNDS.';
 export const HOW_TO_PLAY_STARTING_CASH = GAME_STARTING_CASH_LABEL;
 
-// The win-condition copy, single-sourced for the leaderboard, results overlay
-// and history panels. Exactly £10,000 is break-even and does NOT qualify
+// Legacy cycle win-condition copy — kept for ResultsOverlay / Stage 13 debt.
+// Exactly £10,000 is break-even and does NOT qualify
 // (backend #19: leaderboard_eligible = final_cash > starting_cash).
 export const LEADERBOARD_RULE_COPY = `Finish above ${GAME_STARTING_CASH_LABEL} to make the leaderboard.`;
 export const LEADERBOARD_BREAKEVEN_COPY = `Exactly ${GAME_STARTING_CASH_LABEL} is break-even and does not qualify.`;
@@ -656,42 +654,37 @@ export const HOW_TO_PLAY_STEPS: HowToPlayStep[] = [
   {
     id: 'enter',
     title: "YOU'RE IN",
-    body: `There is always an Apocalypse running. Sign in and you are entered into the current one automatically — no lobby, no entry button, nothing to press. Your Cash starts at ${HOW_TO_PLAY_STARTING_CASH}, owned and kept by the server. Cash lives and dies with the Apocalypse; it is completely separate from your exchange account funds.`
+    body: `The market runs continuously — no lobby, no entry button, no countdown. Sign in and your ${HOW_TO_PLAY_STARTING_CASH} Cash is waiting, owned and kept by the server. It is fantasy play money, completely separate from any real-world funds, and it is not an investment product.`
   },
   {
     id: 'trade',
     title: 'TRADE',
-    body: 'Buy and sell the available coins with your Cash. Fractional quantities are supported — 0.004 of a coin is a real position. Trading is how you try to beat the drains. Tap any coin card to open its detail view: reading the dip → rise → boom → fall cycle on the price chart is core gameplay, not optional homework.'
+    body: 'Buy and sell fantasy coins with your Cash as prices rise and fall. Fractional quantities are supported — 0.004 of a coin is a real position. Tap any coin card to open its detail view: reading the dip → rise → boom → fall cycle on the price chart is core gameplay, not optional homework.'
   },
   {
-    id: 'clock',
-    title: 'WATCH THE CLOCK',
-    body: 'As Apocalypse % rises, the market becomes increasingly unstable. The calm at the start does not last.'
+    id: 'persist',
+    title: 'IT STICKS',
+    body: `Your portfolio and leaderboard rank persist across sessions. There is no game timer and no Apocalypse reset — the market does not wipe your Cash on a schedule. ${PERSISTENT_LEADERBOARD_RULE_COPY}`
   },
   {
     id: 'bag',
     title: "DON'T HOLD THE BAG",
-    body: 'Coins eventually collapse permanently to £0. Dead coins stay dead for the rest of the Apocalypse — no recovery, no resurrection — and nobody knows which coin goes next or when. DEAD COINS STAY DEAD.'
+    body: 'Coins can permanently die. Dead holdings stay on your account as historical positions at £0 — they cannot be bought or sold, and nobody knows which coin goes next or when. DEAD COINS STAY DEAD.'
   },
   {
-    id: 'drain',
-    title: 'MIND THE DRAINS',
-    body: 'Fees, taxes and market events drain your Cash even if you do nothing — doing nothing costs money. Every deduction lands in your round activity feed with its source, amount and time, so Cash never drops without an explanation. Trade well enough to beat the drain.'
+    id: 'replace',
+    title: 'NEW BLOOD',
+    body: 'When coins die, replacement coins may enter the market. Keep scanning the board — new names can appear while dead ones sink to history.'
   },
   {
     id: 'bots',
     title: 'BEAT THE BOTS',
-    body: 'Rule-based bots trade alongside you and fight for places on the same leaderboard. They read the same market you do — no hidden information. THE BOTS WANT YOUR SPOT.'
+    body: 'Rule-based bots trade alongside you on the same persistent leaderboard. They read the same market you do — no hidden information. THE BOTS WANT YOUR SPOT.'
   },
   {
     id: 'cash',
-    title: 'CASH WINS',
-    body: `When the Apocalypse ends, your score is the Cash you are still holding. Peak wealth mid-round means nothing — only final Cash decides the winner. ${LEADERBOARD_RULE_COPY} ${LEADERBOARD_BREAKEVEN_COPY}`
-  },
-  {
-    id: 'again',
-    title: 'DO IT AGAIN',
-    body: `Results are recorded and the next Apocalypse begins automatically — fresh ${HOW_TO_PLAY_STARTING_CASH} Cash, no sign-up, no button. The world ends again right on schedule.`
+    title: 'CASH COMPOUNDS',
+    body: 'There is no end-of-round settlement on the primary board. Climb the persistent leaderboard by growing net worth over time — cash plus live holdings, minus debt. Virtual GBP only: no real cryptocurrency, deposits, withdrawals or financial advice.'
   }
 ];
 

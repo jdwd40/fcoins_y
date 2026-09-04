@@ -487,13 +487,12 @@ test('formatQuantity preserves meaningful fractional digits — never rounds to 
   assert.equal(formatQuantity(NaN), '0');
 });
 
-// --- How to play (first-time instructions, issues #7 + #10) --------------------
+// --- How to play (Stage 11 persistent player chrome) -------------------------
 // These tests pin the ACCURACY RULES of the onboarding copy, not just its
-// shape: there is always an Apocalypse running, entry is automatic on sign-in
-// (no JOIN gate), every Apocalypse starts at £10,000 Cash, collapse is
-// permanent and unpredictable, passive drains are explained, bots know nothing
-// the player doesn't, Cash is not exchange funds, and only a finish ABOVE
-// £10,000 makes the leaderboard.
+// shape: the market runs continuously (no timer / no Apocalypse reset),
+// entry is automatic on sign-in, Cash starts at £10,000, coins can die
+// permanently with £0 historical holdings, replacement coins may enter,
+// bots share the persistent board, and there is no real-money language.
 
 const ALL_STEPS_TEXT = HOW_TO_PLAY_STEPS.map((step) => `${step.title}\n${step.body}`).join('\n');
 const stepById = (id: string) => {
@@ -502,10 +501,10 @@ const stepById = (id: string) => {
   return step;
 };
 
-test('how to play has the eight survival steps in order, each with real copy', () => {
+test('how to play has the persistent-market steps in order, each with real copy', () => {
   assert.deepEqual(
     HOW_TO_PLAY_STEPS.map((step) => step.id),
-    ['enter', 'trade', 'clock', 'bag', 'drain', 'bots', 'cash', 'again']
+    ['enter', 'trade', 'persist', 'bag', 'replace', 'bots', 'cash']
   );
   const ids = new Set(HOW_TO_PLAY_STEPS.map((step) => step.id));
   assert.equal(ids.size, HOW_TO_PLAY_STEPS.length); // unique ids
@@ -513,109 +512,93 @@ test('how to play has the eight survival steps in order, each with real copy', (
     assert.ok(step.title.trim().length > 0, `step ${step.id} has no title`);
     assert.ok(step.body.trim().length > 20, `step ${step.id} body is too thin to teach anything`);
   }
-  assert.ok(HOW_TO_PLAY_TITLE.length > 0);
-  assert.ok(HOW_TO_PLAY_TAGLINE.length > 0);
+  assert.match(HOW_TO_PLAY_TITLE, /PERSISTENT MARKET/i);
+  assert.match(HOW_TO_PLAY_TAGLINE, /NO TIMER/i);
+  assert.doesNotMatch(HOW_TO_PLAY_TITLE, /APOCALYPSE/i);
 });
 
-test('entry is automatic: always a running Apocalypse, sign-in enters it, Cash starts at £10,000', () => {
+test('entry is automatic: continuous market, sign-in Cash at £10,000, fantasy-only', () => {
   const enter = stepById('enter');
-  assert.match(enter.body, /always an Apocalypse running/i);
-  assert.match(enter.body, /automatically/i);
+  assert.match(enter.body, /runs continuously/i);
   assert.match(enter.body, /£10,000/);
   assert.equal(HOW_TO_PLAY_STARTING_CASH, '£10,000'); // single source, never a stray literal
-  // The £10,000 is server-owned — never client-awarded.
   assert.match(enter.body, /server/i);
+  assert.match(enter.body, /fantasy/i);
+  assert.match(enter.body, /not an investment/i);
+  assert.doesNotMatch(enter.body, /Apocalypse|30-minute|JOIN/i);
 });
 
-test('no manual join instructions survive anywhere in the how-to-play copy', () => {
-  // No JOIN step, no join-as-gameplay language, no £1,000-era amounts.
+test('no manual join instructions or cycle reset language in how-to-play copy', () => {
   assert.ok(!HOW_TO_PLAY_STEPS.some((step) => step.id === 'join'));
   assert.doesNotMatch(ALL_STEPS_TEXT, /\bjoin\b/i);
   assert.doesNotMatch(ALL_STEPS_TEXT, /£1,000/);
+  assert.doesNotMatch(ALL_STEPS_TEXT, /JOIN APOCALYPSE|30-minute cycle|SETTLING/i);
+  assert.doesNotMatch(ALL_STEPS_TEXT, /end-of-round settlement is required|settlement overlay/i);
+  // Disclaimers like "no real cryptocurrency" / "not an investment product" are required.
+  assert.doesNotMatch(ALL_STEPS_TEXT, /\binvestment returns\b|\breal money trading\b|\bearn real (money|returns)\b/i);
+  assert.match(ALL_STEPS_TEXT, /no real cryptocurrency/i);
+  assert.match(ALL_STEPS_TEXT, /not an investment product/i);
 });
 
-test('Cash is clearly distinguished from legacy exchange account funds', () => {
+test('Cash is clearly fantasy play money, not real-world funds', () => {
   const enter = stepById('enter');
   assert.match(enter.body, /Cash/);
-  assert.match(enter.body, /separate from your exchange account funds/i);
+  assert.match(enter.body, /separate from any real-world funds/i);
 });
 
-test('escalating volatility is explained: instability rises with Apocalypse %', () => {
-  const clock = stepById('clock');
-  assert.match(clock.body, /Apocalypse %/);
-  assert.match(clock.body, /increasingly unstable/i);
+test('persistent portfolio and leaderboard: no timer, no Apocalypse reset', () => {
+  const persist = stepById('persist');
+  assert.match(persist.body, /portfolio and leaderboard/i);
+  assert.match(persist.body, /no game timer/i);
+  assert.match(persist.body, /no Apocalypse reset/i);
+  assert.match(persist.body, /net worth/i);
 });
 
-test('collapse to £0 is permanent for the round — no recovery language', () => {
+test('collapse to £0 is permanent — dead holdings stay historical', () => {
   const bag = stepById('bag');
   assert.match(bag.body, /£0/);
   assert.match(bag.body, /permanently/i);
-  assert.match(bag.body, /stay dead/i);
-  // Never suggest a collapsed coin can recover within the same Apocalypse.
+  assert.match(bag.body, /stay dead|DEAD/i);
+  assert.match(bag.body, /historical/i);
   assert.doesNotMatch(bag.body, /may recover|can recover|might bounce|comes back|will return/i);
 });
 
-test('passive drains are explained: fees, taxes and events erode idle Cash; trading beats them', () => {
-  // Issue #10 inverts the old "never advertise tax mechanics" rule: the
-  // continuous game has real passive drains and players must be told.
-  const drain = stepById('drain');
-  assert.match(drain.body, /fees/i);
-  assert.match(drain.body, /taxes/i);
-  assert.match(drain.body, /events/i);
-  assert.match(drain.body, /even if you do nothing/i);
-  assert.match(drain.body, /trade/i);
-  assert.match(stepById('trade').body, /beat the drains/i);
+test('replacement coins may enter after deaths', () => {
+  const replace = stepById('replace');
+  assert.match(replace.body, /replacement coins may enter/i);
 });
 
-test('issue #11: the drain step reinforces the core rule and points at the activity feed', () => {
-  // The strategic rule is stated verbatim: idling is a losing strategy and
-  // trading is the counter. The feed is named so players know WHERE the
-  // explanation of every Cash drop lives.
-  const drain = stepById('drain');
-  assert.match(drain.body, /doing nothing costs money/i);
-  assert.match(drain.body, /beat the drain/i);
-  assert.match(drain.body, /activity feed/i);
-  // Copy stays accurate: debits carry source, amount and time.
-  assert.match(drain.body, /source, amount and time/i);
+test('trading covers buy/sell fantasy coins as prices move', () => {
+  const trade = stepById('trade');
+  assert.match(trade.body, /Buy and sell fantasy coins/i);
+  assert.match(trade.body, /rise and fall/i);
+  assert.match(trade.body, /dip → rise → boom → fall/i);
 });
 
-test('bots share the player leaderboard and hold no hidden information', () => {
+test('bots share the persistent leaderboard and hold no hidden information', () => {
   const bots = stepById('bots');
   assert.match(bots.body, /bots/i);
-  assert.match(bots.body, /same leaderboard/i);
+  assert.match(bots.body, /persistent leaderboard/i);
   assert.match(bots.body, /no hidden information/i);
-  // Never imply bots see the future or know the collapse schedule.
   assert.doesNotMatch(bots.body, /bots (know|see|are told)|insider/i);
 });
 
-test('final cash is the winning score — peak wealth explicitly does not count', () => {
+test('primary board has no end-of-round settlement; virtual GBP only', () => {
   const cash = stepById('cash');
-  assert.match(cash.body, /score is the Cash/i);
-  assert.match(cash.body, /final Cash decides the winner/i);
-  assert.match(cash.body, /Peak wealth mid-round means nothing/i);
+  assert.match(cash.body, /no end-of-round settlement/i);
+  assert.match(cash.body, /persistent leaderboard/i);
+  assert.match(cash.body, /Virtual GBP only/i);
+  assert.doesNotMatch(cash.body, /Peak wealth mid-round|final Cash decides/i);
 });
 
-test('leaderboard qualification is profitable-only: above £10,000, exactly £10,000 does not qualify', () => {
-  const cash = stepById('cash');
-  assert.match(cash.body, /Finish above £10,000 to make the leaderboard\./);
-  assert.match(cash.body, /Exactly £10,000 is break-even and does not qualify\./);
-  // The same copy is single-sourced for the leaderboard/results surfaces.
+test('legacy cycle leaderboard copy remains single-sourced for Stage 13 surfaces', () => {
   assert.equal(LEADERBOARD_RULE_COPY, 'Finish above £10,000 to make the leaderboard.');
-assert.match(PERSISTENT_LEADERBOARD_RULE_COPY, /net worth/i);
-assert.match(PERSISTENT_LEADERBOARD_RULE_COPY, /Backend rank/);
+  assert.match(PERSISTENT_LEADERBOARD_RULE_COPY, /net worth/i);
+  assert.match(PERSISTENT_LEADERBOARD_RULE_COPY, /Backend rank/);
   assert.equal(LEADERBOARD_BREAKEVEN_COPY, 'Exactly £10,000 is break-even and does not qualify.');
 });
 
-test('the next Apocalypse starts automatically and results are recorded', () => {
-  const again = stepById('again');
-  assert.match(again.body, /begins automatically/i);
-  assert.match(again.body, /[Rr]esults are recorded/);
-  assert.match(again.body, /£10,000/); // fresh server-owned Cash each round
-});
-
 test('no step exposes future collapse order or timing', () => {
-  // The instructions must never leak which coin collapses next or when —
-  // and the collapse step must say so explicitly.
   assert.doesNotMatch(ALL_STEPS_TEXT, /collapse order|collapse schedule|next (coin )?to collapse|will collapse (at|first|next)|collapses at \d/i);
   assert.match(stepById('bag').body, /nobody knows which coin goes next or when/i);
 });
