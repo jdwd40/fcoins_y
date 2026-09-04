@@ -73,7 +73,7 @@ export function LeaderboardPressure() {
       )}
 
       <a href="#leaderboard" className="label hover:text-gold transition-colors inline-block mt-2">
-        ▸ Full board, history and results
+        ▸ Full board and account activity
       </a>
     </section>
   );

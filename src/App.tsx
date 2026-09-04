@@ -14,10 +14,9 @@ import { PersistentProvider } from './context/PersistentContext.tsx';
 import { AuthForms } from './components/AuthForms';
 import { Profile } from './components/Profile';
 import { MarketValueChart } from './components/MarketValueChart';
-import { ApocalypseHeader } from './components/ApocalypseHeader.tsx';
+import { PersistentMarketHeader } from './components/PersistentMarketHeader.tsx';
 import { PlayerRoundPanel } from './components/PlayerRoundPanel.tsx';
 import { LeaderboardPanel } from './components/LeaderboardPanel.tsx';
-import { ResultsOverlay, RecentResultsPanel } from './components/ResultsPanel.tsx';
 import { GameTopBar } from './components/GameTopBar.tsx';
 import { PlayerStatusStrip } from './components/PlayerStatusStrip.tsx';
 import { LeaderboardPressure } from './components/LeaderboardPressure.tsx';
@@ -100,9 +99,8 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
         onThemeToggle={() => setIsDark(!isDark)}
       />
 
-      {/* Compact game status: apocalypse id, server-anchored countdown,
-          escalation, connection state — directly above the gameplay. */}
-      <ApocalypseHeader coins={marketData?.coins ?? coinsData?.coins ?? []} />
+      {/* Stage 11: persistent-market header (no countdown / settlement chrome). */}
+      <PersistentMarketHeader />
 
       <main className="game-shell py-4 sm:py-8">
         {/* Primary mobile-first game surface */}
@@ -112,16 +110,15 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
           <GameMarketGrid />
         </div>
 
-        {/* Drill-down: full board, round activity, recent results */}
-        <section id="leaderboard" className="mb-10 sm:mb-12" aria-label="Round detail">
-          <div className="label mb-2">Round detail</div>
+        {/* Drill-down: persistent leaderboard + account activity */}
+        <section id="leaderboard" className="mb-10 sm:mb-12" aria-label="Leaderboard & activity">
+          <div className="label mb-2">Leaderboard & activity</div>
           <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-ink mb-4">
-            Board, activity and results
+            Board and account activity
           </h2>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             <LeaderboardPanel />
             <PlayerRoundPanel onAuthRequest={() => setShowAuthModal(true)} />
-            <RecentResultsPanel />
           </div>
         </section>
 
@@ -132,7 +129,7 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
             Charts and full asset detail
           </h2>
           <p className="text-ink-mute text-sm mb-5 max-w-2xl">
-            Longer-range statistics, charts and the full asset table live here as a secondary reference — recent cyclical price history is core V2 gameplay.
+            Longer-range statistics, charts and the full asset table live here as a secondary reference — live coin prices and portfolio moves drive the primary game.
           </p>
 
           {classicNotice !== null ? (
@@ -176,8 +173,8 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
 
         <footer id="about" className="mt-14 sm:mt-16 pt-7 border-t border-rule flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="font-display font-bold text-ink">Crypto Chaos · a CoinX apocalypse</div>
-            <p className="text-ink-mute text-xs mt-1">A private fantasy market for friends and family — now with scheduled extinction events.</p>
+            <div className="font-display font-bold text-ink">Crypto Chaos · a CoinX persistent market</div>
+            <p className="text-ink-mute text-xs mt-1">A private fantasy market for friends and family — continuous trading, no reset clock.</p>
           </div>
           <p className="label max-w-xl md:text-right">Virtual GBP only · No real cryptocurrency, deposits, withdrawals or financial services</p>
         </footer>
@@ -199,8 +196,6 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
         <AuthForms onClose={() => setShowAuthModal(false)} />
       </Modal>
 
-      {/* End-of-round immutable results experience (Core 6 snapshot) */}
-      <ResultsOverlay />
     </div>
   );
 }
