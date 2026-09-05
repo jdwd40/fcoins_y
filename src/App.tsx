@@ -42,8 +42,8 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
   });
 
   // Historical market feeds. These serve the secondary drill-down surfaces
-  // only — the primary game surface reads the shared GameContext game
-  // contracts, so a historical-market outage never blocks gameplay.
+  // only — the primary game surface reads the shared PersistentContext
+  // persistent contracts, so a historical-market outage never blocks gameplay.
   const { data: coinsData, loading: coinsLoading, error: coinsError } =
     useFetch<{ coins: Coin[] }>(`${API_BASE_URL}/coins`, 2000);
 

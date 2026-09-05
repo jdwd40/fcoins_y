@@ -3,11 +3,13 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
-const playerShell = app.slice(
-  app.indexOf('function PlayerShell'),
-  app.indexOf('function App')
-);
-assert.notEqual(playerShell, app, 'PlayerShell source must remain discoverable for provider contract checks');
+const playerShellStart = app.indexOf('function PlayerShell');
+const appStart = app.indexOf('function App');
+assert.notEqual(playerShellStart, -1, 'App.tsx must define PlayerShell');
+assert.notEqual(appStart, -1, 'App.tsx must define App');
+assert.ok(playerShellStart < appStart, 'PlayerShell must be declared before App');
+const playerShell = app.slice(playerShellStart, appStart);
+assert.match(playerShell, /function PlayerShell\s*\(/, 'PlayerShell extraction must contain its declaration');
 const styles = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const chart = readFileSync(new URL('../src/components/PriceChart.tsx', import.meta.url), 'utf8');
