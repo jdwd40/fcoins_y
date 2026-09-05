@@ -132,7 +132,7 @@ export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
             </div>
             <div className="stat-cell">
               <div className="label mb-0.5">Current price</div>
-              <div className="font-mono text-sm text-ink tnum mt-1">{formatCurrency(holding.currentPrice)}</div>
+              <div className="font-mono text-sm text-ink tnum mt-1">{formatCurrency(coin.currentPrice)}</div>
             </div>
             <div className="stat-cell">
               <div className="label mb-0.5">Position value</div>

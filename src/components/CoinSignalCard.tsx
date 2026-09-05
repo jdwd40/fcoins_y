@@ -226,7 +226,7 @@ export function CoinSignalCard({ coin, holding, onOpenDetail }: CoinSignalCardPr
             </div>
             <div>
               <div className="label mb-0.5">Current price</div>
-              <div className="font-mono text-sm text-ink tnum">{formatCurrency(holding.currentPrice)}</div>
+              <div className="font-mono text-sm text-ink tnum">{formatCurrency(coin.currentPrice)}</div>
             </div>
             <div>
               <div className="label mb-0.5">Position value</div>

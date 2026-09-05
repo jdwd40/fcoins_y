@@ -991,6 +991,20 @@ assert.match(gameCoinDetail, /PersistentCoinSignal/);
 assert.doesNotMatch(gameCoinDetail, /coin\.phase|collapseRisk|formatTypical/);
 assert.match(coinSignalCard, /coin\.currentPrice/); // signal price for quick buy etc
 assert.match(gameCoinDetail, /coin\.currentPrice/);
+// The visible owned-position Current price must use the persistent signal
+// snapshot, not the separately-read holding economics snapshot.
+assert.match(coinSignalCard, /<div className="label mb-0\.5">Current price<\/div>\s*<div[^>]*>\{formatCurrency\(coin\.currentPrice\)\}<\/div>/);
+assert.match(gameCoinDetail, /<div className="label mb-0\.5">Current price<\/div>\s*<div[^>]*>\{formatCurrency\(coin\.currentPrice\)\}<\/div>/);
+assert.doesNotMatch(coinSignalCard, /holding\.currentPrice/);
+assert.doesNotMatch(gameCoinDetail, /holding\.currentPrice/);
+// Account-sourced valuation/P&L fields remain server-owned and are not
+// recomputed from the display price.
+assert.match(coinSignalCard, /holding\.currentValue/);
+assert.match(coinSignalCard, /holding\.unrealizedPnl/);
+assert.match(coinSignalCard, /holding\.unrealizedPnlPct/);
+assert.match(gameCoinDetail, /holding\.currentValue/);
+assert.match(gameCoinDetail, /holding\.unrealizedPnl/);
+assert.match(gameCoinDetail, /holding\.unrealizedPnlPct/);
 // Adversarial price-authority regression: a primary persistent signal at £20
 // must win over any stale legacy GameContext signal at £999. These source
 // contracts cover the card header, quick-buy quantity, trade-panel reference
