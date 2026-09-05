@@ -6,7 +6,7 @@
 // OWN public, already-happened price history is rendered.
 
 import type { PricePoint } from '../types.ts';
-import type { MarketSignalCoin } from '../services/gameService.ts';
+import type { PersistentCoinSignal } from '../services/persistentService.ts';
 
 // The backend's public per-coin price-history ranges (coins.controller.js
 // validRanges). Compact cards only ever use the four shortest windows.
@@ -32,10 +32,10 @@ export const SPARKLINE_CYCLES_TARGET = 3;
 // typicalCycleMinutes on the market-signals payload).
 export const DEFAULT_SPARKLINE_RANGE: SparklineRange = '30M';
 
-// Public per-archetype MAX cycle minutes, mirroring the typical ranges the
-// backend publishes on the card ("Typical ~x–y min cycles"). Used only as a
-// fallback when the signal payload's typicalCycleMinutes is missing; this
-// table reveals nothing hidden — the same numbers are printed on the card.
+// Public per-archetype MAX cycle minutes. For the persistent-market cutover
+// the sparkline uses the archetype directly (no typicalCycleMinutes on
+// PersistentCoinSignal). This table is the authoritative range mapping and
+// is retained verbatim.
 export const ARCHETYPE_MAX_CYCLE_MINUTES: Record<string, number> = {
   ZIP: 3,   // ~1–3 min cycles
   MOON: 5,  // ~3–5 min cycles
@@ -45,27 +45,20 @@ export const ARCHETYPE_MAX_CYCLE_MINUTES: Record<string, number> = {
   RUG: 10   // ~1.5–10 min cycles
 };
 
-// Deterministic history-window mapping (issue #12: "a window that normally
-// shows approximately one complete recent cycle for that coin archetype").
-// Rule: take the coin's PUBLIC typical max cycle length (backend signal
-// first, archetype table as fallback), aim for ~SPARKLINE_CYCLES_TARGET
-// cycles, and pick the smallest compact range that covers that target:
-//   ZIP  (3 min max)  → target 9 min  → 10M
-//   MOON (5 min max)  → target 15 min → 30M
-//   BULL (8 min max)  → target 24 min → 30M
-//   HODL (15 min max) → target 45 min → 1H
-//   DEGEN (8 min max) → target 24 min → 30M
-//   RUG  (10 min max) → target 30 min → 30M
-// No phase timing, seed, or future value is ever consulted — only the public
-// archetype/cycle profile that is already displayed on the card.
+// Deterministic history-window mapping using archetype directly (Stage 11
+// persistent signals). Aim for ~SPARKLINE_CYCLES_TARGET cycles and pick the
+// smallest compact range that covers:
+//   ZIP  (3) → 10M
+//   MOON (5) → 30M
+//   BULL (8) → 30M
+//   HODL (15)→ 1H
+//   DEGEN(8) → 30M
+//   RUG (10) → 30M
+// No legacy cycle/phase/Apocalypse timing consulted.
 export function sparklineRangeForCoin(
-  coin: Pick<MarketSignalCoin, 'archetype' | 'typicalCycleMinutes'>
+  coin: Pick<PersistentCoinSignal, 'archetype'>
 ): SparklineRange {
-  const signalMax = coin.typicalCycleMinutes?.[1];
-  const maxCycleMinutes =
-    typeof signalMax === 'number' && Number.isFinite(signalMax) && signalMax > 0
-      ? signalMax
-      : ARCHETYPE_MAX_CYCLE_MINUTES[coin.archetype];
+  const maxCycleMinutes = ARCHETYPE_MAX_CYCLE_MINUTES[coin.archetype];
   if (typeof maxCycleMinutes !== 'number' || !Number.isFinite(maxCycleMinutes) || maxCycleMinutes <= 0) {
     return DEFAULT_SPARKLINE_RANGE;
   }
@@ -96,7 +89,7 @@ export interface SparklineSample {
 
 // Normalise the backend candle contract into a clean ascending series:
 // malformed timestamps, non-finite closes and non-positive prices are dropped
-// (a collapsed £0 close is meaningless shape on a LIVE card; dead cards use
+// (a £0 close is meaningless shape on a LIVE card; dead cards use
 // the deterministic flatline instead of a fetch).
 //
 // `sinceMs` (optional): the LIVE apocalypse's authoritative start. Prices are
@@ -195,7 +188,7 @@ export function entryMarkerY(
   return round2(padding + (1 - (entry - min) / (max - min)) * (height - padding * 2));
 }
 
-// A collapsed coin's sparkline is a deterministic flatline near the bottom of
+// A dead coin's sparkline is a deterministic flatline near the bottom of
 // the viewbox — no fetch, no history, nothing that could imply recovery.
 export function deadFlatlinePath(width: number, height: number): string {
   const y = round2(height - 3);

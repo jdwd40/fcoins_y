@@ -7,7 +7,7 @@ import { PersistentTradePanel } from './PersistentTradePanel.tsx';
 import { CoinSparkline, DeadCoinSparkline } from './CoinSparkline.tsx';
 import { SessionExpiredError, formatCurrency } from '../services/transactionService.ts';
 import { GameApiError } from '../services/gameService.ts';
-import type { CoinSignalEvent, MarketSignalCoin } from '../services/gameService.ts';
+import type { PersistentCoinSignal } from '../services/persistentService.ts';
 import type { PersistentHolding } from '../services/persistentService.ts';
 import {
   persistentTradeBlockReason,
@@ -15,90 +15,33 @@ import {
 } from '../utils/persistentTrading.ts';
 import {
   archetypePersonality,
-  COIN_EVENT_DIRECTION_LABEL,
-  formatCountdown,
   formatQuantity,
   formatRecentChangePct,
   formatSignedGbp,
   formatSignedPct,
-  formatTypicalProfile,
   momentumArrow,
   quantityForNotional,
   quickBuyLabel,
-  remainingUntilIso,
   QUICK_BUY_NOTIONALS
 } from '../utils/gameLogic.ts';
 import type { Coin } from '../types';
 
 interface CoinSignalCardProps {
-  coin: MarketSignalCoin;
+  coin: PersistentCoinSignal;
   /** The player's PERSISTENT holding in this coin (server-owned economics),
    *  or null when the account holds none / is not synced. */
   holding: PersistentHolding | null;
-  /** SIM-16/17: the derived current server instant (epoch ms) from the shared
-   *  GameContext poll — event countdowns interpolate from this; no per-card
-   *  timers or fetching. */
-  signalsNowMs: number;
   /** Issue #13: opens this coin's detailed V2 view (modal owned by
    *  GameMarketGrid). Fired from the card's non-trade areas only. */
   onOpenDetail: () => void;
 }
 
-// SIM-15/17: the coin's currently active PUBLIC events — name, direction and
-// server-clock time remaining for each. Expiry is self-correcting: an event
-// clamps to 00:00 and disappears from the payload on the next shared poll
-// (never a client-side removal guess). Text and accessible labels carry the
-// meaning; colour only reinforces. No hidden lifecycle, modifiers, exact
-// probabilities, ids or future events are ever rendered.
-function CoinEventList({ events, signalsNowMs }: { events: CoinSignalEvent[]; signalsNowMs: number }) {
-  if (events.length === 0) {
-    return (
-      <div className="flex items-center justify-between gap-2">
-        <span className="label">Events</span>
-        <span className="text-xs text-ink-mute">None active</span>
-      </div>
-    );
-  }
-  return (
-    <div className="coin-events" aria-label="Active coin events">
-      <div className="label mb-1">Events</div>
-      <ul className="coin-event-list">
-        {events.map((event) => {
-          const remainingMs = remainingUntilIso(event.endsAt, signalsNowMs);
-          const countdown = formatCountdown(remainingMs);
-          return (
-            <li
-              key={`${event.name}::${event.endsAt}`}
-              className="coin-event"
-              aria-label={`${event.name}, ${COIN_EVENT_DIRECTION_LABEL[event.direction]}, ends in ${countdown}`}
-            >
-              <span className="coin-event-name">{event.name}</span>
-              <span className={`signal-chip event-${event.direction.toLowerCase()}`}>
-                {COIN_EVENT_DIRECTION_LABEL[event.direction]}
-              </span>
-              <span className="font-mono text-xs text-ink-dim tnum coin-event-time">{countdown}</span>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
-// Persistent-market Stage 6 coin card. One card per gameplay coin driven by
-// the public market-signals contract (phase, momentum, archetype, typical
-// ranges, collapse risk) plus the server-owned PERSISTENT holding economics
-// when the player has a position. Every state is explicit text — colour only
-// reinforces.
-//
-// Quick buys convert a fixed notional (£250/£500/£1K/£2.5K) into a quantity
-// at the current displayed price; the trade request itself carries only
-// { coin_id, quantity } and executes at the server-locked live price. There
-// is no Power cost, no position cap and no cycle identifier anywhere in this
-// card — the persistent economy has none. The server remains authoritative:
-// trades confirm first, fake success is never shown, and a domain rejection
-// renders verbatim.
-export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: CoinSignalCardProps) {
+// Stage 11: primary-market CoinSignalCard now receives PersistentCoinSignal.
+// Removed: phase, collapseRisk, events, event countdowns, typicalCycleMinutes,
+// typical swing. Kept: identity, currentPrice (signal, not holding), recentChangePct,
+// momentum, archetype, DEAD, holding economics, persistent trade controls.
+// Quick-buy uses signal.currentPrice; trade() request carries no client price.
+export function CoinSignalCard({ coin, holding, onOpenDetail }: CoinSignalCardProps) {
   const { user, handleSessionExpired } = useAuth();
   const { showToast } = useToast();
   const { account, synced, accountError, trade } = usePersistent();
@@ -197,26 +140,11 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
         </span>
       </div>
       <div className="flex items-center justify-between gap-2">
-        <span className="label">Phase</span>
-        <span className={`signal-chip phase-${coin.phase.toLowerCase()}`}>{coin.phase}</span>
-      </div>
-      <div className="flex items-center justify-between gap-2">
-        <span className="label">Style</span>
+        <span className="label">Archetype</span>
         <span className="text-xs text-ink-dim text-right">
           {coin.archetype} · {archetypePersonality(coin.archetype)}
         </span>
       </div>
-      {formatTypicalProfile(coin) !== '' && (
-        <div className="flex items-center justify-between gap-2">
-          <span className="label">Typical</span>
-          <span className="font-mono text-xs text-ink-dim text-right tnum">{formatTypicalProfile(coin)}</span>
-        </div>
-      )}
-      <div className="flex items-center justify-between gap-2">
-        <span className="label">Collapse risk</span>
-        <span className={`signal-chip risk-${coin.collapseRisk.toLowerCase()}`}>{coin.collapseRisk}</span>
-      </div>
-      <CoinEventList events={coin.events} signalsNowMs={signalsNowMs} />
     </div>
   );
 

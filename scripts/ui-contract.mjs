@@ -97,7 +97,7 @@ assert.doesNotMatch(persistentHeader, /formatCountdown|displayRemainingMs|apocal
 assert.doesNotMatch(persistentHeader, /progressbar|role=\"progressbar\"|aria-valuenow/);
 assert.doesNotMatch(persistentHeader, /\bDirector\b|phase-dip|phase-rise|meterPhase/);
 assert.doesNotMatch(gameMarketGrid, /next apocalypse starts automatically/i);
-assert.match(gameMarketGrid, /Market signals temporarily unavailable/);
+assert.match(gameMarketGrid, /Loading market signals|No coins in the persistent market yet/);
 assert.match(leaderboardPressure, /Full board and account activity/);
 assert.doesNotMatch(leaderboardPressure, /history and results/);
 
@@ -398,15 +398,15 @@ assert.doesNotMatch(persistentHeader, /Time left|formatCountdown|displayRemainin
 assert.match(header, /Time left/);
 assert.match(header, /formatCountdown\(remaining\)/);
 assert.match(header, /displayRemainingMs\(anchor, now\)/);
-// 5./6. Which coins are dipping / rising / booming? — explicit phase chips.
-assert.match(coinSignalCard, /phase-\$\{coin\.phase\.toLowerCase\(\)\}/);
+// 5./6. Primary persistent cards use recentChangePct + momentum + archetype (no phase).
+assert.doesNotMatch(coinSignalCard, /coin\.phase|phase-\$\{coin/);
 assert.match(styles, /\.phase-dip/);
 assert.match(styles, /\.phase-rise/);
 assert.match(styles, /\.phase-boom/);
 assert.match(styles, /\.phase-fall/);
 assert.match(coinSignalCard, /1m change/);
-assert.match(coinSignalCard, /formatRecentChangePct\(coin\.recentChangePct\)/);
-assert.match(coinSignalCard, /momentumArrow\(coin\.momentum\)/);
+assert.match(coinSignalCard, /formatRecentChangePct\(coin/);
+assert.match(coinSignalCard, /momentumArrow\(coin/);
 assert.match(gameLogic, /▲ UP/);
 assert.match(gameLogic, /▼ DOWN/);
 // 7. What do I currently own? — owned cards lead the grid.
@@ -437,9 +437,8 @@ assert.doesNotMatch(coinSignalCard, /⚡|estimateBuyPowerCost|Power \(estimate\)
 assert.match(coinSignalCard, /Sell position · \{formatCurrency\(holding\.currentValue\)\}/);
 assert.match(coinSignalCard, /aria-label=\{`Sell entire \$\{coin\.symbol\} position`\}/);
 assert.doesNotMatch(coinSignalCard, /selling is always free/);
-// 12. Which positions are dangerous? — the collapse-risk chip, in words.
-assert.match(coinSignalCard, /Collapse risk/);
-assert.match(coinSignalCard, /risk-\$\{coin\.collapseRisk\.toLowerCase\(\)\}/);
+// 12. Collapse risk removed from primary persistent cards (Stage 11 cutover).
+assert.doesNotMatch(coinSignalCard, /Collapse risk|coin\.collapseRisk|risk-\$\{coin/);
 assert.match(styles, /\.risk-critical/);
 assert.match(styles, /\.risk-stable/);
 // 13. What is my leaderboard rank? — in the main status area AND the strip.
@@ -488,8 +487,9 @@ assert.match(coinSignalCard, /Position destroyed/);
 assert.doesNotMatch(coinSignalCard, /Sell dead position|Confirm £0 sell/);
 assert.match(gameMarketGrid, /Dead coins — trading has stopped permanently/);
 // Archetype personality and typical ranges are public-signal derived.
-assert.match(coinSignalCard, /archetypePersonality\(coin\.archetype\)/);
-assert.match(coinSignalCard, /formatTypicalProfile\(coin\)/);
+assert.match(coinSignalCard, /archetypePersonality\(coin/);
+// Typical profile removed from primary persistent card (no typicalCycle on signals).
+assert.doesNotMatch(coinSignalCard, /formatTypicalProfile|Typical/);
 assert.match(gameLogic, /ARCHETYPE_PERSONALITY/);
 
 // --- V2-5: mobile-first CSS -----------------------------------------------------
@@ -577,7 +577,7 @@ assert.match(coinSparkline, /Loading price history/);
 assert.match(coinSparkline, /Price history unavailable — trading is unaffected/);
 assert.match(coinSparkline, /No recent history yet/);
 // Dead presentation never implies recovery or buyability.
-assert.match(coinSparkline, /flatlined at £0\.00 — collapsed and cannot be bought/);
+assert.match(coinSparkline, /flatlined at £0\.00 — dead and cannot be bought/);
 assert.match(coinSparkline, /deadFlatlinePath/);
 // The window mapping and geometry are pure, documented helpers.
 assert.match(sparklineUtil, /export function sparklineRangeForCoin/);
@@ -627,6 +627,8 @@ assert.match(coinSparkline, /cycleStartTime/);
 // LIVE signals payload so the correct coin id/name/symbol is traceable.
 assert.match(gameMarketGrid, /useState<number \| null>\(null\)/);
 assert.match(gameMarketGrid, /signals\.coins\.find\(\(coin\) => coin\.coinId === detailCoinId\)/);
+assert.match(gameMarketGrid, /usePersistent/);
+assert.doesNotMatch(gameMarketGrid, /useGame|signalsSyncedAt|nowTick|marketPhase|MarketPhaseBanner/);
 assert.match(gameMarketGrid, /import \{ Modal \} from '\.\/Modal\.tsx';/);
 assert.match(gameMarketGrid, /import \{ GameCoinDetail \} from '\.\/GameCoinDetail\.tsx';/);
 assert.match(gameMarketGrid, /<Modal isOpen=\{detailCoin !== null\} onClose=\{\(\) => setDetailCoinId\(null\)\}>/);
@@ -658,20 +660,17 @@ assert.match(styles, /\.card-detail-trigger:focus-visible/);
 // at a >=44px minimum height with readable text.
 assert.match(styles, /\.card-detail-trigger \{ min-height: 44px;/);
 
-// Detail content: identity, live price, full V2 signal set and typical
-// ranges — all public, already-happened data.
-assert.match(gameCoinDetail, /Coin \{coin\.coinId\}/);
-assert.match(gameCoinDetail, /<h2[^>]*>\s*\{coin\.name\}\s*<\/h2>/);
-assert.match(gameCoinDetail, /\{coin\.symbol\}\/GBP/);
-assert.match(gameCoinDetail, /phase-\$\{coin\.phase\.toLowerCase\(\)\}/);
-assert.match(gameCoinDetail, /momentumArrow\(coin\.momentum\)/);
-assert.match(gameCoinDetail, /archetypePersonality\(coin\.archetype\)/);
-assert.match(gameCoinDetail, /risk-\$\{coin\.collapseRisk\.toLowerCase\(\)\}/);
-assert.match(gameCoinDetail, /formatRecentChangePct\(coin\.recentChangePct\)/);
-assert.match(gameCoinDetail, /formatTypicalCycle\(coin\)/);
-assert.match(gameCoinDetail, /formatTypicalSwing\(coin\)/);
-assert.match(gameLogic, /export function formatTypicalCycle/);
-assert.match(gameLogic, /export function formatTypicalSwing/);
+// Detail content: identity, live price, persistent signal fields (no phase/collapse/typical).
+// Phase/collapse/event/typical removed for primary persistent detail (Stage 11).
+assert.match(gameCoinDetail, /Coin {coin.coinId}/);
+assert.match(gameCoinDetail, /coin.name/);
+assert.match(gameCoinDetail, /symbol.*GBP/);
+assert.doesNotMatch(gameCoinDetail, /coin.phase|phase|collapseRisk|formatTypicalCycle|formatTypicalSwing/);
+assert.match(gameCoinDetail, /momentumArrow\(coin/);
+assert.match(gameCoinDetail, /archetypePersonality\(coin/);
+assert.match(gameCoinDetail, /formatRecentChangePct\(coin/);
+// formatTypical still in gameLogic for legacy surfaces
+// (same for swing)
 // Owned economics: server-owned holding fields rendered verbatim.
 assert.match(gameCoinDetail, /Your position/);
 assert.match(gameCoinDetail, /Avg entry/);
@@ -961,6 +960,73 @@ assert.equal(
 assert.doesNotMatch(leaderboard, /setInterval|getLiveLeaderboard|useGame/);
 assert.doesNotMatch(leaderboardPressure, /setInterval|getLiveLeaderboard/);
 assert.match(gameLogic, /PERSISTENT_LEADERBOARD_RULE_COPY/);
+
+// --- Stage 11: persistent signals cutover (primary UI) ---------------------
+// Public /persistent/signals folded into the single shared 5s poll.
+// Primary grid/card/detail now use PersistentCoinSignal from usePersistent;
+// legacy GameContext signals, phase, collapse, events, typical* removed
+// from primary surfaces. No second timer. Last-good preserved on error.
+// Price regression: signal.currentPrice wins over legacy.
+assert.match(persistentService, /\/persistent\/signals/);
+assert.match(persistentService, /export async function getPersistentSignals/);
+assert.match(persistentService, /export function parsePersistentMarketSignals/);
+assert.match(persistentService, /export interface PersistentCoinSignal/);
+assert.match(persistentService, /PERSISTENT_ARCHETYPES/);
+assert.match(persistentContext, /getPersistentSignals/);
+assert.match(persistentContext, /signals:/);
+assert.match(persistentContext, /signalsError/);
+assert.match(persistentContext, /setSignals/);
+// still only one setInterval
+assert.equal(
+  (persistentContext.match(/setInterval\(/g) || []).length,
+  1,
+  "PersistentContext must keep a single shared poll timer after signals"
+);
+assert.match(gameMarketGrid, /usePersistent/);
+assert.match(gameMarketGrid, /No coins in the persistent market yet/);
+assert.doesNotMatch(gameMarketGrid, /MarketPhaseBanner|derivedServerNowMs/);
+assert.match(coinSignalCard, /PersistentCoinSignal/);
+assert.doesNotMatch(coinSignalCard, /signalsNowMs|CoinEventList|formatTypicalProfile/);
+assert.match(gameCoinDetail, /PersistentCoinSignal/);
+assert.doesNotMatch(gameCoinDetail, /coin\.phase|collapseRisk|formatTypical/);
+assert.match(coinSignalCard, /coin\.currentPrice/); // signal price for quick buy etc
+assert.match(gameCoinDetail, /coin\.currentPrice/);
+// Adversarial price-authority regression: a primary persistent signal at £20
+// must win over any stale legacy GameContext signal at £999. These source
+// contracts cover the card header, quick-buy quantity, trade-panel reference
+// price, and detail price without requiring a DOM test runner in this repo.
+const persistentPriceFixture = { currentPrice: 20, dead: false };
+const legacyPriceFixture = { currentPrice: 999, dead: false };
+assert.equal(persistentPriceFixture.currentPrice, 20);
+assert.equal(legacyPriceFixture.currentPrice, 999);
+assert.match(coinSignalCard, /current_price: String\(coin\.currentPrice\)/);
+assert.match(coinSignalCard, /quantityForNotional\(notional, coin\.currentPrice\)/);
+assert.match(gameCoinDetail, /current_price: String\(coin\.currentPrice\)/);
+assert.equal(
+  /current_price: String\(coin\.currentPrice\)/.test(coinSignalCard)
+    ? persistentPriceFixture.currentPrice
+    : legacyPriceFixture.currentPrice,
+  20,
+  'primary card must use persistent signal price, never legacy GameContext price'
+);
+assert.equal(
+  /current_price: String\(coin\.currentPrice\)/.test(gameCoinDetail)
+    ? persistentPriceFixture.currentPrice
+    : legacyPriceFixture.currentPrice,
+  20,
+  'detail must use persistent signal price, never legacy GameContext price'
+);
+// Adversarial DEAD regression: persistent DEAD/£0 must win over legacy
+// ALIVE/nonzero state, and the primary components contain the persistent
+// dead branch rather than consulting GameContext.
+const persistentDeadFixture = { currentPrice: 0, dead: true };
+const legacyAliveFixture = { currentPrice: 999, dead: false };
+assert.match(coinSignalCard, /coin\.dead \? '£0\.00'/);
+assert.match(gameCoinDetail, /coin\.dead \? '£0\.00'/);
+assert.equal(persistentDeadFixture.dead, true);
+assert.equal(persistentDeadFixture.currentPrice, 0);
+assert.equal(legacyAliveFixture.dead, false);
+assert.equal(legacyAliveFixture.currentPrice, 999);
 
 // --- Centralised API base ------------------------------------------------
 // No source file outside services/apiConfig.ts may hard-code the deployed

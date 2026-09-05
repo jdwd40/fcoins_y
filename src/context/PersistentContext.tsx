@@ -10,6 +10,7 @@ import React, {
 import {
   getPersistentAccount,
   getPersistentLeaderboard,
+  getPersistentSignals,
   buyPersistentTrade,
   sellPersistentTrade
 } from '../services/persistentService.ts';
@@ -17,6 +18,7 @@ import type {
   PersistentAccount,
   PersistentLeaderboard,
   PersistentLeaderboardEntry,
+  PersistentMarketSignals,
   PersistentTradeSide
 } from '../services/persistentService.ts';
 import { GameApiError } from '../services/gameService.ts';
@@ -68,6 +70,10 @@ interface PersistentContextValue {
   leaderboard: PersistentLeaderboard | null;
   /** Last leaderboard-sync failure; the last good board is kept. */
   leaderboardError: string | null;
+  /** Public persistent market signals (identity-independent, like leaderboard). */
+  signals: PersistentMarketSignals | null;
+  /** Last signals-sync failure; the last good signals are kept on transient error. */
+  signalsError: string | null;
   /** The signed-in human's row matched by authenticated userId, if present. */
   myEntry: PersistentLeaderboardEntry | null;
   /** Execute a persistent trade at the server-locked live price. */
@@ -89,6 +95,8 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
   const [accountError, setAccountError] = useState<string | null>(null);
   const [leaderboard, setLeaderboard] = useState<PersistentLeaderboard | null>(null);
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
+  const [signals, setSignals] = useState<PersistentMarketSignals | null>(null);
+  const [signalsError, setSignalsError] = useState<string | null>(null);
 
   const gateRef = useRef(createPersistentSyncGate());
   const userIdRef = useRef<string | undefined>(user?.id);
@@ -102,22 +110,35 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
     const startedUserId = userIdRef.current;
     try {
       const token = getAuthToken();
-      // One shared poll: public leaderboard always, account only when authed.
-      const [boardResult, accountResult] = await Promise.allSettled([
+      // One shared poll: public leaderboard + signals always (identity-independent),
+      // account only when authed. Do not add a second timer.
+      const [boardResult, signalsResult, accountResult] = await Promise.allSettled([
         getPersistentLeaderboard(),
+        getPersistentSignals(),
         token ? getPersistentAccount(token) : Promise.resolve(null)
       ]);
 
-      // Leaderboard is public and identity-independent — always apply.
+      // Leaderboard and signals are public and identity-independent — always apply.
+      // Transient error preserves last-good data (never wipe on failure).
       if (boardResult.status === 'fulfilled') {
         setLeaderboard(boardResult.value);
         setLeaderboardError(null);
       } else {
-        // A read failure NEVER fabricates or wipes the last good board.
         setLeaderboardError(
           boardResult.reason instanceof Error
             ? boardResult.reason.message
             : 'Persistent leaderboard unavailable'
+        );
+      }
+
+      if (signalsResult.status === 'fulfilled') {
+        setSignals(signalsResult.value);
+        setSignalsError(null);
+      } else {
+        setSignalsError(
+          signalsResult.reason instanceof Error
+            ? signalsResult.reason.message
+            : 'Persistent signals unavailable'
         );
       }
 
@@ -252,6 +273,8 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
     accountError,
     leaderboard,
     leaderboardError,
+    signals,
+    signalsError,
     myEntry,
     trade,
     syncNow

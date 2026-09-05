@@ -4,7 +4,7 @@ import { coinPriceHistory } from '../services/priceHistoryService.ts';
 import type { CoinHistorySnapshot } from '../services/priceHistoryService.ts';
 import { sparklineRangeForCoin } from '../utils/sparkline.ts';
 import type { SparklineRange } from '../utils/sparkline.ts';
-import type { MarketSignalCoin } from '../services/gameService.ts';
+import type { PersistentCoinSignal } from '../services/persistentService.ts';
 
 export interface CoinSparklineState extends CoinHistorySnapshot {
   range: SparklineRange;
@@ -15,7 +15,7 @@ export interface CoinSparklineState extends CoinHistorySnapshot {
 // or polls by itself, and any coin/range change resubscribes cleanly (the
 // store aborts and drops the old entry).
 export function useCoinSparkline(
-  coin: Pick<MarketSignalCoin, 'coinId' | 'archetype' | 'typicalCycleMinutes'>
+  coin: Pick<PersistentCoinSignal, 'coinId' | 'archetype'>
 ): CoinSparklineState {
   const range = sparklineRangeForCoin(coin);
   const subscribe = useCallback(
