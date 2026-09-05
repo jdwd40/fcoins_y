@@ -9,7 +9,6 @@ import { useFetch } from './hooks/useFetch';
 import { Modal } from './components/Modal';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
-import { GameProvider } from './context/GameContext.tsx';
 import { PersistentProvider } from './context/PersistentContext.tsx';
 import { AuthForms } from './components/AuthForms';
 import { Profile } from './components/Profile';
@@ -204,12 +203,12 @@ function PlayerShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
       <ToastProvider>
-        {/* Persistent Stage 6: the persistent account context is the money
-            home for the new gameplay (cash/holdings/wealth/trades); the
-            cycle-shaped GameContext remains for the retained compatibility
-            surfaces (signals, leaderboard, results) until Stage 10/11/13. */}
+        {/* Persistent Stage 11: the persistent context is the sole runtime
+            provider for normal player routes. Legacy GameContext and its
+            Apocalypse polling remain available on disk for internal and
+            compatibility surfaces, but are not mounted here. */}
         <PersistentProvider>
-          <GameProvider>{children}</GameProvider>
+          {children}
         </PersistentProvider>
       </ToastProvider>
     </AuthProvider>
