@@ -19,11 +19,13 @@ import {
   buyPersistentTrade,
   getPersistentAccount,
   getPersistentLeaderboard,
+  getPersistentSignals,
   getPersistentTransactions,
   parsePersistentAccount,
   parsePersistentAccountResponse,
   parsePersistentLeaderboard,
   parsePersistentLeaderboardEntry,
+  parsePersistentMarketSignals,
   parsePersistentTradeResult,
   parsePersistentTransaction,
   parsePersistentTransactionsResponse,
@@ -472,4 +474,85 @@ test('malformed leaderboard payloads fail loudly at the boundary', () => {
     () => parsePersistentLeaderboard({ worldId: '1', serverTime: '2026-09-04T17:00:00.000Z', entries: [] }),
     /worldId must be null or a finite number/
   );
+});
+
+// --- Stage 11 signals parser and fetch tests ---------------------------------
+
+const VALID_COIN = {
+  coinId: 7,
+  name: 'Zeta',
+  symbol: 'ZTA',
+  currentPrice: 42.5,
+  dead: false,
+  status: 'ALIVE',
+  archetype: 'DEGEN',
+  recentChangePct: -1.25,
+  momentum: 'DOWN'
+};
+
+const VALID_SIGNALS = {
+  serverTime: '2026-09-05T10:00:00.000Z',
+  worldId: 3,
+  director: { regime: 'volatile', intensity: 0.8 },
+  coins: [VALID_COIN]
+};
+
+const NO_WORLD_SIGNALS = {
+  serverTime: '2026-09-05T10:00:00.000Z',
+  worldId: null,
+  director: null,
+  coins: []
+};
+
+test('parser accepts real contract and no-world response', () => {
+  const s = parsePersistentMarketSignals(VALID_SIGNALS);
+  assert.equal(s.serverTime, '2026-09-05T10:00:00.000Z');
+  assert.equal(s.worldId, 3);
+  assert.deepEqual(s.director, { regime: 'volatile', intensity: 0.8 });
+  assert.equal(s.coins.length, 1);
+  assert.equal(s.coins[0].coinId, 7);
+  assert.equal(s.coins[0].status, 'ALIVE');
+  assert.equal(s.coins[0].archetype, 'DEGEN');
+  assert.equal(s.coins[0].momentum, 'DOWN');
+  assert.equal(s.coins[0].currentPrice, 42.5);
+  assert.equal(s.coins[0].dead, false);
+
+  const nw = parsePersistentMarketSignals(NO_WORLD_SIGNALS);
+  assert.equal(nw.worldId, null);
+  assert.equal(nw.director, null);
+  assert.deepEqual(nw.coins, []);
+});
+
+test('malformed status/archetype/momentum, dead/nonzero and dead/recent mismatch reject; unknown forbidden fields reject', () => {
+  assert.throws(() => parsePersistentMarketSignals({ ...VALID_SIGNALS, coins: [{ ...VALID_COIN, status: 'ZOMBIE' }] }), /unknown status/);
+  assert.throws(() => parsePersistentMarketSignals({ ...VALID_SIGNALS, coins: [{ ...VALID_COIN, archetype: 'FOO' }] }), /unknown archetype/);
+  assert.throws(() => parsePersistentMarketSignals({ ...VALID_SIGNALS, coins: [{ ...VALID_COIN, momentum: 'SIDE' }] }), /unknown momentum/);
+  // DEAD price nonzero
+  assert.throws(() => parsePersistentMarketSignals({ ...VALID_SIGNALS, coins: [{ ...VALID_COIN, dead: true, status: 'DEAD', currentPrice: 10 }] }), /currentPrice exactly 0/);
+  // dead must agree with the persisted status in both directions
+  assert.throws(() => parsePersistentMarketSignals({ ...VALID_SIGNALS, coins: [{ ...VALID_COIN, dead: true, status: 'ALIVE' }] }), /dead.*status|status.*dead/i);
+  assert.throws(() => parsePersistentMarketSignals({ ...VALID_SIGNALS, coins: [{ ...VALID_COIN, dead: false, status: 'DEAD', currentPrice: 0, recentChangePct: null, momentum: 'FLAT' }] }), /dead.*status|status.*dead/i);
+  // DEAD recent nonzero
+  assert.throws(() => parsePersistentMarketSignals({ ...VALID_SIGNALS, coins: [{ ...VALID_COIN, dead: true, status: 'DEAD', currentPrice: 0, recentChangePct: 5 }] }), /recentChangePct null/);
+  // DEAD momentum not FLAT (also set recent null to reach the check)
+  assert.throws(() => parsePersistentMarketSignals({ ...VALID_SIGNALS, coins: [{ ...VALID_COIN, dead: true, status: 'DEAD', currentPrice: 0, recentChangePct: null, momentum: 'UP' }] }), /momentum FLAT/);
+  // unknown field
+  assert.throws(() => parsePersistentMarketSignals({ ...VALID_SIGNALS, foo: 1 }), /unknown field foo/);
+  assert.throws(() => parsePersistentMarketSignals({ ...VALID_SIGNALS, coins: [{ ...VALID_COIN, cycleId: 'x' }] }), /unknown field|never carry/);
+  assert.throws(() => parsePersistentMarketSignals({ ...VALID_SIGNALS, director: { regime: 'x', intensity: 1, secret: 9 } }), /unknown field director.secret/);
+});
+
+test('getPersistentSignals calls exactly /persistent/signals (public, no token)', async () => {
+  let calledUrl = '';
+  const restore = stubFetch(async (args: {url?: string}) => {
+    calledUrl = (args && args.url) || String(args);
+    return jsonResponse(envelope(VALID_SIGNALS));
+  });
+  try {
+    const res = await getPersistentSignals();
+    assert.ok(calledUrl.includes('/persistent/signals'), `got ${calledUrl}`);
+    assert.equal(res.coins[0].symbol, 'ZTA');
+  } finally {
+    restore();
+  }
 });

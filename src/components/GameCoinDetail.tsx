@@ -2,7 +2,7 @@ import { Skull } from 'lucide-react';
 import { PriceChart } from './PriceChart';
 import { PersistentTradePanel } from './PersistentTradePanel.tsx';
 import { formatCurrency } from '../services/transactionService.ts';
-import type { MarketSignalCoin } from '../services/gameService.ts';
+import type { PersistentCoinSignal } from '../services/persistentService.ts';
 import type { PersistentHolding } from '../services/persistentService.ts';
 import {
   archetypePersonality,
@@ -10,8 +10,6 @@ import {
   formatRecentChangePct,
   formatSignedGbp,
   formatSignedPct,
-  formatTypicalCycle,
-  formatTypicalSwing,
   momentumArrow
 } from '../utils/gameLogic.ts';
 import { sparklineRangeForCoin } from '../utils/sparkline.ts';
@@ -22,10 +20,9 @@ import type { Coin, TimeRange } from '../types';
 // secondary information lives — the compact card stays a fast
 // read-and-trade surface.
 //
-// Everything here is public, already-happened data: the shared GameContext
-// market-signals poll (phase, momentum, archetype, typical ranges, collapse
-// risk), the server-owned participant holding economics, and the
-// authoritative per-coin /coins/:id/price-history endpoint. No hidden or
+// Everything here is public, already-happened data: the shared persistent
+// signals (momentum, archetype, recent movement), the server-owned holding
+// economics, and the authoritative per-coin price-history. No hidden or
 // future market information exists in these contracts and none is rendered.
 
 // Short cycle windows are first-class so the current dip → rise → boom →
@@ -34,7 +31,7 @@ const DETAIL_PRIMARY_RANGES: readonly TimeRange[] = ['10M', '30M', '1H', '2H'];
 const DETAIL_SECONDARY_RANGES: readonly TimeRange[] = ['24H', '7D', '30D', 'ALL'];
 
 interface GameCoinDetailProps {
-  coin: MarketSignalCoin;
+  coin: PersistentCoinSignal;
   /** The player's PERSISTENT holding in this coin (server-owned economics). */
   holding: PersistentHolding | null;
 }
@@ -57,7 +54,7 @@ export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
   };
 
   // The default detail window makes the current cycle inspectable: the
-  // same public archetype/typical-cycle mapping as the compact sparkline
+  // same public archetype range mapping as the compact sparkline
   // (issue #12) — no hidden timing is ever consulted.
   const initialRange = sparklineRangeForCoin(coin);
 
@@ -72,10 +69,6 @@ export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
           <span>Coin {coin.coinId}</span>
           <span>·</span>
           <span>{coin.symbol}/GBP</span>
-          <span className={`signal-chip phase-${coin.phase.toLowerCase()}`}>{coin.phase}</span>
-          <span className={`signal-chip risk-${coin.collapseRisk.toLowerCase()}`}>
-            Risk {coin.collapseRisk}
-          </span>
         </div>
         <h2 className="font-display text-2xl sm:text-4xl font-semibold text-ink leading-tight">
           {coin.name}
@@ -100,12 +93,8 @@ export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
         </div>
       )}
 
-      {/* Public signal facts — every state is explicit text. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-5" aria-label="Market signal detail">
-        <div className="stat-cell">
-          <div className="label mb-0.5">Phase</div>
-          <div className="mt-1"><span className={`signal-chip phase-${coin.phase.toLowerCase()}`}>{coin.phase}</span></div>
-        </div>
+      {/* Public signal facts — every state is explicit text (persistent only). */}
+      <div className="grid grid-cols-3 gap-2 mb-5" aria-label="Market signal detail">
         <div className="stat-cell">
           <div className="label mb-0.5">Momentum</div>
           <div className="font-mono text-sm font-bold text-ink tnum mt-1">{momentumArrow(coin.momentum)}</div>
@@ -119,14 +108,6 @@ export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
         <div className="stat-cell">
           <div className="label mb-0.5">Archetype</div>
           <div className="text-sm text-ink mt-1">{coin.archetype} · {archetypePersonality(coin.archetype)}</div>
-        </div>
-        <div className="stat-cell">
-          <div className="label mb-0.5">Typical cycle</div>
-          <div className="font-mono text-xs text-ink-dim tnum mt-1">{formatTypicalCycle(coin)}</div>
-        </div>
-        <div className="stat-cell">
-          <div className="label mb-0.5">Typical swing</div>
-          <div className="font-mono text-xs text-ink-dim tnum mt-1">{formatTypicalSwing(coin)}</div>
         </div>
       </div>
 
@@ -151,7 +132,7 @@ export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
             </div>
             <div className="stat-cell">
               <div className="label mb-0.5">Current price</div>
-              <div className="font-mono text-sm text-ink tnum mt-1">{formatCurrency(holding.currentPrice)}</div>
+              <div className="font-mono text-sm text-ink tnum mt-1">{formatCurrency(coin.currentPrice)}</div>
             </div>
             <div className="stat-cell">
               <div className="label mb-0.5">Position value</div>

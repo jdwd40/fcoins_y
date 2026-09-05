@@ -10,7 +10,7 @@ import {
   SPARKLINE_RANGE_LABEL,
   toSparklineSeries
 } from '../utils/sparkline.ts';
-import type { MarketSignalCoin } from '../services/gameService.ts';
+import type { PersistentCoinSignal } from '../services/persistentService.ts';
 
 // Issue #12: the compact dip→boom→dip sparkline for V2 coin cards. A tiny
 // dependency-free SVG polyline (no Chart.js on compact cards), locally
@@ -23,12 +23,11 @@ const VIEW_H = 36;
 const PAD = 2;
 
 interface CoinSparklineProps {
-  coin: Pick<MarketSignalCoin, 'coinId' | 'symbol' | 'archetype' | 'typicalCycleMinutes'>;
+  coin: Pick<PersistentCoinSignal, 'coinId' | 'symbol' | 'archetype'>;
   /** Owned cards only: the player's server-owned average entry, drawn as a
    *  dashed horizontal line when it falls inside the visible window. */
   averageEntryPrice?: number | null;
-  /** Authoritative LIVE apocalypse start (ISO). Prices reset at every cycle
-   *  boundary, so the sparkline never renders the previous round's points. */
+  /** (cycleStartTime kept for compatibility with chart; persistent uses null) */
   cycleStartTime?: string | null;
 }
 
@@ -105,16 +104,16 @@ export function CoinSparkline({ coin, averageEntryPrice = null, cycleStartTime =
   );
 }
 
-// Dead/collapsed cards get a deterministic flatline instead of a fetch: the
-// coin stays at £0.00 for the rest of the apocalypse, so no history request
-// is made and nothing on the card can imply recovery or buyability.
+// Dead cards get a deterministic flatline instead of a fetch: the coin stays
+// at £0.00 permanently, so no history request is made and nothing on the card
+// can imply recovery or buyability.
 export function DeadCoinSparkline({ symbol }: { symbol: string }) {
   const path = deadFlatlinePath(VIEW_W, VIEW_H);
   return (
     <div
       className="coin-sparkline coin-sparkline-dead"
       role="img"
-      aria-label={`${symbol} flatlined at £0.00 — collapsed and cannot be bought`}
+      aria-label={`${symbol} flatlined at £0.00 — dead and cannot be bought`}
     >
       <svg
         className="sparkline-svg sparkline-flat"

@@ -319,6 +319,172 @@ export function parsePersistentLeaderboard(payload: unknown): PersistentLeaderbo
   };
 }
 
+// --- Persistent signals (Stage 11 cutover) -----------------------------------
+// GET /persistent/signals — public, no token, read-only market view for the
+// active world. Envelope { status:'success', data: { serverTime, worldId,
+// director, coins } }. coins carry only the documented persistent fields;
+// legacy cycle/phase/collapse/event/typical fields are absent and forbidden.
+// DEAD coins are exactly price=0, recentChangePct=null, momentum=FLAT.
+
+export type PersistentCoinStatus = 'ALIVE' | 'DEAD';
+export type PersistentArchetype = 'ZIP' | 'MOON' | 'BULL' | 'HODL' | 'DEGEN' | 'RUG';
+export type PersistentMomentum = 'UP' | 'DOWN' | 'FLAT';
+
+export const PERSISTENT_COIN_STATUSES: readonly PersistentCoinStatus[] = ['ALIVE', 'DEAD'];
+export const PERSISTENT_ARCHETYPES: readonly PersistentArchetype[] = ['ZIP', 'MOON', 'BULL', 'HODL', 'DEGEN', 'RUG'];
+export const PERSISTENT_MOMENTUMS: readonly PersistentMomentum[] = ['UP', 'DOWN', 'FLAT'];
+
+export interface PersistentDirectorSignal {
+  regime: string;
+  intensity: number;
+}
+
+export interface PersistentCoinSignal {
+  coinId: number;
+  name: string;
+  symbol: string;
+  currentPrice: number;
+  dead: boolean;
+  status: PersistentCoinStatus;
+  archetype: PersistentArchetype;
+  recentChangePct: number | null;
+  momentum: PersistentMomentum;
+}
+
+export interface PersistentMarketSignals {
+  serverTime: string;
+  worldId: number | null;
+  director: PersistentDirectorSignal | null;
+  coins: PersistentCoinSignal[];
+}
+
+// --- Validation helpers for signals (strict contract) ------------------------
+
+function requireFiniteInteger(payload: Record<string, unknown>, field: string, contract: string): void {
+  const v = payload[field];
+  if (typeof v !== 'number' || !Number.isFinite(v) || !Number.isInteger(v)) {
+    throw new Error(`Invalid ${contract} response: ${field} must be a finite integer`);
+  }
+}
+
+function requirePersistentStatus(payload: Record<string, unknown>, contract: string): PersistentCoinStatus {
+  const s = payload.status;
+  if (s !== 'ALIVE' && s !== 'DEAD') {
+    throw new Error(`Invalid ${contract} response: unknown status ${JSON.stringify(s)}`);
+  }
+  return s;
+}
+
+function requirePersistentArchetype(payload: Record<string, unknown>, contract: string): PersistentArchetype {
+  const a = payload.archetype;
+  if (!PERSISTENT_ARCHETYPES.includes(a as PersistentArchetype)) {
+    throw new Error(`Invalid ${contract} response: unknown archetype ${JSON.stringify(a)}`);
+  }
+  return a as PersistentArchetype;
+}
+
+function requirePersistentMomentum(payload: Record<string, unknown>, contract: string): PersistentMomentum {
+  const m = payload.momentum;
+  if (!PERSISTENT_MOMENTUMS.includes(m as PersistentMomentum)) {
+    throw new Error(`Invalid ${contract} response: unknown momentum ${JSON.stringify(m)}`);
+  }
+  return m as PersistentMomentum;
+}
+
+function forbidUnknownFields(
+  payload: Record<string, unknown>,
+  known: readonly string[],
+  contract: string,
+  pathPrefix = ''
+): void {
+  for (const field of Object.keys(payload)) {
+    if (!known.includes(field)) {
+      throw new Error(`Invalid ${contract} response: unknown field ${pathPrefix}${field} (persistent contracts carry only documented fields)`);
+    }
+  }
+}
+
+function parsePersistentDirectorSignal(payload: unknown, contract: string): PersistentDirectorSignal | null {
+  if (payload === null) return null;
+  if (!isRecord(payload)) {
+    throw new Error(`Invalid ${contract} response: director must be null or an object`);
+  }
+  const dirKnown = ['regime', 'intensity'] as const;
+  forbidUnknownFields(payload, dirKnown, contract, 'director.');
+  forbidCycleFields(payload, contract);
+  requireString(payload, 'regime', contract);
+  requireFiniteNumber(payload, 'intensity', contract);
+  return {
+    regime: payload.regime as string,
+    intensity: payload.intensity as number
+  };
+}
+
+function parsePersistentCoinSignal(payload: unknown, contract: string): PersistentCoinSignal {
+  if (!isRecord(payload)) throw new Error(`Invalid ${contract} response: coin must be an object`);
+  const coinKnown = ['coinId', 'name', 'symbol', 'currentPrice', 'dead', 'status', 'archetype', 'recentChangePct', 'momentum'] as const;
+  forbidUnknownFields(payload, coinKnown, contract);
+  forbidCycleFields(payload, contract);
+  requireFiniteInteger(payload, 'coinId', contract);
+  requireString(payload, 'name', contract);
+  requireString(payload, 'symbol', contract);
+  requireFiniteNumber(payload, 'currentPrice', contract);
+  if ((payload.currentPrice as number) < 0) {
+    throw new Error(`Invalid ${contract} response: currentPrice must be >= 0`);
+  }
+  requireBoolean(payload, 'dead', contract);
+  const status = requirePersistentStatus(payload, contract);
+  if (payload.dead !== (status === 'DEAD')) {
+    throw new Error(`Invalid ${contract} response: dead must agree with status`);
+  }
+  if (status === 'DEAD' && (payload.currentPrice as number) !== 0) {
+    throw new Error(`Invalid ${contract} response: DEAD coin must have currentPrice exactly 0`);
+  }
+  const archetype = requirePersistentArchetype(payload, contract);
+  requireNullableFiniteNumber(payload, 'recentChangePct', contract);
+  if (status === 'DEAD' && payload.recentChangePct !== null) {
+    throw new Error(`Invalid ${contract} response: DEAD coin must have recentChangePct null`);
+  }
+  const momentum = requirePersistentMomentum(payload, contract);
+  if (status === 'DEAD' && momentum !== 'FLAT') {
+    throw new Error(`Invalid ${contract} response: DEAD coin must have momentum FLAT`);
+  }
+  return {
+    coinId: payload.coinId as number,
+    name: payload.name as string,
+    symbol: payload.symbol as string,
+    currentPrice: payload.currentPrice as number,
+    dead: payload.dead as boolean,
+    status,
+    archetype,
+    recentChangePct: payload.recentChangePct as number | null,
+    momentum
+  };
+}
+
+export function parsePersistentMarketSignals(payload: unknown): PersistentMarketSignals {
+  const contract = 'persistent market signals';
+  if (!isRecord(payload)) throw new Error(`Invalid ${contract} response: expected a JSON object`);
+  const signalsKnown = ['serverTime', 'worldId', 'director', 'coins'] as const;
+  forbidUnknownFields(payload, signalsKnown, contract);
+  forbidCycleFields(payload, contract);
+  requireString(payload, 'serverTime', contract);
+  if (payload.worldId !== null && (typeof payload.worldId !== 'number' || !Number.isFinite(payload.worldId))) {
+    throw new Error(`Invalid ${contract} response: worldId must be null or a finite number`);
+  }
+  const director = parsePersistentDirectorSignal(payload.director, contract);
+  if (!Array.isArray(payload.coins)) {
+    throw new Error(`Invalid ${contract} response: coins must be an array`);
+  }
+  const coins = (payload.coins as unknown[]).map((c) => parsePersistentCoinSignal(c, contract));
+  return {
+    serverTime: payload.serverTime as string,
+    worldId: payload.worldId as number | null,
+    director,
+    coins
+  };
+}
+
 // --- HTTP plumbing ------------------------------------------------------------
 
 async function parseJsonSafe(response: Response): Promise<unknown> {
@@ -428,4 +594,11 @@ export async function sellPersistentTrade(
 // with entries: [] when no world is provisioned; never fabricate rows.
 export async function getPersistentLeaderboard(signal?: AbortSignal): Promise<PersistentLeaderboard> {
   return persistentFetch('/persistent/leaderboard', { signal }, parsePersistentLeaderboard);
+}
+
+// Stage 11: public persistent market signals for THE active world. No auth
+// (identity-independent, same as leaderboard). serverTime + worldId + director
+// (may be null) + coins array. Uses the shared persistent poll; no separate timer.
+export async function getPersistentSignals(signal?: AbortSignal): Promise<PersistentMarketSignals> {
+  return persistentFetch('/persistent/signals', { signal }, parsePersistentMarketSignals);
 }
