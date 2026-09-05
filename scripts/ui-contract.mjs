@@ -3,6 +3,11 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+const playerShell = app.slice(
+  app.indexOf('function PlayerShell'),
+  app.indexOf('function App')
+);
+assert.notEqual(playerShell, app, 'PlayerShell source must remain discoverable for provider contract checks');
 const styles = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const chart = readFileSync(new URL('../src/components/PriceChart.tsx', import.meta.url), 'utf8');
@@ -54,7 +59,47 @@ assert.match(app, /PlayerRoundPanel/);
 assert.match(app, /LeaderboardPanel/);
 assert.doesNotMatch(app, /<ResultsOverlay/);
 assert.doesNotMatch(app, /<RecentResultsPanel/);
-assert.match(app, /GameProvider/);
+// Final Stage 11 disconnection: normal player routes use only the persistent
+// runtime. GameContext remains on disk for compatibility, but is not imported
+// or mounted by PlayerShell.
+assert.doesNotMatch(app, /import\s+\{\s*GameProvider\s*\}\s+from\s+['"]\.\/context\/GameContext/);
+assert.doesNotMatch(playerShell, /GameProvider/);
+assert.doesNotMatch(playerShell, /setInterval|visibilitychange|window\.addEventListener\(['"]focus|joinGame/);
+assert.doesNotMatch(app, /getGameState|getLiveLeaderboard|getMarketSignals|getMyRoundEconomy|joinGame/);
+assert.doesNotMatch(app, /\/game\/(state|leaderboard|market-signals|participant|join)/);
+assert.match(app, /<PersistentProvider>\s*\{children\}\s*<\/PersistentProvider>/);
+assert.match(app, /<Route path="\/" element=\{<PlayerShell><Market/);
+assert.match(app, /<Route path="\/profile" element=\{<PlayerShell><Profile/);
+assert.match(app, /path="\/internal\/apocalypse-monitor" element=\{<ApocalypseMonitor \/>\}/);
+// Every component reachable from / and /profile must use the persistent/auth
+// sources directly; a dormant compatibility component is not a player-shell
+// dependency and must not force GameProvider back into App.tsx.
+for (const [name, source] of [
+  ['PersistentMarketHeader', persistentHeader],
+  ['PlayerStatusStrip', playerStatusStrip],
+  ['LeaderboardPressure', leaderboardPressure],
+  ['GameMarketGrid', gameMarketGrid],
+  ['LeaderboardPanel', leaderboard],
+  ['PlayerRoundPanel', playerRound],
+  ['Profile', profile],
+  ['GameTopBar', gameTopBar],
+  ['CoinSignalCard', coinSignalCard],
+  ['GameCoinDetail', gameCoinDetail],
+  ['PersistentTradePanel', persistentTradePanel]
+]) {
+  assert.doesNotMatch(source, /useGame\(/, `${name} must not consume GameContext on player routes`);
+}
+assert.match(gameContext, /export function GameProvider/); // compatibility remains for Stage 13
+for (const [name, path] of [
+  ['getGameState', '/game/state'],
+  ['getLiveLeaderboard', '/game/leaderboard'],
+  ['getMarketSignals', '/game/market-signals'],
+  ['getMyRoundEconomy', '/game/participant'],
+  ['joinGame', '/game/join']
+]) {
+  assert.match(gameContext, new RegExp(`\\b${name}\\(`), `${name} remains a legacy GameContext runtime call`);
+  assert.match(gameService, new RegExp(path.replace('/', '\\/')), `${name} endpoint form remains covered`);
+}
 assert.match(app, /Leaderboard & activity/);
 assert.doesNotMatch(app, /Round detail/);
 assert.doesNotMatch(app, /JOIN APOCALYPSE/);
