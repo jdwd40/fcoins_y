@@ -1,72 +1,64 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { usePersistent } from '../context/PersistentContext.tsx';
 import { X, RefreshCw } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import {
-  getUserPortfolio,
-  getUserTransactions,
-  formatCurrency,
-  SessionExpiredError,
-  type PortfolioItem,
-  type TransactionHistoryItem,
-} from '../services/transactionService';
-import { SellForm } from './SellForm';
+import { formatCurrency, SessionExpiredError } from '../services/transactionService.ts';
+import { getPersistentTransactions } from '../services/persistentService.ts';
+import type { PersistentHolding, PersistentTransaction } from '../services/persistentService.ts';
+import { PersistentTradePanel } from './PersistentTradePanel.tsx';
 import { Modal } from './Modal';
 
+// Persistent-market Stage 6 profile: the player's PERSISTENT account —
+// cash, holdings at server-published live value, wealth, and the bounded
+// persistent trade ledger. The legacy exchange portfolio (users.funds /
+// portfolios table) is historical archive and no longer rendered here; the
+// classic sell form is retired from this page with it. The persistent
+// account figures are server-owned verbatim — nothing is derived
+// client-side beyond summing the server's own per-holding P&L rows.
 export function Profile() {
-  const { user, getAuthToken, handleSessionExpired, refreshUser } = useAuth();
+  const { user, getAuthToken, handleSessionExpired } = useAuth();
   const { showToast } = useToast();
+  const { account, synced, provisioned, accountError, lastSyncAt, syncNow } = usePersistent();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
-  const [transactions, setTransactions] = useState<TransactionHistoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedCoin, setSelectedCoin] = useState<PortfolioItem | null>(null);
+  const [transactions, setTransactions] = useState<PersistentTransaction[] | null>(null);
+  const [transactionsError, setTransactionsError] = useState<string | null>(null);
+  const [selectedHolding, setSelectedHolding] = useState<PersistentHolding | null>(null);
   const [showSellModal, setShowSellModal] = useState(false);
 
-  const fetchData = async () => {
-    if (!user || !user.id) {
-      setLoading(false);
+  const fetchTransactions = useCallback(async () => {
+    if (!user || !provisioned) {
+      setTransactions(null);
+      setTransactionsError(null);
       return;
     }
     const token = getAuthToken();
-    if (!token) {
-      setError('Please log in to view your portfolio');
-      setLoading(false);
-      return;
-    }
+    if (!token) return;
     try {
-      setLoading(true);
-      setError(null);
-      const [portfolioData, transactionsData] = await Promise.all([
-        getUserPortfolio(user.id, token),
-        getUserTransactions(user.id, token),
-      ]);
-      setPortfolio(portfolioData.portfolio || []);
-      setTransactions(transactionsData.transactions || []);
-      if (portfolioData.user_funds !== undefined && portfolioData.user_funds !== user.funds) {
-        const updatedUser = { ...user, funds: portfolioData.user_funds };
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-        refreshUser();
-      }
+      const result = await getPersistentTransactions(token, { limit: 100 });
+      setTransactions(result.transactions);
+      setTransactionsError(null);
     } catch (err) {
       if (err instanceof SessionExpiredError) {
         handleSessionExpired();
         showToast('Your session has expired. Please log in again.', 'error');
         return;
       }
-      setError(err instanceof Error ? err.message : 'Failed to load data');
-    } finally {
-      setLoading(false);
+      setTransactionsError(err instanceof Error ? err.message : 'Failed to load transactions');
     }
-  };
+  }, [user, provisioned, getAuthToken, handleSessionExpired, showToast]);
 
   useEffect(() => {
-    fetchData();
-  }, [user]);
+    void fetchTransactions();
+  }, [fetchTransactions, lastSyncAt]);
+
+  const refresh = () => {
+    void syncNow();
+    void fetchTransactions();
+  };
 
   if (!user || !user.id) {
     return (
@@ -74,7 +66,7 @@ export function Profile() {
         <div className="paper-card max-w-md w-full p-10 text-center">
           <div className="ornament mb-4"><span className="label-ink">Access</span></div>
           <h2 className="font-display text-4xl italic text-ink mb-4">Credentials Required</h2>
-          <p className="text-sm text-ink-mute mb-6">Sign in to view your virtual portfolio</p>
+          <p className="text-sm text-ink-mute mb-6">Sign in to view your persistent account</p>
           <button onClick={() => navigate('/')} className="btn-gold">
             Return Home
           </button>
@@ -90,19 +82,28 @@ export function Profile() {
     navigate(location.state?.from || '/');
   };
 
-  const handleSellClick = (item: PortfolioItem) => {
-    setSelectedCoin(item);
+  const handleSellClick = (holding: PersistentHolding) => {
+    setSelectedHolding(holding);
     setShowSellModal(true);
   };
 
-  const handleSellSuccess = () => {
+  const handleSellDone = () => {
     setShowSellModal(false);
-    setSelectedCoin(null);
-    fetchData();
+    setSelectedHolding(null);
+    refresh();
   };
 
-  const totalPortfolioValue = portfolio.reduce((sum, item) => sum + (Number(item.total_value) || 0), 0);
-  const totalProfitLoss = portfolio.reduce((sum, item) => sum + (Number(item.profit_loss) || 0), 0);
+  const loading = !synced;
+  const error = accountError !== null && account === null ? accountError : null;
+
+  // Server-owned figures only: portfolio value is the account's live
+  // holdingsValue; overall P/L is server wealth minus the exactly-once
+  // £10,000 starting grant; per-holding P&L rows are summed from the
+  // server's own figures.
+  const holdings = account?.holdings ?? [];
+  const totalPortfolioValue = account?.holdingsValue ?? 0;
+  const totalUnrealizedPnl = holdings.reduce((sum, holding) => sum + holding.unrealizedPnl, 0);
+  const accountPnl = account !== null ? account.netWealth - account.startingCash : 0;
 
   return (
     <div className="min-h-screen bg-paper text-ink">
@@ -117,11 +118,11 @@ export function Profile() {
         {/* Portfolio masthead */}
         <div className="paper-card p-6 sm:p-10 mb-10 animate-reveal">
           <div className="mb-6 border border-rule rounded-xl px-4 py-3 bg-paper-alt">
-            <span className="label">Legacy exchange account</span>
+            <span className="label">Persistent market account</span>
             <p className="text-xs text-ink-mute mt-1">
-              These are account-level virtual funds and holdings from the classic CoinX exchange —
-              historical account data only. Crypto Chaos uses a separate £10,000.00 Cash balance on the
-              main page, owned by the current Apocalypse — nothing here is spendable in the game.
+              This is your persistent Crypto Chaos account — the £10,000.00 starting Cash was granted
+              exactly once, and every balance and holding here survives; there are no rounds, resets
+              or settlements. Trades execute at the server-locked live price.
             </p>
           </div>
           <div className="flex items-start gap-6 mb-8">
@@ -145,7 +146,7 @@ export function Profile() {
 
           <div className="rule-thin mb-6"></div>
 
-          {/* Portfolio summary stats */}
+          {/* Account summary stats */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             <div>
               <div className="label mb-2">Portfolio Value</div>
@@ -154,16 +155,16 @@ export function Profile() {
               </div>
             </div>
             <div className="sm:border-l sm:border-rule sm:pl-6">
-              <div className="label mb-2">Available cash (legacy)</div>
+              <div className="label mb-2">Persistent cash</div>
               <div className="numeral text-ink text-4xl" style={{ fontVariationSettings: "'opsz' 144" }}>
-                {formatCurrency(Number(user.funds) || 0)}
+                {account !== null ? formatCurrency(account.cash) : '—'}
               </div>
             </div>
             <div className="sm:border-l sm:border-rule sm:pl-6">
-              <div className="label mb-2">Unrealised P/L</div>
-              <div className={`numeral text-4xl ${totalProfitLoss >= 0 ? 'text-verdigris' : 'text-oxblood'}`}
+              <div className="label mb-2">Account P/L since start</div>
+              <div className={`numeral text-4xl ${accountPnl >= 0 ? 'text-verdigris' : 'text-oxblood'}`}
                    style={{ fontVariationSettings: "'opsz' 144" }}>
-                {totalProfitLoss >= 0 ? '+' : ''}{formatCurrency(totalProfitLoss)}
+                {accountPnl >= 0 ? '+' : ''}{formatCurrency(accountPnl)}
               </div>
             </div>
           </div>
@@ -177,12 +178,24 @@ export function Profile() {
           <div className="border-l-2 border-oxblood bg-card p-5 mb-10">
             <div className="label text-oxblood mb-1">Error</div>
             <p className="font-mono text-xs text-ink-dim mb-3">{error}</p>
-            <button onClick={fetchData} className="btn-ink">Retry</button>
+            <button onClick={refresh} className="btn-ink">Retry</button>
+          </div>
+        )}
+
+        {!loading && !error && synced && !provisioned && (
+          <div className="text-center py-16">
+            <div className="ornament mb-4"><span className="label-ink">Provisioning</span></div>
+            <p className="font-display italic text-ink-dim text-xl mb-4">
+              Your persistent account is being provisioned by the server — once, idempotently
+            </p>
+            <button onClick={refresh} className="btn-gold">
+              Refresh
+            </button>
           </div>
         )}
 
         {/* Holdings */}
-        {!loading && !error && (
+        {!loading && !error && provisioned && account !== null && (
           <section className="mb-16 animate-reveal delay-150">
             <div className="flex items-end justify-between mb-6 pb-4 border-b border-rule">
               <div>
@@ -192,12 +205,12 @@ export function Profile() {
                   Holdings
                 </h2>
               </div>
-              <button onClick={fetchData} className="label hover:text-gold inline-flex items-center gap-2">
+              <button onClick={refresh} className="label hover:text-gold inline-flex items-center gap-2">
                 <RefreshCw className="w-3 h-3" /> Refresh
               </button>
             </div>
 
-            {portfolio.length === 0 ? (
+            {holdings.length === 0 ? (
               <div className="text-center py-16">
                 <div className="ornament mb-4"><span className="label-ink">No holdings</span></div>
                 <p className="font-display italic text-ink-dim text-xl mb-4">
@@ -209,52 +222,62 @@ export function Profile() {
               </div>
             ) : (
               <div className="divide-rule border border-rule">
-                {portfolio.map((item) => {
-                  const pl = Number(item.profit_loss) || 0;
-                  const plPct = Number(item.profit_loss_percentage || 0);
+                {holdings.map((holding) => {
+                  const pl = holding.unrealizedPnl;
+                  const plPct = holding.unrealizedPnlPct ?? 0;
                   const up = pl >= 0;
+                  const dead = !(holding.currentPrice > 0);
                   return (
                     <div
-                      key={item.portfolio_id}
+                      key={holding.coinId}
                       className="flex items-center gap-4 p-5 bg-card hover:bg-paper-alt transition-colors"
                     >
                       <div className="w-12 h-12 shrink-0 border border-rule flex items-center justify-center bg-paper-alt">
                         <span className="font-display italic text-xl text-gold">
-                          {(item.coin_symbol || '?').charAt(0)}
+                          {(holding.symbol || '?').charAt(0)}
                         </span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-display italic text-xl text-ink truncate">
-                          {item.coin_name}
+                          {holding.symbol}
+                          {dead && <span className="ml-2 font-mono text-xs text-oxblood not-italic">DEAD</span>}
                         </div>
                         <div className="font-mono text-[0.7rem] text-ink-mute tracking-caps uppercase tnum">
-                          {Number(item.quantity || 0).toFixed(4)} {item.coin_symbol} · avg {formatCurrency(Number(item.average_purchase_price) || 0)}
+                          {holding.quantity.toFixed(4)} {holding.symbol} · avg {holding.averageEntryPrice === null ? '—' : formatCurrency(holding.averageEntryPrice)}
                         </div>
                       </div>
                       <div className="text-right hidden sm:block">
                         <div className="font-mono text-sm text-ink tnum">
-                          {formatCurrency(Number(item.total_value) || 0)}
+                          {formatCurrency(holding.currentValue)}
                         </div>
                         <div className={`font-mono text-xs tnum ${up ? 'text-verdigris' : 'text-oxblood'}`}>
                           {up ? '+' : ''}{formatCurrency(pl)} ({plPct.toFixed(2)}%)
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleSellClick(item)}
-                        className="btn-oxblood shrink-0"
-                      >
-                        Sell
-                      </button>
+                      {!dead && (
+                        <button
+                          onClick={() => handleSellClick(holding)}
+                          className="btn-oxblood shrink-0"
+                        >
+                          Sell
+                        </button>
+                      )}
                     </div>
                   );
                 })}
+                <div className="px-5 py-3 border-t border-rule bg-paper-alt flex justify-between">
+                  <span className="label">Unrealised P/L</span>
+                  <span className={`font-mono text-sm tnum ${totalUnrealizedPnl >= 0 ? 'text-verdigris' : 'text-oxblood'}`}>
+                    {totalUnrealizedPnl >= 0 ? '+' : ''}{formatCurrency(totalUnrealizedPnl)}
+                  </span>
+                </div>
               </div>
             )}
           </section>
         )}
 
         {/* Transaction history */}
-        {!loading && !error && (
+        {!loading && !error && provisioned && (
           <section className="animate-reveal delay-300">
             <div className="mb-6 pb-4 border-b border-rule">
               <div className="label mb-1">Account activity</div>
@@ -264,7 +287,17 @@ export function Profile() {
               </h2>
             </div>
 
-            {transactions.length === 0 ? (
+            {transactionsError && (
+              <p className="text-xs text-oxblood mb-3" role="status">
+                History update failed — showing the last synced entries. {transactionsError}
+              </p>
+            )}
+
+            {transactions === null ? (
+              !transactionsError && (
+                <div className="text-center py-12 label animate-flicker">Reading the ledger…</div>
+              )
+            ) : transactions.length === 0 ? (
               <div className="text-center py-12">
                 <p className="font-display italic text-ink-dim">No entries yet</p>
               </div>
@@ -279,11 +312,11 @@ export function Profile() {
                   <div className="label col-span-2 text-right">Value</div>
                 </div>
                 <div className="divide-rule">
-                  {transactions.slice(0, 20).map((transaction) => {
+                  {transactions.map((transaction) => {
                     const isBuy = transaction.type === 'BUY';
                     return (
                       <div
-                        key={transaction.transaction_id}
+                        key={transaction.persistentTransactionId}
                         className="grid grid-cols-1 sm:grid-cols-12 gap-4 px-5 py-4 bg-card hover:bg-paper-alt transition-colors"
                       >
                         <div className="sm:col-span-1">
@@ -294,10 +327,10 @@ export function Profile() {
                           </span>
                         </div>
                         <div className="sm:col-span-4 font-display italic text-lg text-ink truncate">
-                          {transaction.coin_name}
+                          {transaction.symbol}
                         </div>
                         <div className="sm:col-span-3 font-mono text-[0.7rem] text-ink-mute tracking-caps">
-                          {new Date(transaction.created_at).toLocaleDateString('en-GB', {
+                          {new Date(transaction.createdAt).toLocaleDateString('en-GB', {
                             day: 'numeric',
                             month: 'short',
                             year: 'numeric',
@@ -306,48 +339,44 @@ export function Profile() {
                           })}
                         </div>
                         <div className="sm:col-span-2 font-mono text-sm text-ink-dim tnum sm:text-right">
-                          {Number(transaction.quantity || 0).toFixed(4)} {transaction.coin_symbol}
+                          {transaction.quantity.toFixed(4)} {transaction.symbol}
                         </div>
                         <div className="sm:col-span-2 font-mono text-sm text-ink tnum sm:text-right">
-                          {formatCurrency(Number(transaction.total_amount) || 0)}
+                          {formatCurrency(transaction.totalAmount)}
                         </div>
                       </div>
                     );
                   })}
                 </div>
-                {transactions.length > 20 && (
-                  <div className="px-5 py-3 border-t border-rule text-center label bg-paper-alt">
-                    Showing 20 of {transactions.length} entries
-                  </div>
-                )}
               </div>
             )}
           </section>
         )}
       </div>
 
-      {showSellModal && selectedCoin && (
+      {showSellModal && selectedHolding && (
         <Modal
           isOpen={showSellModal}
-          onClose={() => {
-            setShowSellModal(false);
-            setSelectedCoin(null);
-          }}
+          onClose={handleSellDone}
         >
-          <SellForm
-            coin={{
-              coin_id: selectedCoin.coin_id,
-              name: selectedCoin.coin_name,
-              symbol: selectedCoin.coin_symbol,
-              current_price: selectedCoin.current_price,
-              market_cap: 0,
-              circulating_supply: 0,
-              price_change_24h: 0,
-              date_added: '',
-              latest_price: selectedCoin.current_price,
-            }}
-            onSuccess={handleSellSuccess}
-          />
+          <div className="p-2">
+            <div className="label mb-3">Sell {selectedHolding.symbol} · persistent account</div>
+            <PersistentTradePanel
+              coin={{
+                coin_id: selectedHolding.coinId,
+                name: selectedHolding.symbol,
+                symbol: selectedHolding.symbol,
+                current_price: String(selectedHolding.currentPrice),
+                market_cap: '£0.00',
+                circulating_supply: 0,
+                price_change_24h: 0,
+                founder: ''
+              }}
+            />
+            <button onClick={handleSellDone} className="btn-ink w-full mt-4">
+              Done
+            </button>
+          </div>
         </Modal>
       )}
     </div>

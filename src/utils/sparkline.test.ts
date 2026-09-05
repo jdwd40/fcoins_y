@@ -21,41 +21,39 @@ import {
   toSparklineSeries
 } from './sparkline.ts';
 import type { PricePoint } from '../types.ts';
+import type { PersistentCoinSignal } from '../services/persistentService.ts';
 
-const coin = (archetype: string, typicalCycleMinutes: [number, number] | null) => ({
-  archetype,
-  typicalCycleMinutes
-});
+const coin = (archetype: string) => ({ archetype } as Pick<PersistentCoinSignal, 'archetype'>);
 
 // --- Range mapping (documented per-archetype table in sparkline.ts) --------
 
 test('sparklineRangeForCoin targets ~3 public typical cycles and picks the smallest covering range', () => {
   assert.equal(SPARKLINE_CYCLES_TARGET, 3);
   // ZIP ~1–3 min cycles → target 9 min → 10M
-  assert.equal(sparklineRangeForCoin(coin('ZIP', [1, 3])), '10M');
+  assert.equal(sparklineRangeForCoin(coin('ZIP')), '10M');
   // MOON ~3–5 min cycles → target 15 min → 30M
-  assert.equal(sparklineRangeForCoin(coin('MOON', [3, 5])), '30M');
+  assert.equal(sparklineRangeForCoin(coin('MOON')), '30M');
   // BULL ~5–8 min cycles → target 24 min → 30M
-  assert.equal(sparklineRangeForCoin(coin('BULL', [5, 8])), '30M');
+  assert.equal(sparklineRangeForCoin(coin('BULL')), '30M');
   // HODL ~10–15 min cycles → target 45 min → 1H
-  assert.equal(sparklineRangeForCoin(coin('HODL', [10, 15])), '1H');
+  assert.equal(sparklineRangeForCoin(coin('HODL')), '1H');
   // DEGEN ~2–8 min cycles → target 24 min → 30M
-  assert.equal(sparklineRangeForCoin(coin('DEGEN', [2, 8])), '30M');
+  assert.equal(sparklineRangeForCoin(coin('DEGEN')), '30M');
   // RUG ~1.5–10 min cycles → target 30 min → 30M
-  assert.equal(sparklineRangeForCoin(coin('RUG', [1.5, 10])), '30M');
+  assert.equal(sparklineRangeForCoin(coin('RUG')), '30M');
 });
 
-test('sparklineRangeForCoin falls back to the public archetype table when the signal range is missing', () => {
+test('sparklineRangeForCoin uses the public archetype table (persistent signals have no typicalCycleMinutes)', () => {
   assert.equal(ARCHETYPE_MAX_CYCLE_MINUTES.HODL, 15);
-  assert.equal(sparklineRangeForCoin(coin('HODL', null)), '1H');
-  assert.equal(sparklineRangeForCoin(coin('ZIP', null)), '10M');
-  // Malformed signal values are ignored the same way.
-  assert.equal(sparklineRangeForCoin(coin('BULL', [0, 0])), '30M');
-  assert.equal(sparklineRangeForCoin(coin('BULL', [NaN, NaN])), '30M');
+  assert.equal(sparklineRangeForCoin(coin('HODL')), '1H');
+  assert.equal(sparklineRangeForCoin(coin('ZIP')), '10M');
+  // Malformed signal values are ignored the same way (archetype table only).
+  assert.equal(sparklineRangeForCoin(coin('BULL')), '30M');
+  assert.equal(sparklineRangeForCoin(coin('BULL')), '30M');
 });
 
 test('sparklineRangeForCoin never invents a window for unknown archetypes', () => {
-  assert.equal(sparklineRangeForCoin(coin('UNKNOWN', null)), DEFAULT_SPARKLINE_RANGE);
+  assert.equal(sparklineRangeForCoin(coin('UNKNOWN')), DEFAULT_SPARKLINE_RANGE);
   assert.equal(DEFAULT_SPARKLINE_RANGE, '30M');
 });
 

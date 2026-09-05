@@ -7,7 +7,7 @@ import {
 } from '../utils/gameLogic.ts';
 
 // HOW TO PLAY: a compact, dismissible dialog hanging off the persistent
-// Apocalypse header. It never blocks play — no forced tutorial, no onboarding
+// market header. It never blocks play — no forced tutorial, no onboarding
 // state machine, no navigation away from the game. Copy lives in gameLogic
 // (HOW_TO_PLAY_STEPS) so the accuracy rules are unit-testable without a DOM.
 //
@@ -110,7 +110,7 @@ export function HowToPlay() {
               </button>
 
               <div className="p-5 sm:p-7">
-                <div className="label text-gold mb-1.5">First time at the end of the world?</div>
+                <div className="label text-gold mb-1.5">New to the persistent market?</div>
                 <h2
                   id="how-to-play-title"
                   className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-ink pr-10"

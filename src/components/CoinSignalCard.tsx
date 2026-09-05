@@ -2,101 +2,49 @@ import { useState } from 'react';
 import { Check, Skull, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { useGame } from '../context/GameContext.tsx';
-import { RoundTradePanel } from './RoundTradePanel.tsx';
+import { usePersistent } from '../context/PersistentContext.tsx';
+import { PersistentTradePanel } from './PersistentTradePanel.tsx';
 import { CoinSparkline, DeadCoinSparkline } from './CoinSparkline.tsx';
 import { SessionExpiredError, formatCurrency } from '../services/transactionService.ts';
 import { GameApiError } from '../services/gameService.ts';
-import type { CoinSignalEvent, MarketSignalCoin, RoundHolding } from '../services/gameService.ts';
+import type { PersistentCoinSignal } from '../services/persistentService.ts';
+import type { PersistentHolding } from '../services/persistentService.ts';
+import {
+  persistentTradeBlockReason,
+  PERSISTENT_TRADE_BLOCK_LABEL
+} from '../utils/persistentTrading.ts';
 import {
   archetypePersonality,
-  COIN_EVENT_DIRECTION_LABEL,
-  displayRoundCash,
-  estimateBuyPowerCost,
-  formatCountdown,
   formatQuantity,
   formatRecentChangePct,
   formatSignedGbp,
   formatSignedPct,
-  formatTypicalProfile,
   momentumArrow,
-  openLivePositionCount,
   quantityForNotional,
-  quickBuyBlockReason,
   quickBuyLabel,
-  remainingUntilIso,
-  QUICK_BUY_BLOCK_LABEL,
   QUICK_BUY_NOTIONALS
 } from '../utils/gameLogic.ts';
 import type { Coin } from '../types';
 
 interface CoinSignalCardProps {
-  coin: MarketSignalCoin;
-  holding: RoundHolding | null;
-  /** SIM-16/17: the derived current server instant (epoch ms) from the shared
-   *  GameContext poll — event countdowns interpolate from this; no per-card
-   *  timers or fetching. */
-  signalsNowMs: number;
+  coin: PersistentCoinSignal;
+  /** The player's PERSISTENT holding in this coin (server-owned economics),
+   *  or null when the account holds none / is not synced. */
+  holding: PersistentHolding | null;
   /** Issue #13: opens this coin's detailed V2 view (modal owned by
    *  GameMarketGrid). Fired from the card's non-trade areas only. */
   onOpenDetail: () => void;
 }
 
-// SIM-15/17: the coin's currently active PUBLIC events — name, direction and
-// server-clock time remaining for each. Expiry is self-correcting: an event
-// clamps to 00:00 and disappears from the payload on the next shared poll
-// (never a client-side removal guess). Text and accessible labels carry the
-// meaning; colour only reinforces. No hidden lifecycle, modifiers, exact
-// probabilities, ids or future events are ever rendered.
-function CoinEventList({ events, signalsNowMs }: { events: CoinSignalEvent[]; signalsNowMs: number }) {
-  if (events.length === 0) {
-    return (
-      <div className="flex items-center justify-between gap-2">
-        <span className="label">Events</span>
-        <span className="text-xs text-ink-mute">None active</span>
-      </div>
-    );
-  }
-  return (
-    <div className="coin-events" aria-label="Active coin events">
-      <div className="label mb-1">Events</div>
-      <ul className="coin-event-list">
-        {events.map((event) => {
-          const remainingMs = remainingUntilIso(event.endsAt, signalsNowMs);
-          const countdown = formatCountdown(remainingMs);
-          return (
-            <li
-              key={`${event.name}::${event.endsAt}`}
-              className="coin-event"
-              aria-label={`${event.name}, ${COIN_EVENT_DIRECTION_LABEL[event.direction]}, ends in ${countdown}`}
-            >
-              <span className="coin-event-name">{event.name}</span>
-              <span className={`signal-chip event-${event.direction.toLowerCase()}`}>
-                {COIN_EVENT_DIRECTION_LABEL[event.direction]}
-              </span>
-              <span className="font-mono text-xs text-ink-dim tnum coin-event-time">{countdown}</span>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
-// V2-5 coin card. One card per gameplay coin driven by the public
-// market-signals contract (phase, momentum, archetype, typical ranges,
-// collapse risk) plus the server-owned holding economics when the player has
-// a position. Every state is explicit text — colour only reinforces.
-//
-// Quick buys convert a fixed notional (£250/£500/£1K/£2.5K) into a quantity
-// at the current displayed price; the Power figure is the shared V2 preview
-// (1 + floor(notional / £125)), labelled as an estimate. The server remains
-// authoritative: trades confirm first, fake success is never shown, and a
-// domain rejection renders verbatim.
-export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: CoinSignalCardProps) {
+// Stage 11: primary-market CoinSignalCard now receives PersistentCoinSignal.
+// Removed: phase, collapseRisk, events, event countdowns, typicalCycleMinutes,
+// typical swing. Kept: identity, currentPrice (signal, not holding), recentChangePct,
+// momentum, archetype, DEAD, holding economics, persistent trade controls.
+// Quick-buy uses signal.currentPrice; trade() request carries no client price.
+export function CoinSignalCard({ coin, holding, onOpenDetail }: CoinSignalCardProps) {
   const { user, handleSessionExpired } = useAuth();
   const { showToast } = useToast();
-  const { joined, myEntry, myParticipant, lifecycle, connection, trade, gameState } = useGame();
+  const { account, synced, accountError, trade } = usePersistent();
 
   const [confirmNotional, setConfirmNotional] = useState<number | null>(null);
   const [confirmSell, setConfirmSell] = useState(false);
@@ -106,11 +54,12 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
 
   // Issue #13: tapping a NON-TRADE area of the card opens the detailed coin
   // view. Every trade control (quick-buy ladder, sell, confirmations,
-  // cancel, custom amount, nested RoundTradePanel) is a real button/input,
-  // so this delegation guard keeps trade taps strictly isolated from detail
-  // navigation — a trade click can never open the detail, and the detail
-  // gesture can never fire a trade. Keyboard users get the explicit Details
-  // button in the header (real <button>, visible focus, labelled).
+  // cancel, custom amount, nested PersistentTradePanel) is a real
+  // button/input, so this delegation guard keeps trade taps strictly
+  // isolated from detail navigation — a trade click can never open the
+  // detail, and the detail gesture can never fire a trade. Keyboard users
+  // get the explicit Details button in the header (real <button>, visible
+  // focus, labelled).
   const handleCardClick = (event: React.MouseEvent<HTMLElement>) => {
     const target = event.target as HTMLElement;
     if (target.closest('button, a, input, select, textarea, [role="button"]')) return;
@@ -118,11 +67,9 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
   };
 
   const owned = !!holding && holding.quantity > 0;
-  const roundCash = displayRoundCash(myEntry, myParticipant);
-  const powerCurrent = myParticipant?.power?.current ?? null;
-  const openPositions = openLivePositionCount(myParticipant?.holdings ?? []);
+  const cash = account?.cash ?? null;
 
-  // The classic trade panel consumes the legacy Coin shape; only
+  // The trade panel consumes the legacy Coin shape; only
   // coin_id/symbol/current_price are read from it. The price stays the
   // server-published signal price.
   const legacyCoin: Coin = {
@@ -141,8 +88,9 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
       handleSessionExpired();
       showToast('Your session has expired. Please log in again.', 'error');
     } else if (err instanceof GameApiError) {
-      // Server rejection BEFORE any mutation (stale price, Power spent,
-      // collapse race, settlement): the exact backend message, verbatim.
+      // Server rejection BEFORE any mutation (dead coin mid-flight,
+      // insufficient cash/holdings, minimum notional): the exact backend
+      // message, verbatim.
       setError(err.message);
       showToast(err.message, 'error');
     } else {
@@ -192,26 +140,11 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
         </span>
       </div>
       <div className="flex items-center justify-between gap-2">
-        <span className="label">Phase</span>
-        <span className={`signal-chip phase-${coin.phase.toLowerCase()}`}>{coin.phase}</span>
-      </div>
-      <div className="flex items-center justify-between gap-2">
-        <span className="label">Style</span>
+        <span className="label">Archetype</span>
         <span className="text-xs text-ink-dim text-right">
           {coin.archetype} · {archetypePersonality(coin.archetype)}
         </span>
       </div>
-      {formatTypicalProfile(coin) !== '' && (
-        <div className="flex items-center justify-between gap-2">
-          <span className="label">Typical</span>
-          <span className="font-mono text-xs text-ink-dim text-right tnum">{formatTypicalProfile(coin)}</span>
-        </div>
-      )}
-      <div className="flex items-center justify-between gap-2">
-        <span className="label">Collapse risk</span>
-        <span className={`signal-chip risk-${coin.collapseRisk.toLowerCase()}`}>{coin.collapseRisk}</span>
-      </div>
-      <CoinEventList events={coin.events} signalsNowMs={signalsNowMs} />
     </div>
   );
 
@@ -242,7 +175,7 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
     </div>
   );
 
-  // --- Dead / collapsed coin -------------------------------------------------
+  // --- Dead coin (persistent death is permanent; trading has stopped) ---------
   if (coin.dead) {
     return (
       <article className="game-card dead-card" aria-label={`${coin.name} — dead`} onClick={handleCardClick}>
@@ -250,11 +183,11 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
         <div className="flex items-center gap-2 mb-3" role="note">
           <Skull className="w-4 h-4 text-oxblood" aria-hidden="true" />
           <span className="font-mono text-sm font-bold text-oxblood tracking-caps uppercase">
-            DEAD · COLLAPSED
+            DEAD
           </span>
         </div>
         <p className="text-xs text-ink-dim mb-3">
-          This coin collapsed to £0.00 and stays dead for the rest of the apocalypse. It cannot be bought.
+          This coin died permanently in the persistent market. Trading has stopped — it cannot be bought or sold.
         </p>
         <DeadCoinSparkline symbol={coin.symbol} />
         {owned && holding && (
@@ -263,38 +196,12 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
             <div className="font-mono text-xs text-ink-dim tnum mb-1">
               {formatQuantity(holding.quantity)} {coin.symbol} · cost basis {formatCurrency(holding.costBasis)}
             </div>
-            <div className="font-mono text-sm font-bold text-oxblood tnum mb-3">
+            <div className="font-mono text-sm font-bold text-oxblood tnum">
               {formatSignedGbp(holding.unrealizedPnl)} ({formatSignedPct(holding.unrealizedPnlPct)}) — lost
             </div>
-            {!confirmSell ? (
-              <button
-                type="button"
-                className="btn-ink w-full tap-target"
-                onClick={() => { setError(null); setConfirmSell(true); }}
-              >
-                Sell dead position for £0.00
-              </button>
-            ) : (
-              <div>
-                <p className="text-xs text-ink-dim mb-2">
-                  Confirm: sell {formatQuantity(holding.quantity)} {coin.symbol} for exactly £0.00. Selling costs no Power.
-                </p>
-                <div className="flex gap-2">
-                  <button type="button" className="btn-ink flex-1 tap-target" disabled={pending} onClick={() => setConfirmSell(false)}>
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-oxblood flex-1 tap-target"
-                    disabled={pending}
-                    onClick={() => void confirmSellPosition()}
-                  >
-                    {pending ? 'Committing…' : 'Confirm £0 sell'}
-                  </button>
-                </div>
-              </div>
-            )}
-            {error && <div className="font-mono text-xs text-oxblood mt-2" role="alert">{error}</div>}
+            <p className="text-xs text-ink-mute mt-2">
+              A dead holding stays on the books as history, valued at £0.00.
+            </p>
           </div>
         )}
       </article>
@@ -308,7 +215,7 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
     return (
       <article className="game-card owned-card" aria-label={`${coin.name} — your position`} onClick={handleCardClick}>
         {cardHeader}
-        <CoinSparkline coin={coin} averageEntryPrice={holding.averageEntryPrice} cycleStartTime={gameState?.startTime ?? null} />
+        <CoinSparkline coin={coin} averageEntryPrice={holding.averageEntryPrice} cycleStartTime={null} />
         <div className="position-economics" aria-label={`Position ${pnlWord}`}>
           <div className="grid grid-cols-2 gap-2 mb-2">
             <div>
@@ -319,7 +226,7 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
             </div>
             <div>
               <div className="label mb-0.5">Current price</div>
-              <div className="font-mono text-sm text-ink tnum">{formatCurrency(holding.currentPrice)}</div>
+              <div className="font-mono text-sm text-ink tnum">{formatCurrency(coin.currentPrice)}</div>
             </div>
             <div>
               <div className="label mb-0.5">Position value</div>
@@ -355,7 +262,7 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
               <dl className="font-mono text-xs space-y-1 mb-3">
                 <div className="flex justify-between gap-2"><dt className="text-ink-mute">Quantity</dt><dd className="text-ink tnum text-right">{formatQuantity(holding.quantity)} {coin.symbol}</dd></div>
                 <div className="flex justify-between gap-2"><dt className="text-ink-mute">Est. proceeds</dt><dd className="text-ink tnum text-right">{formatCurrency(holding.currentValue)}</dd></div>
-                <div className="flex justify-between gap-2"><dt className="text-ink-mute">Power cost</dt><dd className="text-verdigris tnum text-right">0 — selling is always free</dd></div>
+                <div className="flex justify-between gap-2"><dt className="text-ink-mute">Execution</dt><dd className="text-ink-dim tnum text-right">Server-locked live price</dd></div>
               </dl>
               <div className="flex gap-2">
                 <button type="button" className="btn-ink flex-1 tap-target" disabled={pending} onClick={() => setConfirmSell(false)}>
@@ -385,7 +292,7 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
         </button>
         {showCustomTrade && (
           <div className="mt-2">
-            <RoundTradePanel coin={legacyCoin} />
+            <PersistentTradePanel coin={legacyCoin} />
           </div>
         )}
       </article>
@@ -394,18 +301,12 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
 
   // --- Not owned: quick buys -----------------------------------------------------
   const blockedReasons = QUICK_BUY_NOTIONALS.map((notional) =>
-    quickBuyBlockReason({
+    persistentTradeBlockReason({
       authenticated: !!user,
-      joined,
-      lifecycle,
-      connection,
-      collapsed: coin.dead,
-      cash: roundCash,
-      power: powerCurrent,
-      openPositions,
-      alreadyOwned: false,
-      notional,
-      price: coin.currentPrice
+      synced,
+      accountError,
+      cash,
+      notional
     })
   );
   const sharedBlock = blockedReasons.every((reason) => reason !== null && reason === blockedReasons[0])
@@ -415,35 +316,33 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
   return (
     <article className="game-card" aria-label={`${coin.name} — available to buy`} onClick={handleCardClick}>
       {cardHeader}
-      <CoinSparkline coin={coin} cycleStartTime={gameState?.startTime ?? null} />
+      <CoinSparkline coin={coin} cycleStartTime={null} />
       {signalBlock}
 
       <div className="mt-3">
         <div className="flex items-center justify-between mb-1.5">
           <span className="label">Quick buy</span>
-          <span className="text-xs text-ink-mute">⚡ = estimated Power cost</span>
+          <span className="text-xs text-ink-mute">Executes at the server-locked live price</span>
         </div>
         {confirmNotional === null ? (
           <div className="quick-buy-grid" role="group" aria-label={`Quick buy ${coin.symbol}`}>
             {QUICK_BUY_NOTIONALS.map((notional, index) => {
               const reason = blockedReasons[index];
-              const powerCost = estimateBuyPowerCost(notional);
               return (
                 <button
                   key={notional}
                   type="button"
                   className="quick-buy-btn"
                   disabled={reason !== null}
-                  title={reason !== null ? QUICK_BUY_BLOCK_LABEL[reason] : undefined}
+                  title={reason !== null ? PERSISTENT_TRADE_BLOCK_LABEL[reason] : undefined}
                   aria-label={
                     reason !== null
-                      ? `Buy ${quickBuyLabel(notional)} of ${coin.symbol} — unavailable: ${QUICK_BUY_BLOCK_LABEL[reason]}`
-                      : `Buy ${quickBuyLabel(notional)} of ${coin.symbol} (estimated ${powerCost} Power)`
+                      ? `Buy ${quickBuyLabel(notional)} of ${coin.symbol} — unavailable: ${PERSISTENT_TRADE_BLOCK_LABEL[reason]}`
+                      : `Buy ${quickBuyLabel(notional)} of ${coin.symbol}`
                   }
                   onClick={() => { setError(null); setConfirmNotional(notional); }}
                 >
                   <span className="quick-buy-amount">{quickBuyLabel(notional)}</span>
-                  <span className="quick-buy-power">⚡{powerCost} est.</span>
                 </button>
               );
             })}
@@ -460,7 +359,7 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
                   <div className="flex justify-between gap-2"><dt className="text-ink-mute">Quantity</dt><dd className="text-ink tnum text-right">{quantity === null ? '—' : `${formatQuantity(quantity)} ${coin.symbol}`}</dd></div>
                   <div className="flex justify-between gap-2"><dt className="text-ink-mute">At displayed price</dt><dd className="text-ink tnum text-right">{formatCurrency(coin.currentPrice)}</dd></div>
                   <div className="flex justify-between gap-2"><dt className="text-ink-mute">Est. total</dt><dd className="text-gold font-bold tnum text-right">{formatCurrency(estTotal)}</dd></div>
-                  <div className="flex justify-between gap-2"><dt className="text-ink-mute">Power (estimate)</dt><dd className="text-ink tnum text-right">⚡{estimateBuyPowerCost(confirmNotional)} — server confirms the final cost</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-ink-mute">Execution</dt><dd className="text-ink-dim tnum text-right">Server-locked live price</dd></div>
                 </dl>
               );
             })()}
@@ -480,7 +379,7 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
           </div>
         )}
         {sharedBlock !== null && confirmNotional === null && (
-          <p className="text-xs text-ink-dim mt-1.5" role="status">{QUICK_BUY_BLOCK_LABEL[sharedBlock]}</p>
+          <p className="text-xs text-ink-dim mt-1.5" role="status">{PERSISTENT_TRADE_BLOCK_LABEL[sharedBlock]}</p>
         )}
         {error && <div className="font-mono text-xs text-oxblood mt-2" role="alert">{error}</div>}
       </div>
@@ -495,7 +394,7 @@ export function CoinSignalCard({ coin, holding, signalsNowMs, onOpenDetail }: Co
       </button>
       {showCustomTrade && (
         <div className="mt-2">
-          <RoundTradePanel coin={legacyCoin} />
+          <PersistentTradePanel coin={legacyCoin} />
         </div>
       )}
     </article>

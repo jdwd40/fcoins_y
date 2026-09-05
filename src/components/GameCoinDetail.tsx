@@ -1,17 +1,15 @@
 import { Skull } from 'lucide-react';
-import { useGame } from '../context/GameContext.tsx';
 import { PriceChart } from './PriceChart';
-import { RoundTradePanel } from './RoundTradePanel.tsx';
+import { PersistentTradePanel } from './PersistentTradePanel.tsx';
 import { formatCurrency } from '../services/transactionService.ts';
-import type { MarketSignalCoin, RoundHolding } from '../services/gameService.ts';
+import type { PersistentCoinSignal } from '../services/persistentService.ts';
+import type { PersistentHolding } from '../services/persistentService.ts';
 import {
   archetypePersonality,
   formatQuantity,
   formatRecentChangePct,
   formatSignedGbp,
   formatSignedPct,
-  formatTypicalCycle,
-  formatTypicalSwing,
   momentumArrow
 } from '../utils/gameLogic.ts';
 import { sparklineRangeForCoin } from '../utils/sparkline.ts';
@@ -22,10 +20,9 @@ import type { Coin, TimeRange } from '../types';
 // secondary information lives — the compact card stays a fast
 // read-and-trade surface.
 //
-// Everything here is public, already-happened data: the shared GameContext
-// market-signals poll (phase, momentum, archetype, typical ranges, collapse
-// risk), the server-owned participant holding economics, and the
-// authoritative per-coin /coins/:id/price-history endpoint. No hidden or
+// Everything here is public, already-happened data: the shared persistent
+// signals (momentum, archetype, recent movement), the server-owned holding
+// economics, and the authoritative per-coin price-history. No hidden or
 // future market information exists in these contracts and none is rendered.
 
 // Short cycle windows are first-class so the current dip → rise → boom →
@@ -34,15 +31,13 @@ const DETAIL_PRIMARY_RANGES: readonly TimeRange[] = ['10M', '30M', '1H', '2H'];
 const DETAIL_SECONDARY_RANGES: readonly TimeRange[] = ['24H', '7D', '30D', 'ALL'];
 
 interface GameCoinDetailProps {
-  coin: MarketSignalCoin;
-  holding: RoundHolding | null;
+  coin: PersistentCoinSignal;
+  /** The player's PERSISTENT holding in this coin (server-owned economics). */
+  holding: PersistentHolding | null;
 }
 
 export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
-  const { gameState, myParticipant } = useGame();
-
   const owned = !!holding && holding.quantity > 0;
-  const power = myParticipant?.power ?? null;
 
   // The classic trade panel consumes the legacy Coin shape; only
   // coin_id/symbol/current_price are read from it. The price stays the
@@ -59,7 +54,7 @@ export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
   };
 
   // The default detail window makes the current cycle inspectable: the
-  // same public archetype/typical-cycle mapping as the compact sparkline
+  // same public archetype range mapping as the compact sparkline
   // (issue #12) — no hidden timing is ever consulted.
   const initialRange = sparklineRangeForCoin(coin);
 
@@ -74,10 +69,6 @@ export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
           <span>Coin {coin.coinId}</span>
           <span>·</span>
           <span>{coin.symbol}/GBP</span>
-          <span className={`signal-chip phase-${coin.phase.toLowerCase()}`}>{coin.phase}</span>
-          <span className={`signal-chip risk-${coin.collapseRisk.toLowerCase()}`}>
-            Risk {coin.collapseRisk}
-          </span>
         </div>
         <h2 className="font-display text-2xl sm:text-4xl font-semibold text-ink leading-tight">
           {coin.name}
@@ -96,18 +87,14 @@ export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
         <div className="mb-4 border border-oxblood rounded-xl p-4 bg-paper-alt flex items-center gap-3" role="note">
           <Skull className="w-5 h-5 text-oxblood shrink-0" aria-hidden="true" />
           <p className="text-sm text-ink-dim">
-            <strong className="text-oxblood">DEAD · COLLAPSED.</strong>{' '}
-            This coin collapsed to £0.00 and stays dead for the rest of the apocalypse. It cannot be bought.
+            <strong className="text-oxblood">DEAD · PERMANENT.</strong>{' '}
+            This coin died in the persistent market and trading has stopped permanently. Its history is preserved.
           </p>
         </div>
       )}
 
-      {/* Public signal facts — every state is explicit text. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-5" aria-label="Market signal detail">
-        <div className="stat-cell">
-          <div className="label mb-0.5">Phase</div>
-          <div className="mt-1"><span className={`signal-chip phase-${coin.phase.toLowerCase()}`}>{coin.phase}</span></div>
-        </div>
+      {/* Public signal facts — every state is explicit text (persistent only). */}
+      <div className="grid grid-cols-3 gap-2 mb-5" aria-label="Market signal detail">
         <div className="stat-cell">
           <div className="label mb-0.5">Momentum</div>
           <div className="font-mono text-sm font-bold text-ink tnum mt-1">{momentumArrow(coin.momentum)}</div>
@@ -121,14 +108,6 @@ export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
         <div className="stat-cell">
           <div className="label mb-0.5">Archetype</div>
           <div className="text-sm text-ink mt-1">{coin.archetype} · {archetypePersonality(coin.archetype)}</div>
-        </div>
-        <div className="stat-cell">
-          <div className="label mb-0.5">Typical cycle</div>
-          <div className="font-mono text-xs text-ink-dim tnum mt-1">{formatTypicalCycle(coin)}</div>
-        </div>
-        <div className="stat-cell">
-          <div className="label mb-0.5">Typical swing</div>
-          <div className="font-mono text-xs text-ink-dim tnum mt-1">{formatTypicalSwing(coin)}</div>
         </div>
       </div>
 
@@ -153,7 +132,7 @@ export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
             </div>
             <div className="stat-cell">
               <div className="label mb-0.5">Current price</div>
-              <div className="font-mono text-sm text-ink tnum mt-1">{formatCurrency(holding.currentPrice)}</div>
+              <div className="font-mono text-sm text-ink tnum mt-1">{formatCurrency(coin.currentPrice)}</div>
             </div>
             <div className="stat-cell">
               <div className="label mb-0.5">Position value</div>
@@ -169,45 +148,39 @@ export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
         </div>
       )}
 
-      {/* Larger authoritative per-coin chart: short cycle windows first,
-          clipped to the live apocalypse; the average-entry marker appears
-          only when it sits inside the visible window. */}
+      {/* Larger authoritative per-coin chart: short cycle windows first.
+          There is no cycle in the persistent market — the chart is never
+          clipped to an apocalypse; the average-entry marker appears only
+          when it sits inside the visible window. */}
       <div className="mb-5">
-        <div className="label mb-3">Price history · this apocalypse</div>
+        <div className="label mb-3">Price history</div>
         <PriceChart
           key={coin.coinId}
           coinId={coin.coinId}
           ranges={DETAIL_PRIMARY_RANGES}
           secondaryRanges={DETAIL_SECONDARY_RANGES}
           initialRange={initialRange}
-          cycleStartTime={gameState?.startTime ?? null}
+          cycleStartTime={null}
           averageEntryPrice={owned && holding ? holding.averageEntryPrice : null}
           heightClass="h-[280px] sm:h-[440px]"
         />
       </div>
 
-      {/* Trade area: explicit controls only. The shared round trade panel
-          owns confirmation, gating, the authoritative trade() call and
-          verbatim server rejections; the browser never derives Cash, P&L,
-          limits or trade success. */}
+      {/* Trade area: explicit controls only. The shared persistent trade
+          panel owns confirmation, gating, the authoritative trade() call
+          and verbatim server rejections; the browser never derives Cash,
+          P&L, limits or trade success. */}
       {coin.dead ? (
         owned && (
           <div>
-            <div className="label mb-2">Round trading</div>
-            <RoundTradePanel coin={legacyCoin} showPowerEstimate />
+            <div className="label mb-2">Persistent trading</div>
+            <PersistentTradePanel coin={legacyCoin} />
           </div>
         )
       ) : (
         <div>
-          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-            <div className="label">Round trading</div>
-            {power && (
-              <div className="font-mono text-xs text-ink-dim tnum">
-                ⚡ Power {power.current}/{power.max} · buys cost Power · selling is always free
-              </div>
-            )}
-          </div>
-          <RoundTradePanel coin={legacyCoin} showPowerEstimate />
+          <div className="label mb-2">Persistent trading</div>
+          <PersistentTradePanel coin={legacyCoin} />
         </div>
       )}
     </div>
