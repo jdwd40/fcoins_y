@@ -44,7 +44,7 @@ interface CoinSignalCardProps {
 export function CoinSignalCard({ coin, holding, onOpenDetail }: CoinSignalCardProps) {
   const { user, handleSessionExpired } = useAuth();
   const { showToast } = useToast();
-  const { account, synced, accountError, trade } = usePersistent();
+  const { account, synced, provisioned, accountError, trade } = usePersistent();
 
   const [confirmNotional, setConfirmNotional] = useState<number | null>(null);
   const [confirmSell, setConfirmSell] = useState(false);
@@ -304,6 +304,7 @@ export function CoinSignalCard({ coin, holding, onOpenDetail }: CoinSignalCardPr
     persistentTradeBlockReason({
       authenticated: !!user,
       synced,
+      provisioned,
       accountError,
       cash,
       notional
