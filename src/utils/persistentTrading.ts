@@ -17,9 +17,15 @@ export interface PersistentTradeGate {
   authenticated: boolean;
   /** True once the persistent account endpoint answered for this identity. */
   synced: boolean;
+  /** True when the account row exists server-side. A synced-but-
+   *  unprovisioned account ({ provisioned: false }) is a real state: the
+   *  first BUY provisions it idempotently with the server-owned starting
+   *  Cash. */
+  provisioned: boolean;
   /** Last account-sync failure; an account may still exist (last good). */
   accountError: string | null;
-  /** The server-owned persistent cash, or null when never synced. */
+  /** The server-owned persistent cash, or null when never synced OR not
+   *  yet provisioned (never a fabricated balance). */
   cash: number | null;
   /** Notional (GBP) under consideration, for the affordability gate. */
   notional: number;
@@ -32,7 +38,13 @@ export function persistentTradeBlockReason(gate: PersistentTradeGate): Persisten
   // account the stale balance remains trade-gating (the server revalidates
   // at commit time anyway).
   if (gate.cash === null) {
-    return gate.accountError !== null ? 'account-unavailable' : 'account-syncing';
+    if (gate.accountError !== null) return 'account-unavailable';
+    // Synced + unprovisioned is NOT loading: the first BUY is the
+    // provisioning path (idempotent server-side grant). Cash stays unknown
+    // client-side until the server answer, so there is no affordability
+    // figure to gate on — the server revalidates everything at commit time.
+    if (gate.synced && !gate.provisioned) return null;
+    return 'account-syncing';
   }
   if (!gate.synced) return 'account-syncing';
   if (gate.notional > gate.cash) return 'insufficient-cash';

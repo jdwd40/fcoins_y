@@ -13,6 +13,7 @@ import {
 const BASE = {
   authenticated: true,
   synced: true,
+  provisioned: true,
   accountError: null,
   cash: 10000,
   notional: 250
@@ -39,6 +40,37 @@ test('a failed first sync is unavailable; a failed resync keeps the last good ba
   // last-good cash survives a transient read failure (the server revalidates
   // at commit time)
   assert.equal(persistentTradeBlockReason({ ...BASE, accountError: 'boom' }), null);
+});
+
+test('a synced-but-unprovisioned account can place the first BUY — never blocked as syncing', () => {
+  // P0 regression: { provisioned: false } is a real SYNCED state (synced,
+  // no error, account/cash unknown client-side). The first BUY must be
+  // reachable: the server provisions the account idempotently with the
+  // authoritative starting Cash and revalidates affordability at commit
+  // time. Cash is never fabricated client-side, so the affordability gate
+  // simply has nothing to check against yet.
+  assert.equal(
+    persistentTradeBlockReason({ ...BASE, provisioned: false, cash: null }),
+    null
+  );
+  assert.equal(
+    persistentTradeBlockReason({ ...BASE, provisioned: false, cash: null, notional: 100000 }),
+    null
+  );
+});
+
+test('an UNSYNCED unprovisioned identity is still syncing', () => {
+  assert.equal(
+    persistentTradeBlockReason({ ...BASE, provisioned: false, cash: null, synced: false }),
+    'account-syncing'
+  );
+});
+
+test('a failed sync with no account is unavailable even when unprovisioned', () => {
+  assert.equal(
+    persistentTradeBlockReason({ ...BASE, provisioned: false, cash: null, accountError: 'boom' }),
+    'account-unavailable'
+  );
 });
 
 test('affordability gates on the server-owned cash figure', () => {

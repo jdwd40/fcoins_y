@@ -254,6 +254,42 @@ test('trade result parses the transaction and the post-trade account', async () 
     assert.equal(result.transaction.type, 'SELL');
     assert.equal(result.transaction.price, 2500); // reported by the server
     assert.equal(result.account.cash, 9990);
+    // The account is the server-returned object, verbatim — the context
+    // adopts it unchanged via setAccount(result.account).
+    assert.deepEqual(result.account, VALID_ACCOUNT);
+  } finally {
+    restore();
+  }
+});
+
+test('first BUY returns the authoritative provisioned account — never a fabricated £10,000 client account', async () => {
+  // P0 first-trade regression: the first BUY doubles as provisioning. The
+  // server grants the starting Cash idempotently at commit time and returns
+  // the authoritative account in the SAME response. Deliberately use
+  // NON-default figures so any client-side fabrication (a hardcoded £10,000
+  // starting Cash, cash recomputed from the notional, etc.) fails loudly.
+  const firstTradeResult = {
+    transaction: {
+      ...VALID_TRANSACTION,
+      persistentTransactionId: 43,
+      type: 'BUY',
+      quantity: 0.004,
+      totalAmount: 10
+    },
+    account: {
+      ...VALID_ACCOUNT,
+      startingCash: 7500, // server-owned grant — NOT a client constant
+      cash: 1234.5,       // authoritative post-trade figure
+      provisionedAt: '2026-09-06T09:15:00.000Z'
+    }
+  };
+  const restore = stubFetch(async () => jsonResponse(envelope(firstTradeResult), 201));
+  try {
+    const result = await buyPersistentTrade(TOKEN, { coinId: 2, quantity: 0.004 });
+    assert.equal(result.transaction.type, 'BUY');
+    assert.deepEqual(result.account, firstTradeResult.account);
+    assert.equal(result.account.startingCash, 7500);
+    assert.equal(result.account.cash, 1234.5);
   } finally {
     restore();
   }

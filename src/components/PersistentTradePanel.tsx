@@ -30,7 +30,7 @@ interface PersistentTradePanelProps {
 export function PersistentTradePanel({ coin }: PersistentTradePanelProps) {
   const { user, handleSessionExpired } = useAuth();
   const { showToast } = useToast();
-  const { account, synced, accountError, trade, syncNow } = usePersistent();
+  const { account, synced, provisioned, accountError, trade, syncNow } = usePersistent();
 
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
   const [amount, setAmount] = useState('');
@@ -62,8 +62,11 @@ export function PersistentTradePanel({ coin }: PersistentTradePanelProps) {
     );
   }
 
-  if (!synced || (account === null && accountError === null)) {
-    // Never fabricate a balance while the account syncs.
+  if (!synced) {
+    // Never fabricate a balance while the account syncs. A synced-but-
+    // unprovisioned account is NOT this state: it falls through to the
+    // normal trade form below — the first BUY is the provisioning path
+    // (the server grants the starting Cash idempotently at commit time).
     return (
       <div className="border border-rule rounded-xl p-5 bg-paper-alt text-center">
         <div className="label mb-2">Persistent trading</div>
@@ -286,6 +289,12 @@ export function PersistentTradePanel({ coin }: PersistentTradePanelProps) {
             Cash · <span className="text-ink-dim">{cash === null ? '—' : formatCurrency(cash)}</span>
             {side === 'SELL' && <span className="ml-3">Held · <span className="text-ink-dim">{formatQuantity(heldQuantity)} {coin.symbol}</span></span>}
           </div>
+
+          {!provisioned && (
+            <p className="text-xs text-ink-mute" role="note">
+              Your first buy provisions your account on the server — the starting Cash is granted there, idempotently, never displayed here first.
+            </p>
+          )}
 
           {error && <div className="font-mono text-xs text-oxblood" role="alert">{error}</div>}
 

@@ -976,6 +976,42 @@ assert.match(persistentTradePanel, /persistent account is unavailable/);
 assert.match(persistentTradePanel, /permanently dead/);
 assert.match(persistentTradePanel, /Confirm persistent/);
 assert.doesNotMatch(persistentTradePanel, /⚡|showPowerEstimate/);
+// P0 first-trade regression: a synced-but-UNPROVISIONED account is not a
+// loading state. The panel's syncing branch keys on !synced alone — the
+// unprovisioned state (synced, account null, no error) must fall through
+// to the normal BUY form, and the panel must consume `provisioned` so the
+// distinction can never silently collapse back into "syncing".
+assert.match(persistentTradePanel, /if \(!synced\) \{/);
+assert.doesNotMatch(persistentTradePanel, /!synced \|\| \(account === null/);
+assert.match(persistentTradePanel, /provisioned/);
+// The first BUY rides the EXISTING authoritative path: context trade() →
+// buyPersistentTrade → POST /persistent/trades/buy — no new endpoint, no
+// client-side provisioning flow, no fabricated starting Cash.
+assert.match(persistentTradePanel, /trade\(side, coin\.coin_id, amountValue\)/);
+assert.match(persistentService, /\/persistent\/trades\/buy/);
+// The quick-buy gate receives the provisioned flag so a synced
+// unprovisioned account is NOT blocked as 'account-syncing' on the cards.
+assert.match(persistentTrading, /provisioned: boolean/);
+assert.match(persistentTrading, /gate\.synced && !gate\.provisioned/);
+assert.match(coinSignalCard, /synced,\s*provisioned,\s*accountError/);
+// The post-first-BUY transition is pinned as ONE atomic adoption of the
+// authoritative server-returned account in the context trade path:
+// setAccount(result.account) together with setProvisioned(true) and
+// setSynced(true). The account is never reconstructed or fabricated
+// client-side — in particular no £10,000 starting-Cash literal may appear
+// in the context, panel, card, or gate (the server grants it at commit).
+assert.match(
+  persistentContext,
+  /setAccount\(result\.account\);\s*\n\s*setProvisioned\(true\);\s*\n\s*setSynced\(true\);/
+);
+for (const [name, text] of Object.entries({
+  persistentContext,
+  persistentTradePanel,
+  coinSignalCard,
+  persistentTrading
+})) {
+  assert.doesNotMatch(text, /10000|10_000/, `${name} must not fabricate the £10,000 starting Cash`);
+}
 // The persistent panels never fetch independently of the shared context,
 // except the bounded transaction-history read in the account panel/profile.
 assert.doesNotMatch(persistentTradePanel, /\bfetch\(|setInterval/);
