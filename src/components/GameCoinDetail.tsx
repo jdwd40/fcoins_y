@@ -30,7 +30,7 @@ import type { Coin, TimeRange } from '../types';
 // information exists in these contracts and none is rendered.
 
 const DETAIL_PRIMARY_RANGES: readonly TimeRange[] = ['10M', '30M', '1H', '2H'];
-const DETAIL_SECONDARY_RANGES: readonly TimeRange[] = ['24H', '7D', '30D', 'ALL'];
+const DETAIL_SECONDARY_RANGES: readonly TimeRange[] = [];
 
 interface GameCoinDetailProps {
   coin: PersistentCoinSignal;
@@ -263,10 +263,11 @@ export function GameCoinDetail({ coin, holding }: GameCoinDetailProps) {
         </div>
       )}
 
-      {/* Larger authoritative per-coin chart: short cycle windows first.
-          There is no cycle in the persistent market — the chart is never
-          clipped to an apocalypse; the average-entry marker appears only
-          when it sits inside the visible window. */}
+      {/* Larger authoritative per-coin chart: short cycle windows only
+          (≤2H — BE has no 12H; longer windows capped for UX). There is no
+          cycle in the persistent market — the chart is never clipped to an
+          apocalypse; the average-entry marker appears only when it sits
+          inside the visible window. */}
       <div className="mb-5">
         <div className="label mb-3">Price history</div>
         <PriceChart

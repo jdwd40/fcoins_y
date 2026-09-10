@@ -17,6 +17,11 @@ import 'chartjs-adapter-date-fns';
 import { PricePoint, PriceHistoryResponse, TimeRange } from '../types';
 import { computePeriodSummary, PeriodSummary } from '../utils/priceSummary';
 import { clipPointsSince, entryMarkerVisible } from '../utils/sparkline.ts';
+import {
+  COIN_CHART_RANGES,
+  DEFAULT_COIN_CHART_RANGE,
+  clampCoinChartRange,
+} from '../utils/marketHistoryChart.ts';
 
 ChartJS.register(
   CategoryScale,
@@ -32,7 +37,7 @@ ChartJS.register(
 interface PriceChartProps {
   coinId: number;
   refreshTrigger?: number;
-  /** Selectable primary ranges (default: the classic 24H/7D/30D/ALL set). */
+  /** Selectable primary ranges (default: ≤2H BE-supported coin windows). */
   ranges?: readonly TimeRange[];
   /** Longer windows rendered as a separate secondary group (issue #13). */
   secondaryRanges?: readonly TimeRange[];
@@ -60,12 +65,9 @@ function formatAdaptivePrice(value: number): string {
   });
 }
 
-const TIME_RANGES: { value: TimeRange; label: string }[] = [
-  { value: '24H', label: '24H' },
-  { value: '7D', label: '7D' },
-  { value: '30D', label: '30D' },
-  { value: 'ALL', label: 'ALL' },
-];
+const TIME_RANGES: { value: TimeRange; label: string }[] = COIN_CHART_RANGES.map(
+  (value) => ({ value, label: value })
+);
 
 const API_BASE = API_BASE_URL;
 
@@ -115,8 +117,16 @@ export function PriceChart({
   averageEntryPrice = null,
   heightClass = 'h-[240px] sm:h-[380px]'
 }: PriceChartProps) {
-  const primaryRanges = ranges ?? TIME_RANGES.map(({ value }) => value);
-  const [selectedRange, setSelectedRange] = useState<TimeRange>(initialRange ?? primaryRanges[0]);
+  const primaryRanges = (ranges ?? TIME_RANGES.map(({ value }) => value)).map((r) =>
+    clampCoinChartRange(r)
+  ) as TimeRange[];
+  // Drop any >2H secondary options (UI capped; BE longer keys may still exist on TimeRange).
+  const safeSecondaryRanges = (secondaryRanges ?? []).filter((r) =>
+    (COIN_CHART_RANGES as readonly string[]).includes(r)
+  ) as TimeRange[];
+  const [selectedRange, setSelectedRange] = useState<TimeRange>(() =>
+    clampCoinChartRange(initialRange ?? primaryRanges[0] ?? DEFAULT_COIN_CHART_RANGE)
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<PriceHistoryResponse | null>(null);
@@ -378,7 +388,7 @@ export function PriceChart({
   const rangeButton = (value: TimeRange) => (
     <button
       key={value}
-      onClick={() => setSelectedRange(value)}
+      onClick={() => setSelectedRange(clampCoinChartRange(value))}
       aria-pressed={selectedRange === value}
       className={`flex-1 sm:flex-none min-h-[44px] px-2 sm:px-4 py-2 font-mono text-xs sm:text-sm tracking-[0.5px] uppercase border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
         selectedRange === value
@@ -431,7 +441,7 @@ export function PriceChart({
       >
         {primaryRanges.map(rangeButton)}
       </div>
-      {secondaryRanges && secondaryRanges.length > 0 && (
+      {safeSecondaryRanges.length > 0 && (
         <div className="flex items-center gap-2">
           <span className="label shrink-0">Longer</span>
           <div
@@ -439,7 +449,7 @@ export function PriceChart({
             aria-label="Select a longer chart time range"
             className="flex flex-1 gap-1 sm:gap-2"
           >
-            {secondaryRanges.map(rangeButton)}
+            {safeSecondaryRanges.map(rangeButton)}
           </div>
         </div>
       )}

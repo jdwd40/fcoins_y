@@ -14,6 +14,15 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
+import {
+  MARKET_CHART_RANGES,
+  DEFAULT_MARKET_CHART_RANGE,
+  clampMarketChartRange,
+  sanitizeMarketHistoryPoints,
+  chartTimeUnitForRange,
+  type MarketChartRange,
+  type SanitizedMarketHistoryPoint,
+} from '../utils/marketHistoryChart.ts';
 
 ChartJS.register(
   CategoryScale,
@@ -27,54 +36,90 @@ ChartJS.register(
   Filler
 );
 
-type TimeRange = '5M' | '10M' | '30M' | '1H' | '2H' | '12H' | '24H' | 'ALL';
-
 interface MarketValueChartProps {
   className?: string;
   refreshTrigger: number;
 }
 
-const TIME_RANGES = [
-  { value: '5M', label: '5m' },
-  { value: '10M', label: '10m' },
-  { value: '30M', label: '30m' },
-  { value: '1H', label: '1h' },
-  { value: '2H', label: '2h' },
-  { value: '12H', label: '12h' },
-  { value: '24H', label: '24h' },
-  { value: 'ALL', label: 'All' },
-] as const;
+const RANGE_LABELS: Record<MarketChartRange, string> = {
+  '5M': '5m',
+  '10M': '10m',
+  '30M': '30m',
+  '1H': '1h',
+  '2H': '2h',
+  '12H': '12h',
+};
+
+const TIME_RANGES: { value: MarketChartRange; label: string }[] = MARKET_CHART_RANGES.map(
+  (value) => ({ value, label: RANGE_LABELS[value] })
+);
+
+function readPersistedMarketRange(): MarketChartRange {
+  try {
+    if (typeof localStorage === 'undefined') return DEFAULT_MARKET_CHART_RANGE;
+    return clampMarketChartRange(localStorage.getItem('marketValueChartRange'));
+  } catch {
+    return DEFAULT_MARKET_CHART_RANGE;
+  }
+}
 
 export function MarketValueChart({ className = '', refreshTrigger }: MarketValueChartProps) {
-  const [timeRange, setTimeRange] = useState<TimeRange>('30M');
-  const [priceHistory, setPriceHistory] = useState<Array<{ value: number; created_at: string; trend: string }>>([]);
+  const [timeRange, setTimeRange] = useState<MarketChartRange>(() => readPersistedMarketRange());
+  const [priceHistory, setPriceHistory] = useState<SanitizedMarketHistoryPoint[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const selectRange = (next: MarketChartRange) => {
+    const clamped = clampMarketChartRange(next);
+    setTimeRange(clamped);
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('marketValueChartRange', clamped);
+      }
+    } catch {
+      // ignore quota / private mode
+    }
+  };
+
   useEffect(() => {
+    let cancelled = false;
     const fetchMarketHistory = async () => {
       try {
         setLoading(true);
-        const url = `${API_BASE_URL}/market/price-history?timeRange=${timeRange}`;
+        // Clear immediately so a previous (wrong) range never stays visible
+        // while the next fetch/sanitize is in flight.
+        setPriceHistory([]);
+        // BE market timeRanges: 10M,30M,1H,2H,12H,24H,ALL — no 5M. Unknown
+        // keys return unfiltered ALL history. Request 10M for 5M (nearest
+        // supported), then always sanitize/window-filter client-side.
+        const apiRange = timeRange === '5M' ? '10M' : timeRange;
+        const url = `${API_BASE_URL}/market/price-history?timeRange=${apiRange}`;
         const response = await fetch(url);
         const data = await response.json();
+        if (cancelled) return;
         if (!data.history || !Array.isArray(data.history)) {
           setPriceHistory([]);
           return;
         }
-        const transformedData = data.history.map((item: { total_value: string; created_at: string; market_trend: string }) => ({
-          value: parseFloat(item.total_value),
-          created_at: item.created_at,
-          trend: item.market_trend,
-        }));
-        setPriceHistory(transformedData);
+        const transformed = data.history.map(
+          (item: { total_value: string; created_at: string; market_trend: string }) => ({
+            value: parseFloat(item.total_value),
+            created_at: item.created_at,
+            trend: item.market_trend,
+          })
+        );
+        // Atomic replace after sanitize so wrong-range data never stays visible.
+        setPriceHistory(sanitizeMarketHistoryPoints(transformed, timeRange, Date.now()));
       } catch (error) {
         console.error('Error fetching market history:', error);
-        setPriceHistory([]);
+        if (!cancelled) setPriceHistory([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     fetchMarketHistory();
+    return () => {
+      cancelled = true;
+    };
   }, [timeRange, refreshTrigger]);
 
   const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
@@ -82,25 +127,26 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
   const fillColor = isDark ? 'rgba(139, 92, 246, 0.16)' : 'rgba(113, 50, 245, 0.10)';
   const axisColor = isDark ? '#85899e' : '#686b82';
   const gridColor = isDark ? 'rgba(148, 151, 169, 0.10)' : 'rgba(104, 107, 130, 0.12)';
+  const timeUnit = chartTimeUnitForRange(timeRange);
 
   const chartData = {
     datasets: [
       {
         label: 'Market Value',
         data: priceHistory.map((item) => ({
-          x: new Date(item.created_at),
+          x: new Date(item.t),
           y: item.value,
         })),
         borderColor: lineColor,
         backgroundColor: fillColor,
         borderWidth: 1.75,
-        pointRadius: 0,
+        pointRadius: priceHistory.length <= 2 ? 3 : 0,
         pointHoverRadius: 5,
         pointHoverBackgroundColor: lineColor,
         pointHoverBorderColor: isDark ? '#08090d' : '#ffffff',
         pointHoverBorderWidth: 2,
         fill: true,
-        tension: 0.35,
+        tension: priceHistory.length >= 3 ? 0.35 : 0,
       },
     ],
   };
@@ -134,7 +180,10 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
     scales: {
       x: {
         type: 'time' as const,
-        time: { unit: 'minute' as const, displayFormats: { minute: 'HH:mm' } },
+        time: {
+          unit: timeUnit,
+          displayFormats: { minute: 'HH:mm', hour: 'HH:mm' },
+        },
         grid: { display: false },
         border: { color: gridColor },
         ticks: {
@@ -171,7 +220,7 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         {TIME_RANGES.map(({ value, label }) => (
           <button
             key={value}
-            onClick={() => setTimeRange(value)}
+            onClick={() => selectRange(value)}
             className={`font-mono text-[0.7rem] tracking-caps uppercase px-3 py-1.5 border transition-all ${
               timeRange === value
                 ? 'border-gold text-gold bg-paper-alt'
@@ -194,7 +243,7 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         )}
         {priceHistory.length > 0 && (
           <div className="h-[300px] sm:h-[360px]">
-            <Line data={chartData} options={options} />
+            <Line key={`market-${timeRange}`} data={chartData} options={options} />
           </div>
         )}
       </div>
