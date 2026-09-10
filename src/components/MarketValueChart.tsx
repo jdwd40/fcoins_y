@@ -20,6 +20,7 @@ import {
   clampMarketChartRange,
   sanitizeMarketHistoryPoints,
   chartTimeUnitForRange,
+  apiRangeForMarketChart,
   type MarketChartRange,
   type SanitizedMarketHistoryPoint,
 } from '../utils/marketHistoryChart.ts';

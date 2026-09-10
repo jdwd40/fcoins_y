@@ -616,6 +616,12 @@ assert.match(chart, /role="group"/);
 // Market aggregate chart: ≤12h selectors + client sanitize (5M defense).
 assert.match(marketValueChart, /MARKET_CHART_RANGES/);
 assert.match(marketValueChart, /sanitizeMarketHistoryPoints/);
+assert.match(marketValueChart, /apiRangeForMarketChart/);
+assert.match(
+  marketValueChart,
+  /import \{[\s\S]*apiRangeForMarketChart[\s\S]*\} from '\.\.\/utils\/marketHistoryChart\.ts'/
+);
+
 assert.match(marketValueChart, /chartTimeUnitForRange/);
 assert.match(marketValueChart, /clampMarketChartRange/);
 assert.doesNotMatch(marketValueChart, /value: '24H'/);
