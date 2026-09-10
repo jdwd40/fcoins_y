@@ -11,6 +11,7 @@ import {
   getPersistentAccount,
   getPersistentLeaderboard,
   getPersistentSignals,
+  getPersistentRuntime,
   buyPersistentTrade,
   sellPersistentTrade
 } from '../services/persistentService.ts';
@@ -19,6 +20,7 @@ import type {
   PersistentLeaderboard,
   PersistentLeaderboardEntry,
   PersistentMarketSignals,
+  PersistentRuntime,
   PersistentTradeSide
 } from '../services/persistentService.ts';
 import { GameApiError } from '../services/gameService.ts';
@@ -41,8 +43,9 @@ import { useToast } from './ToastContext';
 //     and the post-trade account is adopted from the server's response;
 //   * no client-side re-sort of the leaderboard — backend rank is authoritative.
 //
-// One shared 5s poll feeds account (when authenticated) AND the public
-// leaderboard. Do not add a second timer for the board.
+// One shared 5s poll feeds account (when authenticated), the public
+// leaderboard, signals, and runtime. Do not add a second timer.
+// Runtime failures are isolated via Promise.allSettled and never wipe signals.
 //
 // Account responses (sync + post-trade) are gated by persistentSyncGate: a
 // request/trade started for identity A that resolves after logout or an A→B
@@ -51,6 +54,8 @@ import { useToast } from './ToastContext';
 // Leaderboard applies stay ungated.
 
 export const PERSISTENT_POLL_INTERVAL_MS = 5000;
+/** Runtime is stale when last success is older than 3 poll intervals (15s). */
+export const RUNTIME_STALE_AFTER_MS = 3 * PERSISTENT_POLL_INTERVAL_MS;
 
 interface PersistentContextValue {
   /** The caller's persistent account. null = logged out OR not synced yet;
@@ -74,6 +79,18 @@ interface PersistentContextValue {
   signals: PersistentMarketSignals | null;
   /** Last signals-sync failure; the last good signals are kept on transient error. */
   signalsError: string | null;
+  /** Public persistent runtime (Director + coin events). Identity-independent. */
+  runtime: PersistentRuntime | null;
+  /** Last runtime-sync failure; the last good runtime is kept on transient error. */
+  runtimeError: string | null;
+  /** Local timestamp of the last successful runtime sync (null = never). */
+  runtimeSyncedAt: number | null;
+  /**
+   * True when the Director panel should show an unavailable state: runtime
+   * error / stale, or an active world with director null. Loading and no-world
+   * are separate UI states (runtime null without error, worldId null).
+   */
+  directorUnavailable: boolean;
   /** The signed-in human's row matched by authenticated userId, if present. */
   myEntry: PersistentLeaderboardEntry | null;
   /** Execute a persistent trade at the server-locked live price. */
@@ -97,6 +114,9 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
   const [signals, setSignals] = useState<PersistentMarketSignals | null>(null);
   const [signalsError, setSignalsError] = useState<string | null>(null);
+  const [runtime, setRuntime] = useState<PersistentRuntime | null>(null);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [runtimeSyncedAt, setRuntimeSyncedAt] = useState<number | null>(null);
 
   const gateRef = useRef(createPersistentSyncGate());
   const userIdRef = useRef<string | undefined>(user?.id);
@@ -110,16 +130,19 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
     const startedUserId = userIdRef.current;
     try {
       const token = getAuthToken();
-      // One shared poll: public leaderboard + signals always (identity-independent),
-      // account only when authed. Do not add a second timer.
-      const [boardResult, signalsResult, accountResult] = await Promise.allSettled([
+      // One shared poll: public leaderboard + signals + runtime always
+      // (identity-independent), account only when authed. Do not add a second
+      // timer. Runtime is fetched in the SAME allSettled so a runtime reject
+      // can never wipe signals/leaderboard/account (and vice versa).
+      const [boardResult, signalsResult, runtimeResult, accountResult] = await Promise.allSettled([
         getPersistentLeaderboard(),
         getPersistentSignals(),
+        getPersistentRuntime(),
         token ? getPersistentAccount(token) : Promise.resolve(null)
       ]);
 
-      // Leaderboard and signals are public and identity-independent — always apply.
-      // Transient error preserves last-good data (never wipe on failure).
+      // Leaderboard, signals and runtime are public and identity-independent —
+      // always apply. Transient error preserves last-good data (never wipe).
       if (boardResult.status === 'fulfilled') {
         setLeaderboard(boardResult.value);
         setLeaderboardError(null);
@@ -139,6 +162,19 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
           signalsResult.reason instanceof Error
             ? signalsResult.reason.message
             : 'Persistent signals unavailable'
+        );
+      }
+
+      if (runtimeResult.status === 'fulfilled') {
+        setRuntime(runtimeResult.value);
+        setRuntimeError(null);
+        setRuntimeSyncedAt(Date.now());
+      } else {
+        // Retain last-good runtime on transient failure (same as signals).
+        setRuntimeError(
+          runtimeResult.reason instanceof Error
+            ? runtimeResult.reason.message
+            : 'Persistent runtime unavailable'
         );
       }
 
@@ -265,6 +301,21 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
     [leaderboard, user?.id]
   );
 
+  // Director unavailable: active world with null director, error with no
+  // last-good runtime, or stale sync. Loading / empty-world are separate.
+  // Transient errors that retain last-good still set runtimeError but the
+  // panel may keep showing the last-good director until it goes stale.
+  const directorUnavailable = useMemo(() => {
+    if (runtimeSyncedAt !== null && Date.now() - runtimeSyncedAt > RUNTIME_STALE_AFTER_MS) {
+      return true;
+    }
+    if (runtime === null && runtimeError !== null) return true;
+    if (runtime !== null && runtime.worldId !== null && runtime.director === null) {
+      return true;
+    }
+    return false;
+  }, [runtime, runtimeError, runtimeSyncedAt]);
+
   const value: PersistentContextValue = {
     account,
     synced,
@@ -275,6 +326,10 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
     leaderboardError,
     signals,
     signalsError,
+    runtime,
+    runtimeError,
+    runtimeSyncedAt,
+    directorUnavailable,
     myEntry,
     trade,
     syncNow

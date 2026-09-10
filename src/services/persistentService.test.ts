@@ -19,6 +19,7 @@ import {
   buyPersistentTrade,
   getPersistentAccount,
   getPersistentLeaderboard,
+  getPersistentRuntime,
   getPersistentSignals,
   getPersistentTransactions,
   parsePersistentAccount,
@@ -26,10 +27,12 @@ import {
   parsePersistentLeaderboard,
   parsePersistentLeaderboardEntry,
   parsePersistentMarketSignals,
+  parsePersistentRuntime,
   parsePersistentTradeResult,
   parsePersistentTransaction,
   parsePersistentTransactionsResponse,
-  sellPersistentTrade
+  sellPersistentTrade,
+  PERSISTENT_DECISION_SUMMARY_CODES
 } from './persistentService.ts';
 import type {
   PersistentAccount,
@@ -591,4 +594,248 @@ test('getPersistentSignals calls exactly /persistent/signals (public, no token)'
   } finally {
     restore();
   }
+});
+
+// --- Wave 4: persistent runtime parser and fetch -----------------------------
+
+const VALID_RUNTIME_EVENT = {
+  eventId: 11,
+  name: 'Relief Rally',
+  modifierPct: 4.25,
+  startsAt: '2026-09-10T11:55:00.000Z',
+  endsAt: '2026-09-10T12:10:00.000Z'
+};
+
+const VALID_RUNTIME_DECISION = {
+  mode: 'NORMAL',
+  direction: null,
+  intensity: 0,
+  startedAt: '2026-09-10T11:00:00.000Z',
+  endsAt: '2026-09-10T12:30:00.000Z',
+  summaryCode: 'GENESIS_NORMAL'
+};
+
+const VALID_RUNTIME_DIRECTOR = {
+  mode: 'BOOM',
+  direction: 'POSITIVE',
+  intensity: 0.75,
+  startedAt: '2026-09-10T11:30:00.000Z',
+  endsAt: '2026-09-10T12:30:00.000Z',
+  goldenCoinId: 7,
+  goldenExpiresAt: '2026-09-10T12:20:00.000Z',
+  demonCoinId: 3,
+  demonExpiresAt: '2026-09-10T12:15:00.000Z',
+  recentDecisions: [
+    {
+      mode: 'BOOM',
+      direction: 'POSITIVE',
+      intensity: 0.75,
+      startedAt: '2026-09-10T11:30:00.000Z',
+      endsAt: '2026-09-10T12:30:00.000Z',
+      summaryCode: 'STAGNATION_SWING'
+    },
+    VALID_RUNTIME_DECISION
+  ]
+};
+
+const VALID_RUNTIME = {
+  serverTime: '2026-09-10T12:00:00.000Z',
+  worldId: 3,
+  director: VALID_RUNTIME_DIRECTOR,
+  coins: [
+    {
+      coinId: 7,
+      events: {
+        positive: [VALID_RUNTIME_EVENT],
+        negative: []
+      },
+      activeNetModifierPct: 4.25
+    },
+    {
+      coinId: 3,
+      events: { positive: [], negative: [] },
+      activeNetModifierPct: 0
+    }
+  ]
+};
+
+const NO_WORLD_RUNTIME = {
+  serverTime: '2026-09-10T12:00:00.000Z',
+  worldId: null,
+  director: null,
+  coins: []
+};
+
+test('runtime parser accepts active world, null director with coins, and empty world', () => {
+  const active = parsePersistentRuntime(VALID_RUNTIME);
+  assert.equal(active.worldId, 3);
+  assert.equal(active.director?.mode, 'BOOM');
+  assert.equal(active.director?.direction, 'POSITIVE');
+  assert.equal(active.director?.goldenCoinId, 7);
+  assert.equal(active.coins.length, 2);
+  assert.equal(active.coins[0].events.positive[0].name, 'Relief Rally');
+  assert.equal(active.coins[1].activeNetModifierPct, 0);
+
+  const noDirector = parsePersistentRuntime({
+    ...VALID_RUNTIME,
+    director: null
+  });
+  assert.equal(noDirector.worldId, 3);
+  assert.equal(noDirector.director, null);
+  assert.equal(noDirector.coins.length, 2);
+
+  const empty = parsePersistentRuntime(NO_WORLD_RUNTIME);
+  assert.equal(empty.worldId, null);
+  assert.equal(empty.director, null);
+  assert.deepEqual(empty.coins, []);
+});
+
+test('runtime NORMAL requires direction null and intensity 0 (current + history)', () => {
+  assert.throws(
+    () =>
+      parsePersistentRuntime({
+        ...VALID_RUNTIME,
+        director: { ...VALID_RUNTIME_DIRECTOR, mode: 'NORMAL', direction: 'POSITIVE', intensity: 0 }
+      }),
+    /NORMAL must have direction null/
+  );
+  assert.throws(
+    () =>
+      parsePersistentRuntime({
+        ...VALID_RUNTIME,
+        director: { ...VALID_RUNTIME_DIRECTOR, mode: 'NORMAL', direction: null, intensity: 0.1 }
+      }),
+    /NORMAL must have intensity 0/
+  );
+  const ok = parsePersistentRuntime({
+    ...VALID_RUNTIME,
+    director: {
+      ...VALID_RUNTIME_DIRECTOR,
+      mode: 'NORMAL',
+      direction: null,
+      intensity: 0,
+      recentDecisions: [VALID_RUNTIME_DECISION]
+    }
+  });
+  assert.equal(ok.director?.mode, 'NORMAL');
+  assert.equal(ok.director?.direction, null);
+  assert.equal(ok.director?.intensity, 0);
+
+  assert.throws(
+    () =>
+      parsePersistentRuntime({
+        ...VALID_RUNTIME,
+        director: {
+          ...VALID_RUNTIME_DIRECTOR,
+          recentDecisions: [{ ...VALID_RUNTIME_DECISION, direction: 'NEGATIVE' }]
+        }
+      }),
+    /NORMAL must have direction null/
+  );
+});
+
+test('runtime summaryCode allowlist is exhaustive; unknown codes and fields reject', () => {
+  for (const code of PERSISTENT_DECISION_SUMMARY_CODES) {
+    const parsed = parsePersistentRuntime({
+      ...VALID_RUNTIME,
+      director: {
+        ...VALID_RUNTIME_DIRECTOR,
+        recentDecisions: [{ ...VALID_RUNTIME_DECISION, summaryCode: code }]
+      }
+    });
+    assert.equal(parsed.director?.recentDecisions[0].summaryCode, code);
+  }
+  assert.throws(
+    () =>
+      parsePersistentRuntime({
+        ...VALID_RUNTIME,
+        director: {
+          ...VALID_RUNTIME_DIRECTOR,
+          recentDecisions: [{ ...VALID_RUNTIME_DECISION, summaryCode: 'SECRET_REASON' }]
+        }
+      }),
+    /unknown .*summaryCode/
+  );
+  assert.throws(() => parsePersistentRuntime({ ...VALID_RUNTIME, foo: 1 }), /unknown field foo/);
+  assert.throws(
+    () =>
+      parsePersistentRuntime({
+        ...VALID_RUNTIME,
+        director: { ...VALID_RUNTIME_DIRECTOR, secret: true }
+      }),
+    /unknown field director.secret/
+  );
+  assert.throws(
+    () =>
+      parsePersistentRuntime({
+        ...VALID_RUNTIME,
+        coins: [{ coinId: 1, events: { positive: [], negative: [] }, activeNetModifierPct: 0, phase: 'x' }]
+      }),
+    /unknown field/
+  );
+  assert.throws(
+    () =>
+      parsePersistentRuntime({
+        ...VALID_RUNTIME,
+        coins: [
+          {
+            coinId: 1,
+            events: { positive: [{ ...VALID_RUNTIME_EVENT, direction: 'POSITIVE' }], negative: [] },
+            activeNetModifierPct: 0
+          }
+        ]
+      }),
+    /unknown field/
+  );
+  assert.throws(
+    () => parsePersistentRuntime({ ...VALID_RUNTIME, cycleId: 'APOC-1' }),
+    /never carry cycleId|unknown field/
+  );
+});
+
+test('runtime rejects mismatched golden/demon id-expiry pairs and non-NORMAL null direction', () => {
+  assert.throws(
+    () =>
+      parsePersistentRuntime({
+        ...VALID_RUNTIME,
+        director: { ...VALID_RUNTIME_DIRECTOR, goldenCoinId: 7, goldenExpiresAt: null }
+      }),
+    /goldenCoinId and goldenExpiresAt/
+  );
+  assert.throws(
+    () =>
+      parsePersistentRuntime({
+        ...VALID_RUNTIME,
+        director: { ...VALID_RUNTIME_DIRECTOR, mode: 'BUST', direction: null, intensity: 0.5 }
+      }),
+    /non-NORMAL mode must have direction/
+  );
+});
+
+test('getPersistentRuntime calls exactly /persistent/runtime (public, no token)', async () => {
+  let calledUrl = '';
+  let auth: string | undefined;
+  const restore = stubFetch(async (args: { url?: string; init?: RequestInit }) => {
+    calledUrl = (args && args.url) || String(args);
+    const headers = args?.init?.headers as Record<string, string> | undefined;
+    auth = headers?.Authorization;
+    return jsonResponse(envelope(VALID_RUNTIME));
+  });
+  try {
+    const res = await getPersistentRuntime();
+    assert.ok(calledUrl.includes('/persistent/runtime'), `got ${calledUrl}`);
+    assert.equal(auth, undefined);
+    assert.equal(res.director?.mode, 'BOOM');
+    assert.equal(res.coins[0].coinId, 7);
+  } finally {
+    restore();
+  }
+});
+
+test('parsePersistentMarketSignals still rejects unknown fields (runtime must not loosen signals)', () => {
+  assert.throws(() => parsePersistentMarketSignals({ ...VALID_SIGNALS, foo: 1 }), /unknown field foo/);
+  assert.throws(
+    () => parsePersistentMarketSignals({ ...VALID_SIGNALS, director: { regime: 'x', intensity: 1, mode: 'BOOM' } }),
+    /unknown field director.mode/
+  );
 });

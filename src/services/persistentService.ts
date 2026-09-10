@@ -602,3 +602,323 @@ export async function getPersistentLeaderboard(signal?: AbortSignal): Promise<Pe
 export async function getPersistentSignals(signal?: AbortSignal): Promise<PersistentMarketSignals> {
   return persistentFetch('/persistent/signals', { signal }, parsePersistentMarketSignals);
 }
+
+// --- Persistent runtime (Wave 4 Director UI) ---------------------------------
+// GET /persistent/runtime — public, no token, read-only adaptive Director +
+// active coin-event snapshot for THE active world. Separate from
+// /persistent/signals (signals director is {regime,intensity}; runtime
+// director is the adaptive mode/direction/roles surface). Envelope
+// { status:'success', data:{ serverTime, worldId, director, coins } }.
+// Empty world: worldId null, director null, coins []. Active world may have
+// director null + non-empty coins + zero events.
+
+export type PersistentDirectorMode = 'NORMAL' | 'BOOM' | 'BUST' | 'RESCUE';
+export type PersistentDirectorDirection = 'POSITIVE' | 'NEGATIVE';
+export type PersistentDecisionSummaryCode =
+  | 'GENESIS_NORMAL'
+  | 'NORMAL_SWING'
+  | 'REFRACTORY_NORMAL'
+  | 'STAGNATION_SWING'
+  | 'RESCUE_DISTRESS'
+  | 'OVERHEAT_CORRECTION'
+  | 'ROLE_ROTATION'
+  | 'OTHER_SAFE';
+
+export const PERSISTENT_DIRECTOR_MODES: readonly PersistentDirectorMode[] = [
+  'NORMAL',
+  'BOOM',
+  'BUST',
+  'RESCUE'
+];
+export const PERSISTENT_DIRECTOR_DIRECTIONS: readonly PersistentDirectorDirection[] = [
+  'POSITIVE',
+  'NEGATIVE'
+];
+export const PERSISTENT_DECISION_SUMMARY_CODES: readonly PersistentDecisionSummaryCode[] = [
+  'GENESIS_NORMAL',
+  'NORMAL_SWING',
+  'REFRACTORY_NORMAL',
+  'STAGNATION_SWING',
+  'RESCUE_DISTRESS',
+  'OVERHEAT_CORRECTION',
+  'ROLE_ROTATION',
+  'OTHER_SAFE'
+];
+
+export interface PersistentRuntimeEvent {
+  eventId: number;
+  name: string;
+  modifierPct: number;
+  startsAt: string;
+  endsAt: string;
+}
+
+export interface PersistentRuntimeCoinEvents {
+  positive: PersistentRuntimeEvent[];
+  negative: PersistentRuntimeEvent[];
+}
+
+export interface PersistentRuntimeCoin {
+  coinId: number;
+  events: PersistentRuntimeCoinEvents;
+  activeNetModifierPct: number;
+}
+
+export interface PersistentDirectorDecision {
+  mode: PersistentDirectorMode;
+  direction: PersistentDirectorDirection | null;
+  intensity: number;
+  startedAt: string;
+  endsAt: string;
+  summaryCode: PersistentDecisionSummaryCode;
+}
+
+export interface PersistentRuntimeDirector {
+  mode: PersistentDirectorMode;
+  direction: PersistentDirectorDirection | null;
+  intensity: number;
+  startedAt: string;
+  endsAt: string;
+  goldenCoinId: number | null;
+  goldenExpiresAt: string | null;
+  demonCoinId: number | null;
+  demonExpiresAt: string | null;
+  recentDecisions: PersistentDirectorDecision[];
+}
+
+export interface PersistentRuntime {
+  serverTime: string;
+  worldId: number | null;
+  director: PersistentRuntimeDirector | null;
+  coins: PersistentRuntimeCoin[];
+}
+
+function requireNullableString(payload: Record<string, unknown>, field: string, contract: string): void {
+  if (payload[field] !== null && (typeof payload[field] !== 'string' || (payload[field] as string).length === 0)) {
+    throw new Error(`Invalid ${contract} response: ${field} must be null or a non-empty string`);
+  }
+}
+
+function requireNullableFiniteInteger(payload: Record<string, unknown>, field: string, contract: string): void {
+  const v = payload[field];
+  if (v !== null && (typeof v !== 'number' || !Number.isFinite(v) || !Number.isInteger(v))) {
+    throw new Error(`Invalid ${contract} response: ${field} must be null or a finite integer`);
+  }
+}
+
+function requireDirectorMode(payload: Record<string, unknown>, contract: string, pathPrefix = ''): PersistentDirectorMode {
+  const mode = payload.mode;
+  if (!PERSISTENT_DIRECTOR_MODES.includes(mode as PersistentDirectorMode)) {
+    throw new Error(`Invalid ${contract} response: unknown ${pathPrefix}mode ${JSON.stringify(mode)}`);
+  }
+  return mode as PersistentDirectorMode;
+}
+
+function requireDirectorDirection(
+  payload: Record<string, unknown>,
+  contract: string,
+  { allowNull }: { allowNull: boolean },
+  pathPrefix = ''
+): PersistentDirectorDirection | null {
+  const direction = payload.direction;
+  if (direction === null) {
+    if (!allowNull) {
+      throw new Error(`Invalid ${contract} response: ${pathPrefix}direction must be POSITIVE or NEGATIVE`);
+    }
+    return null;
+  }
+  if (!PERSISTENT_DIRECTOR_DIRECTIONS.includes(direction as PersistentDirectorDirection)) {
+    throw new Error(`Invalid ${contract} response: unknown ${pathPrefix}direction ${JSON.stringify(direction)}`);
+  }
+  return direction as PersistentDirectorDirection;
+}
+
+function requireSummaryCode(payload: Record<string, unknown>, contract: string, pathPrefix = ''): PersistentDecisionSummaryCode {
+  const code = payload.summaryCode;
+  if (!PERSISTENT_DECISION_SUMMARY_CODES.includes(code as PersistentDecisionSummaryCode)) {
+    throw new Error(`Invalid ${contract} response: unknown ${pathPrefix}summaryCode ${JSON.stringify(code)}`);
+  }
+  return code as PersistentDecisionSummaryCode;
+}
+
+function assertNormalProjection(
+  mode: PersistentDirectorMode,
+  direction: PersistentDirectorDirection | null,
+  intensity: number,
+  contract: string,
+  pathPrefix = ''
+): void {
+  if (mode === 'NORMAL') {
+    if (direction !== null) {
+      throw new Error(`Invalid ${contract} response: ${pathPrefix}NORMAL must have direction null`);
+    }
+    if (intensity !== 0) {
+      throw new Error(`Invalid ${contract} response: ${pathPrefix}NORMAL must have intensity 0`);
+    }
+  } else if (direction === null) {
+    throw new Error(`Invalid ${contract} response: ${pathPrefix}non-NORMAL mode must have direction POSITIVE or NEGATIVE`);
+  }
+}
+
+function parsePersistentRuntimeEvent(payload: unknown, contract: string, pathPrefix: string): PersistentRuntimeEvent {
+  if (!isRecord(payload)) {
+    throw new Error(`Invalid ${contract} response: ${pathPrefix}event must be an object`);
+  }
+  const known = ['eventId', 'name', 'modifierPct', 'startsAt', 'endsAt'] as const;
+  forbidUnknownFields(payload, known, contract, pathPrefix);
+  forbidCycleFields(payload, contract);
+  requireFiniteInteger(payload, 'eventId', contract);
+  requireString(payload, 'name', contract);
+  requireFiniteNumber(payload, 'modifierPct', contract);
+  requireString(payload, 'startsAt', contract);
+  requireString(payload, 'endsAt', contract);
+  return {
+    eventId: payload.eventId as number,
+    name: payload.name as string,
+    modifierPct: payload.modifierPct as number,
+    startsAt: payload.startsAt as string,
+    endsAt: payload.endsAt as string
+  };
+}
+
+function parsePersistentRuntimeCoin(payload: unknown, contract: string): PersistentRuntimeCoin {
+  if (!isRecord(payload)) throw new Error(`Invalid ${contract} response: coin must be an object`);
+  const coinKnown = ['coinId', 'events', 'activeNetModifierPct'] as const;
+  forbidUnknownFields(payload, coinKnown, contract, 'coins[].');
+  forbidCycleFields(payload, contract);
+  requireFiniteInteger(payload, 'coinId', contract);
+  requireFiniteNumber(payload, 'activeNetModifierPct', contract);
+  if (!isRecord(payload.events)) {
+    throw new Error(`Invalid ${contract} response: coins[].events must be an object`);
+  }
+  const eventsKnown = ['positive', 'negative'] as const;
+  forbidUnknownFields(payload.events, eventsKnown, contract, 'coins[].events.');
+  if (!Array.isArray(payload.events.positive) || !Array.isArray(payload.events.negative)) {
+    throw new Error(`Invalid ${contract} response: coins[].events.positive/negative must be arrays`);
+  }
+  return {
+    coinId: payload.coinId as number,
+    events: {
+      positive: (payload.events.positive as unknown[]).map((row, i) =>
+        parsePersistentRuntimeEvent(row, contract, `coins[].events.positive[${i}].`)
+      ),
+      negative: (payload.events.negative as unknown[]).map((row, i) =>
+        parsePersistentRuntimeEvent(row, contract, `coins[].events.negative[${i}].`)
+      )
+    },
+    activeNetModifierPct: payload.activeNetModifierPct as number
+  };
+}
+
+function parsePersistentDirectorDecision(
+  payload: unknown,
+  contract: string,
+  pathPrefix: string
+): PersistentDirectorDecision {
+  if (!isRecord(payload)) {
+    throw new Error(`Invalid ${contract} response: ${pathPrefix}decision must be an object`);
+  }
+  const known = ['mode', 'direction', 'intensity', 'startedAt', 'endsAt', 'summaryCode'] as const;
+  forbidUnknownFields(payload, known, contract, pathPrefix);
+  forbidCycleFields(payload, contract);
+  const mode = requireDirectorMode(payload, contract, pathPrefix);
+  const direction = requireDirectorDirection(payload, contract, { allowNull: true }, pathPrefix);
+  requireFiniteNumber(payload, 'intensity', contract);
+  requireString(payload, 'startedAt', contract);
+  requireString(payload, 'endsAt', contract);
+  const summaryCode = requireSummaryCode(payload, contract, pathPrefix);
+  assertNormalProjection(mode, direction, payload.intensity as number, contract, pathPrefix);
+  return {
+    mode,
+    direction,
+    intensity: payload.intensity as number,
+    startedAt: payload.startedAt as string,
+    endsAt: payload.endsAt as string,
+    summaryCode
+  };
+}
+
+function parsePersistentRuntimeDirector(payload: unknown, contract: string): PersistentRuntimeDirector | null {
+  if (payload === null) return null;
+  if (!isRecord(payload)) {
+    throw new Error(`Invalid ${contract} response: director must be null or an object`);
+  }
+  const known = [
+    'mode',
+    'direction',
+    'intensity',
+    'startedAt',
+    'endsAt',
+    'goldenCoinId',
+    'goldenExpiresAt',
+    'demonCoinId',
+    'demonExpiresAt',
+    'recentDecisions'
+  ] as const;
+  forbidUnknownFields(payload, known, contract, 'director.');
+  forbidCycleFields(payload, contract);
+  const mode = requireDirectorMode(payload, contract, 'director.');
+  const direction = requireDirectorDirection(payload, contract, { allowNull: true }, 'director.');
+  requireFiniteNumber(payload, 'intensity', contract);
+  requireString(payload, 'startedAt', contract);
+  requireString(payload, 'endsAt', contract);
+  requireNullableFiniteInteger(payload, 'goldenCoinId', contract);
+  requireNullableString(payload, 'goldenExpiresAt', contract);
+  requireNullableFiniteInteger(payload, 'demonCoinId', contract);
+  requireNullableString(payload, 'demonExpiresAt', contract);
+  if (!Array.isArray(payload.recentDecisions)) {
+    throw new Error(`Invalid ${contract} response: director.recentDecisions must be an array`);
+  }
+  assertNormalProjection(mode, direction, payload.intensity as number, contract, 'director.');
+  // Role id/expiry must agree: both null or both present (backend publishes pairs).
+  if ((payload.goldenCoinId === null) !== (payload.goldenExpiresAt === null)) {
+    throw new Error(`Invalid ${contract} response: director.goldenCoinId and goldenExpiresAt must both be null or both set`);
+  }
+  if ((payload.demonCoinId === null) !== (payload.demonExpiresAt === null)) {
+    throw new Error(`Invalid ${contract} response: director.demonCoinId and demonExpiresAt must both be null or both set`);
+  }
+  const recentDecisions = (payload.recentDecisions as unknown[]).map((row, i) =>
+    parsePersistentDirectorDecision(row, contract, `director.recentDecisions[${i}].`)
+  );
+  return {
+    mode,
+    direction,
+    intensity: payload.intensity as number,
+    startedAt: payload.startedAt as string,
+    endsAt: payload.endsAt as string,
+    goldenCoinId: payload.goldenCoinId as number | null,
+    goldenExpiresAt: payload.goldenExpiresAt as string | null,
+    demonCoinId: payload.demonCoinId as number | null,
+    demonExpiresAt: payload.demonExpiresAt as string | null,
+    recentDecisions
+  };
+}
+
+export function parsePersistentRuntime(payload: unknown): PersistentRuntime {
+  const contract = 'persistent runtime';
+  if (!isRecord(payload)) throw new Error(`Invalid ${contract} response: expected a JSON object`);
+  const known = ['serverTime', 'worldId', 'director', 'coins'] as const;
+  forbidUnknownFields(payload, known, contract);
+  forbidCycleFields(payload, contract);
+  requireString(payload, 'serverTime', contract);
+  if (payload.worldId !== null && (typeof payload.worldId !== 'number' || !Number.isFinite(payload.worldId))) {
+    throw new Error(`Invalid ${contract} response: worldId must be null or a finite number`);
+  }
+  const director = parsePersistentRuntimeDirector(payload.director, contract);
+  if (!Array.isArray(payload.coins)) {
+    throw new Error(`Invalid ${contract} response: coins must be an array`);
+  }
+  const coins = (payload.coins as unknown[]).map((c) => parsePersistentRuntimeCoin(c, contract));
+  return {
+    serverTime: payload.serverTime as string,
+    worldId: payload.worldId as number | null,
+    director,
+    coins
+  };
+}
+
+// Wave 4: public persistent runtime for THE active world. No auth. Uses the
+// shared persistent poll; failure must never wipe signals/leaderboard/account.
+export async function getPersistentRuntime(signal?: AbortSignal): Promise<PersistentRuntime> {
+  return persistentFetch('/persistent/runtime', { signal }, parsePersistentRuntime);
+}

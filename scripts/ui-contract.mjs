@@ -142,7 +142,8 @@ assert.match(persistentHeader, /HowToPlay/);
 assert.match(persistentHeader, /usePersistent/);
 assert.doesNotMatch(persistentHeader, /formatCountdown|displayRemainingMs|apocalypsePercent|SETTLING|JOIN APOCALYPSE|30-minute/);
 assert.doesNotMatch(persistentHeader, /progressbar|role=\"progressbar\"|aria-valuenow/);
-assert.doesNotMatch(persistentHeader, /\bDirector\b|phase-dip|phase-rise|meterPhase/);
+assert.doesNotMatch(persistentHeader, /phase-dip|phase-rise|meterPhase|apocalypsePercent|SETTLING/);
+assert.match(persistentHeader, /PersistentDirectorPanel/);
 assert.doesNotMatch(gameMarketGrid, /next apocalypse starts automatically/i);
 assert.match(gameMarketGrid, /Loading market signals|No coins in the persistent market yet/);
 assert.match(leaderboardPressure, /Full board and account activity/);
@@ -1071,7 +1072,7 @@ assert.doesNotMatch(gameMarketGrid, /MarketPhaseBanner|derivedServerNowMs/);
 assert.match(coinSignalCard, /PersistentCoinSignal/);
 assert.doesNotMatch(coinSignalCard, /signalsNowMs|CoinEventList|formatTypicalProfile/);
 assert.match(gameCoinDetail, /PersistentCoinSignal/);
-assert.doesNotMatch(gameCoinDetail, /coin\.phase|collapseRisk|formatTypical/);
+assert.doesNotMatch(gameCoinDetail, /coin\.phase|coin\.collapseRisk|formatTypical/);
 assert.match(coinSignalCard, /coin\.currentPrice/); // signal price for quick buy etc
 assert.match(gameCoinDetail, /coin\.currentPrice/);
 // The visible owned-position Current price must use the persistent signal
@@ -1165,5 +1166,61 @@ assert.match(app, /LeaderboardPressure/);
 assert.match(app, /LeaderboardPanel/);
 assert.match(app, /PlayerRoundPanel/);
 assert.match(app, /PlayerStatusStrip/);
+
+
+// --- Wave 4: persistent runtime Director UI ---------------------------------
+// Public /persistent/runtime folded into the single shared 5s poll.
+// Runtime failures are isolated (Promise.allSettled) and must never wipe
+// signals. Last-good runtime retained. One timer only. Apocalypse phase
+// chrome remains banned on primary cards.
+assert.match(persistentService, /\/persistent\/runtime/);
+assert.match(persistentService, /export async function getPersistentRuntime/);
+assert.match(persistentService, /export function parsePersistentRuntime/);
+assert.match(persistentService, /PERSISTENT_DECISION_SUMMARY_CODES/);
+assert.match(persistentService, /GENESIS_NORMAL/);
+assert.match(persistentService, /OTHER_SAFE/);
+// Signals parser contract remains strict and separate from runtime director.
+assert.match(persistentService, /export function parsePersistentMarketSignals/);
+assert.match(persistentService, /director\.regime|regime.*intensity|dirKnown = \['regime', 'intensity'\]/);
+assert.match(persistentContext, /getPersistentRuntime/);
+assert.match(persistentContext, /runtime:/);
+assert.match(persistentContext, /runtimeError/);
+assert.match(persistentContext, /runtimeSyncedAt/);
+assert.match(persistentContext, /directorUnavailable/);
+assert.match(persistentContext, /RUNTIME_STALE_AFTER_MS/);
+assert.match(persistentContext, /3 \* PERSISTENT_POLL_INTERVAL_MS/);
+assert.match(persistentContext, /Promise\.allSettled/);
+assert.equal(
+  (persistentContext.match(/setInterval\(/g) || []).length,
+  1,
+  'PersistentContext must keep a single shared poll timer after runtime'
+);
+// Isolation: allSettled settles runtime separately from signals.
+assert.match(persistentContext, /runtimeResult/);
+assert.match(persistentContext, /signalsResult/);
+assert.match(persistentContext, /setRuntimeError/);
+assert.match(persistentContext, /setSignals\(/);
+// Director panel + countdown util
+const directorPanel = readFileSync(new URL('../src/components/PersistentDirectorPanel.tsx', import.meta.url), 'utf8');
+const persistentCountdown = readFileSync(new URL('../src/utils/persistentCountdown.ts', import.meta.url), 'utf8');
+const runtimeCopy = readFileSync(new URL('../src/utils/persistentRuntimeCopy.ts', import.meta.url), 'utf8');
+assert.match(directorPanel, /Director/);
+assert.match(directorPanel, /recentDecisions/);
+assert.match(directorPanel, /Golden|Demon/);
+assert.match(persistentCountdown, /export function remainingMs/);
+assert.match(persistentCountdown, /Ended — updating/);
+assert.match(runtimeCopy, /Market running normally/);
+assert.match(runtimeCopy, /GENESIS_NORMAL/);
+// Primary cards: role badges allowed; Apocalypse phase still banned.
+assert.match(coinSignalCard, /Golden Coin/);
+assert.match(coinSignalCard, /Demon Coin/);
+assert.doesNotMatch(coinSignalCard, /coin\.phase|MarketPhaseBanner|coin\.collapseRisk/);
+assert.match(gameCoinDetail, /Net event effect/);
+assert.match(gameCoinDetail, /Positive events/);
+assert.match(gameCoinDetail, /Negative events/);
+assert.match(gameCoinDetail, /runtime\.coins\.find|runtime\?\.coins\.find/);
+assert.doesNotMatch(gameCoinDetail, /coin\.phase|coin\.collapseRisk|formatTypical/);
+assert.doesNotMatch(persistentHeader, /formatCountdown|displayRemainingMs|JOIN APOCALYPSE|30-minute/);
+assert.doesNotMatch(persistentHeader, /progressbar|role=\"progressbar\"|aria-valuenow/);
 
 console.log('Crypto Chaos UI contract passed');
