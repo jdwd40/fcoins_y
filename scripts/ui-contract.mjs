@@ -13,6 +13,8 @@ assert.match(playerShell, /function PlayerShell\s*\(/, 'PlayerShell extraction m
 const styles = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const chart = readFileSync(new URL('../src/components/PriceChart.tsx', import.meta.url), 'utf8');
+const marketValueChart = readFileSync(new URL('../src/components/MarketValueChart.tsx', import.meta.url), 'utf8');
+const marketHistoryChartUtil = readFileSync(new URL('../src/utils/marketHistoryChart.ts', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../src/components/ApocalypseHeader.tsx', import.meta.url), 'utf8');
 const persistentHeader = readFileSync(new URL('../src/components/PersistentMarketHeader.tsx', import.meta.url), 'utf8');
 const gameContext = readFileSync(new URL('../src/context/GameContext.tsx', import.meta.url), 'utf8');
@@ -595,12 +597,36 @@ assert.match(roundTrade, /flex justify-between gap-2/);
 assert.match(html, /<title>Crypto Chaos · CoinX Apocalypse Exchange<\/title>/);
 assert.match(html, /family=Inter/);
 
-assert.match(chart, /24H/);
-assert.match(chart, /7D/);
-assert.match(chart, /30D/);
-assert.match(chart, /ALL/);
+// Chart selectors capped at ≤12h (coin defaults ≤2H; market ≤12H). Long
+// windows (24H/7D/30D/ALL) must not appear in PriceChart defaults.
+assert.match(chart, /COIN_CHART_RANGES/);
+assert.match(chart, /clampCoinChartRange/);
+assert.match(marketHistoryChartUtil, /'10M'/);
+assert.match(marketHistoryChartUtil, /'30M'/);
+assert.match(marketHistoryChartUtil, /'1H'/);
+assert.match(marketHistoryChartUtil, /'2H'/);
+assert.match(marketHistoryChartUtil, /export const COIN_CHART_RANGES/);
+assert.doesNotMatch(chart, /value: '24H'/);
+assert.doesNotMatch(chart, /value: '7D'/);
+assert.doesNotMatch(chart, /value: '30D'/);
+assert.doesNotMatch(chart, /value: 'ALL'/);
 assert.match(chart, /aria-pressed/);
 assert.match(chart, /role="group"/);
+
+// Market aggregate chart: ≤12h selectors + client sanitize (5M defense).
+assert.match(marketValueChart, /MARKET_CHART_RANGES/);
+assert.match(marketValueChart, /sanitizeMarketHistoryPoints/);
+assert.match(marketValueChart, /chartTimeUnitForRange/);
+assert.match(marketValueChart, /clampMarketChartRange/);
+assert.doesNotMatch(marketValueChart, /value: '24H'/);
+assert.doesNotMatch(marketValueChart, /value: 'ALL'/);
+assert.match(marketHistoryChartUtil, /RANGE_MS/);
+assert.match(marketHistoryChartUtil, /export function sanitizeMarketHistoryPoints/);
+assert.match(marketHistoryChartUtil, /'5M'/);
+assert.match(marketHistoryChartUtil, /'12H'/);
+assert.match(marketHistoryChartUtil, /export const MARKET_CHART_RANGES[\s\S]*?\] as const/);
+const marketRangesDecl = marketHistoryChartUtil.match(/export const MARKET_CHART_RANGES[\s\S]*?\] as const/)?.[0] ?? '';
+assert.doesNotMatch(marketRangesDecl, /24H|7D|30D|ALL/);
 
 // --- Issue #12: compact dip→boom→dip sparklines on the V2 cards ----------------
 // Every card variant carries the sparkline: live cards fetch through the
@@ -760,11 +786,11 @@ assert.match(gameCoinDetail, /stat-cell/);
 assert.doesNotMatch(gameCoinDetail, /Classic exchange/i);
 assert.match(gameLogic, /reading the dip → rise → boom → fall cycle on the price chart is core gameplay/);
 
-// Detail chart: short cycle windows first-class with the archetype-aware
-// default; longer windows only as a secondary group; the SAME #12 cycle
-// clip and entry-marker rule; the authoritative per-coin endpoint only.
+// Detail chart: short cycle windows only (≤2H — BE has no 12H); secondary
+// longer group is empty. SAME #12 cycle clip and entry-marker rule; the
+// authoritative per-coin endpoint only.
 assert.match(gameCoinDetail, /DETAIL_PRIMARY_RANGES: readonly TimeRange\[\] = \['10M', '30M', '1H', '2H'\]/);
-assert.match(gameCoinDetail, /DETAIL_SECONDARY_RANGES: readonly TimeRange\[\] = \['24H', '7D', '30D', 'ALL'\]/);
+assert.match(gameCoinDetail, /DETAIL_SECONDARY_RANGES: readonly TimeRange\[\] = \[\]/);
 assert.match(gameCoinDetail, /initialRange = sparklineRangeForCoin\(coin\)/);
 assert.match(gameCoinDetail, /cycleStartTime=\{null\}/);
 assert.match(gameCoinDetail, /averageEntryPrice=\{owned && holding \? holding\.averageEntryPrice : null\}/);
@@ -779,8 +805,8 @@ assert.match(chart, /Your average entry/);
 assert.match(chart, /\$\{API_BASE\}\/coins\/\$\{coinId\}\/price-history\?range=\$\{range\}/);
 assert.doesNotMatch(chart, /market\/price-history/);
 assert.match(sparklineUtil, /export function entryMarkerVisible/);
-// The classic modal chart defaults are unchanged (24H first, long ranges).
-assert.match(chart, /initialRange \?\? primaryRanges\[0\]/);
+// Default coin chart selectors are capped at ≤2H (no ALL/24H/7D/30D).
+assert.match(chart, /clampCoinChartRange\(initialRange \?\? primaryRanges\[0\]/);
 
 // --- Apocalypse Monitor Phase 3 Plan 1: internal operator dashboard --------
 // Internal route under the existing /coins basename, never linked from the

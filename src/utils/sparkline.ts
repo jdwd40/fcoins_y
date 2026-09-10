@@ -14,7 +14,7 @@ export type SparklineRange = '10M' | '30M' | '1H' | '2H' | '24H' | '7D' | '30D' 
 
 // Ascending window minutes for the ranges a compact card may select. A
 // sparkline never needs a multi-day window, so the selectable set is capped
-// at 2H (longer windows stay with the detailed PriceChart, issue #13).
+// at 2H (detail PriceChart selectors are also capped at ≤2H).
 const COMPACT_RANGE_WINDOWS: ReadonlyArray<readonly [SparklineRange, number]> = [
   ['10M', 10],
   ['30M', 30],

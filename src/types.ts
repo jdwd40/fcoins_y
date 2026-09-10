@@ -1,8 +1,8 @@
 // Per-coin price-history windows. The backend's coins.controller validRanges
-// are 10M/30M/1H/2H/24H/7D/30D/ALL: the four short cycle windows are
-// first-class for the V2 coin detail view (issue #13), the longer windows
-// remain as secondary options.
-export type TimeRange = '10M' | '30M' | '1H' | '2H' | '24H' | '7D' | '30D' | 'ALL';
+// include 5M/10M/30M/1H/2H/24H/7D/30D/ALL. User-facing chart selectors are capped at
+// ≤12h (coin charts max 2H — BE has no 12H). Longer keys remain on the type
+// for BE response compatibility only and must not be offered in UI selectors.
+export type TimeRange = '5M' | '10M' | '30M' | '1H' | '2H' | '24H' | '7D' | '30D' | 'ALL';
 
 export interface Coin {
   coin_id: number;

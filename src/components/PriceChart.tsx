@@ -17,6 +17,14 @@ import 'chartjs-adapter-date-fns';
 import { PricePoint, PriceHistoryResponse, TimeRange } from '../types';
 import { computePeriodSummary, PeriodSummary } from '../utils/priceSummary';
 import { clipPointsSince, entryMarkerVisible } from '../utils/sparkline.ts';
+import {
+  COIN_CHART_RANGES,
+  DEFAULT_COIN_CHART_RANGE,
+  clampCoinChartRange,
+  apiRangeForCoinChart,
+  windowChartPoints,
+  type CoinChartRange,
+} from '../utils/marketHistoryChart.ts';
 
 ChartJS.register(
   CategoryScale,
@@ -32,7 +40,7 @@ ChartJS.register(
 interface PriceChartProps {
   coinId: number;
   refreshTrigger?: number;
-  /** Selectable primary ranges (default: the classic 24H/7D/30D/ALL set). */
+  /** Selectable primary ranges (default: ≤2H BE-supported coin windows). */
   ranges?: readonly TimeRange[];
   /** Longer windows rendered as a separate secondary group (issue #13). */
   secondaryRanges?: readonly TimeRange[];
@@ -60,17 +68,19 @@ function formatAdaptivePrice(value: number): string {
   });
 }
 
-const TIME_RANGES: { value: TimeRange; label: string }[] = [
-  { value: '24H', label: '24H' },
-  { value: '7D', label: '7D' },
-  { value: '30D', label: '30D' },
-  { value: 'ALL', label: 'ALL' },
-];
+const TIME_RANGES: { value: TimeRange; label: string }[] = COIN_CHART_RANGES.map(
+  (value) => ({ value, label: value })
+);
 
 const API_BASE = API_BASE_URL;
 
 function getRangeLabel(range: TimeRange): string {
   switch (range) {
+    case '5M': return '5M';
+    case '10M': return '10M';
+    case '30M': return '30M';
+    case '1H': return '1H';
+    case '2H': return '2H';
     case '24H': return '24H';
     case '7D': return '7D';
     case '30D': return '30D';
@@ -81,6 +91,12 @@ function getRangeLabel(range: TimeRange): string {
 
 function getTimeFormat(range: TimeRange): string {
   switch (range) {
+    case '5M':
+    case '10M':
+    case '30M':
+    case '1H':
+    case '2H':
+      return 'HH:mm';
     case '24H':
       return 'HH:mm';
     case '7D':
@@ -115,8 +131,16 @@ export function PriceChart({
   averageEntryPrice = null,
   heightClass = 'h-[240px] sm:h-[380px]'
 }: PriceChartProps) {
-  const primaryRanges = ranges ?? TIME_RANGES.map(({ value }) => value);
-  const [selectedRange, setSelectedRange] = useState<TimeRange>(initialRange ?? primaryRanges[0]);
+  const primaryRanges = (ranges ?? TIME_RANGES.map(({ value }) => value)).map((r) =>
+    clampCoinChartRange(r)
+  ) as TimeRange[];
+  // Drop any >2H secondary options (UI capped; BE longer keys may still exist on TimeRange).
+  const safeSecondaryRanges = (secondaryRanges ?? []).filter((r) =>
+    (COIN_CHART_RANGES as readonly string[]).includes(r)
+  ) as TimeRange[];
+  const [selectedRange, setSelectedRange] = useState<TimeRange>(() =>
+    clampCoinChartRange(initialRange ?? primaryRanges[0] ?? DEFAULT_COIN_CHART_RANGE)
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<PriceHistoryResponse | null>(null);
@@ -137,8 +161,11 @@ export function PriceChart({
     setLoading(true);
     setError(null);
     try {
+      // BE has no 5M — request 10M then client-window to 5 minutes.
+      const coinRange = clampCoinChartRange(range) as CoinChartRange;
+      const apiRange = apiRangeForCoinChart(coinRange);
       const response = await fetch(
-        `${API_BASE}/coins/${coinId}/price-history?range=${range}`,
+        `${API_BASE}/coins/${coinId}/price-history?range=${apiRange}`,
         { signal: abortControllerRef.current.signal }
       );
       if (!response.ok) throw new Error(`Failed to fetch data (${response.status})`);
@@ -146,18 +173,42 @@ export function PriceChart({
       // Clip to the live apocalypse BEFORE summarising or drawing so the
       // high/low/change figures and the line describe the same live window.
       const livePoints = clipPointsSince(result.points || [], sinceMs);
-      setHistory({ ...result, points: livePoints });
+      // Window to selected UI range (esp. 5M after a 10M API fetch).
+      const windowMs =
+        coinRange === '5M'
+          ? 5 * 60 * 1000
+          : coinRange === '10M'
+            ? 10 * 60 * 1000
+            : coinRange === '30M'
+              ? 30 * 60 * 1000
+              : coinRange === '1H'
+                ? 60 * 60 * 1000
+                : 2 * 60 * 60 * 1000;
+      const maxT = livePoints.reduce((m, pt) => {
+        const ts = Date.parse(pt.time);
+        return Number.isFinite(ts) && ts > m ? ts : m;
+      }, 0);
+      const anchor = maxT > 0 ? maxT : Date.now();
+      const cutoff = anchor - windowMs;
+      const rangedPoints = livePoints.filter((pt) => {
+        const ts = Date.parse(pt.time);
+        return Number.isFinite(ts) && ts >= cutoff;
+      });
+      setHistory({ ...result, points: rangedPoints });
 
-      const processed = livePoints
-        .filter((p: PricePoint) => {
-          const ts = new Date(p.time).getTime();
-          return !isNaN(ts) && !isNaN(p.close) && p.close > 0;
-        })
-        .map((p: PricePoint) => ({
-          x: new Date(p.time).getTime(),
-          y: p.close,
-        }))
-        .sort((a, b) => a.x - b.x);
+      const processed = windowChartPoints(
+        rangedPoints
+          .filter((p: PricePoint) => {
+            const ts = new Date(p.time).getTime();
+            return !isNaN(ts) && !isNaN(p.close) && p.close > 0;
+          })
+          .map((p: PricePoint) => ({
+            x: new Date(p.time).getTime(),
+            y: p.close,
+          })),
+        coinRange,
+        Date.now()
+      );
       setChartData(processed);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return;
@@ -378,7 +429,7 @@ export function PriceChart({
   const rangeButton = (value: TimeRange) => (
     <button
       key={value}
-      onClick={() => setSelectedRange(value)}
+      onClick={() => setSelectedRange(clampCoinChartRange(value))}
       aria-pressed={selectedRange === value}
       className={`flex-1 sm:flex-none min-h-[44px] px-2 sm:px-4 py-2 font-mono text-xs sm:text-sm tracking-[0.5px] uppercase border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
         selectedRange === value
@@ -431,7 +482,7 @@ export function PriceChart({
       >
         {primaryRanges.map(rangeButton)}
       </div>
-      {secondaryRanges && secondaryRanges.length > 0 && (
+      {safeSecondaryRanges.length > 0 && (
         <div className="flex items-center gap-2">
           <span className="label shrink-0">Longer</span>
           <div
@@ -439,7 +490,7 @@ export function PriceChart({
             aria-label="Select a longer chart time range"
             className="flex flex-1 gap-1 sm:gap-2"
           >
-            {secondaryRanges.map(rangeButton)}
+            {safeSecondaryRanges.map(rangeButton)}
           </div>
         </div>
       )}
