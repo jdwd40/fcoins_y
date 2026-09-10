@@ -44,7 +44,7 @@ interface CoinSignalCardProps {
 export function CoinSignalCard({ coin, holding, onOpenDetail }: CoinSignalCardProps) {
   const { user, handleSessionExpired } = useAuth();
   const { showToast } = useToast();
-  const { account, synced, provisioned, accountError, trade } = usePersistent();
+  const { account, synced, provisioned, accountError, trade, runtime } = usePersistent();
 
   const [confirmNotional, setConfirmNotional] = useState<number | null>(null);
   const [confirmSell, setConfirmSell] = useState(false);
@@ -68,6 +68,23 @@ export function CoinSignalCard({ coin, holding, onOpenDetail }: CoinSignalCardPr
 
   const owned = !!holding && holding.quantity > 0;
   const cash = account?.cash ?? null;
+  const director = runtime?.director ?? null;
+  const isGolden = director?.goldenCoinId === coin.coinId;
+  const isDemon = director?.demonCoinId === coin.coinId;
+  const roleBadges = (isGolden || isDemon) ? (
+    <div className="flex flex-wrap gap-1 mb-2" aria-label="Director roles">
+      {isGolden && (
+        <span className="inline-flex items-center rounded-md border border-gold/40 bg-gold/10 px-2 py-0.5 font-mono text-[10px] font-bold tracking-caps uppercase text-gold">
+          Golden Coin
+        </span>
+      )}
+      {isDemon && (
+        <span className="inline-flex items-center rounded-md border border-oxblood/40 bg-oxblood/10 px-2 py-0.5 font-mono text-[10px] font-bold tracking-caps uppercase text-oxblood">
+          Demon Coin
+        </span>
+      )}
+    </div>
+  ) : null;
 
   // The trade panel consumes the legacy Coin shape; only
   // coin_id/symbol/current_price are read from it. The price stays the
@@ -180,6 +197,7 @@ export function CoinSignalCard({ coin, holding, onOpenDetail }: CoinSignalCardPr
     return (
       <article className="game-card dead-card" aria-label={`${coin.name} — dead`} onClick={handleCardClick}>
         {cardHeader}
+        {roleBadges}
         <div className="flex items-center gap-2 mb-3" role="note">
           <Skull className="w-4 h-4 text-oxblood" aria-hidden="true" />
           <span className="font-mono text-sm font-bold text-oxblood tracking-caps uppercase">
@@ -215,6 +233,7 @@ export function CoinSignalCard({ coin, holding, onOpenDetail }: CoinSignalCardPr
     return (
       <article className="game-card owned-card" aria-label={`${coin.name} — your position`} onClick={handleCardClick}>
         {cardHeader}
+        {roleBadges}
         <CoinSparkline coin={coin} averageEntryPrice={holding.averageEntryPrice} cycleStartTime={null} />
         <div className="position-economics" aria-label={`Position ${pnlWord}`}>
           <div className="grid grid-cols-2 gap-2 mb-2">
@@ -317,6 +336,7 @@ export function CoinSignalCard({ coin, holding, onOpenDetail }: CoinSignalCardPr
   return (
     <article className="game-card" aria-label={`${coin.name} — available to buy`} onClick={handleCardClick}>
       {cardHeader}
+        {roleBadges}
       <CoinSparkline coin={coin} cycleStartTime={null} />
       {signalBlock}
 

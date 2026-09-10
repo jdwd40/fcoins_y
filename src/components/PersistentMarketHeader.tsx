@@ -2,6 +2,7 @@ import { Coins } from 'lucide-react';
 import { usePersistent } from '../context/PersistentContext.tsx';
 import { useAuth } from '../context/AuthContext';
 import { HowToPlay } from './HowToPlay.tsx';
+import { PersistentDirectorPanel } from './PersistentDirectorPanel.tsx';
 import { formatCurrency } from '../services/transactionService.ts';
 
 // Stage 11 primary market header: persistent-market identity only.
@@ -58,6 +59,7 @@ export function PersistentMarketHeader() {
             )}
           </div>
         </div>
+        <PersistentDirectorPanel />
       </div>
     </section>
   );
