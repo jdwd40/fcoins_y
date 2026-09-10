@@ -789,12 +789,12 @@ assert.match(gameLogic, /reading the dip → rise → boom → fall cycle on the
 // Detail chart: short cycle windows only (≤2H — BE has no 12H); secondary
 // longer group is empty. SAME #12 cycle clip and entry-marker rule; the
 // authoritative per-coin endpoint only.
-assert.match(gameCoinDetail, /DETAIL_PRIMARY_RANGES: readonly TimeRange\[\] = \['10M', '30M', '1H', '2H'\]/);
+assert.match(gameCoinDetail, /DETAIL_PRIMARY_RANGES: readonly TimeRange\[\] = \['5M', '10M', '30M', '1H', '2H'\]/);
 assert.match(gameCoinDetail, /DETAIL_SECONDARY_RANGES: readonly TimeRange\[\] = \[\]/);
 assert.match(gameCoinDetail, /initialRange = sparklineRangeForCoin\(coin\)/);
 assert.match(gameCoinDetail, /cycleStartTime=\{null\}/);
 assert.match(gameCoinDetail, /averageEntryPrice=\{owned && holding \? holding\.averageEntryPrice : null\}/);
-assert.match(typesTs, /'10M' \| '30M' \| '1H' \| '2H' \| '24H' \| '7D' \| '30D' \| 'ALL'/);
+assert.match(typesTs, /'5M' \| '10M' \| '30M' \| '1H' \| '2H' \| '24H' \| '7D' \| '30D' \| 'ALL'/);
 assert.match(chart, /clipPointsSince\(result\.points \|\| \[\], sinceMs\)/);
 assert.match(chart, /cycleStartTime\?: string \| null/);
 assert.match(chart, /entryMarkerVisible/);
@@ -802,7 +802,9 @@ assert.match(chart, /secondaryRanges/);
 assert.match(chart, /aria-label="Select a longer chart time range"/);
 assert.match(chart, /filter: \(tooltipItem/); // the entry marker is never a tooltip value
 assert.match(chart, /Your average entry/);
-assert.match(chart, /\$\{API_BASE\}\/coins\/\$\{coinId\}\/price-history\?range=\$\{range\}/);
+assert.match(chart, /apiRangeForCoinChart/);
+assert.match(chart, /windowChartPoints/);
+assert.match(chart, /\$\{API_BASE\}\/coins\/\$\{coinId\}\/price-history\?range=\$\{apiRange\}/);
 assert.doesNotMatch(chart, /market\/price-history/);
 assert.match(sparklineUtil, /export function entryMarkerVisible/);
 // Default coin chart selectors are capped at ≤2H (no ALL/24H/7D/30D).
