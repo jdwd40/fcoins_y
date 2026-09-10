@@ -21,6 +21,9 @@ import {
   COIN_CHART_RANGES,
   DEFAULT_COIN_CHART_RANGE,
   clampCoinChartRange,
+  apiRangeForCoinChart,
+  windowChartPoints,
+  type CoinChartRange,
 } from '../utils/marketHistoryChart.ts';
 
 ChartJS.register(
@@ -73,6 +76,11 @@ const API_BASE = API_BASE_URL;
 
 function getRangeLabel(range: TimeRange): string {
   switch (range) {
+    case '5M': return '5M';
+    case '10M': return '10M';
+    case '30M': return '30M';
+    case '1H': return '1H';
+    case '2H': return '2H';
     case '24H': return '24H';
     case '7D': return '7D';
     case '30D': return '30D';
@@ -83,6 +91,12 @@ function getRangeLabel(range: TimeRange): string {
 
 function getTimeFormat(range: TimeRange): string {
   switch (range) {
+    case '5M':
+    case '10M':
+    case '30M':
+    case '1H':
+    case '2H':
+      return 'HH:mm';
     case '24H':
       return 'HH:mm';
     case '7D':
@@ -147,8 +161,11 @@ export function PriceChart({
     setLoading(true);
     setError(null);
     try {
+      // BE has no 5M — request 10M then client-window to 5 minutes.
+      const coinRange = clampCoinChartRange(range) as CoinChartRange;
+      const apiRange = apiRangeForCoinChart(coinRange);
       const response = await fetch(
-        `${API_BASE}/coins/${coinId}/price-history?range=${range}`,
+        `${API_BASE}/coins/${coinId}/price-history?range=${apiRange}`,
         { signal: abortControllerRef.current.signal }
       );
       if (!response.ok) throw new Error(`Failed to fetch data (${response.status})`);
@@ -156,18 +173,42 @@ export function PriceChart({
       // Clip to the live apocalypse BEFORE summarising or drawing so the
       // high/low/change figures and the line describe the same live window.
       const livePoints = clipPointsSince(result.points || [], sinceMs);
-      setHistory({ ...result, points: livePoints });
+      // Window to selected UI range (esp. 5M after a 10M API fetch).
+      const windowMs =
+        coinRange === '5M'
+          ? 5 * 60 * 1000
+          : coinRange === '10M'
+            ? 10 * 60 * 1000
+            : coinRange === '30M'
+              ? 30 * 60 * 1000
+              : coinRange === '1H'
+                ? 60 * 60 * 1000
+                : 2 * 60 * 60 * 1000;
+      const maxT = livePoints.reduce((m, pt) => {
+        const ts = Date.parse(pt.time);
+        return Number.isFinite(ts) && ts > m ? ts : m;
+      }, 0);
+      const anchor = maxT > 0 ? maxT : Date.now();
+      const cutoff = anchor - windowMs;
+      const rangedPoints = livePoints.filter((pt) => {
+        const ts = Date.parse(pt.time);
+        return Number.isFinite(ts) && ts >= cutoff;
+      });
+      setHistory({ ...result, points: rangedPoints });
 
-      const processed = livePoints
-        .filter((p: PricePoint) => {
-          const ts = new Date(p.time).getTime();
-          return !isNaN(ts) && !isNaN(p.close) && p.close > 0;
-        })
-        .map((p: PricePoint) => ({
-          x: new Date(p.time).getTime(),
-          y: p.close,
-        }))
-        .sort((a, b) => a.x - b.x);
+      const processed = windowChartPoints(
+        rangedPoints
+          .filter((p: PricePoint) => {
+            const ts = new Date(p.time).getTime();
+            return !isNaN(ts) && !isNaN(p.close) && p.close > 0;
+          })
+          .map((p: PricePoint) => ({
+            x: new Date(p.time).getTime(),
+            y: p.close,
+          })),
+        coinRange,
+        Date.now()
+      );
       setChartData(processed);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return;

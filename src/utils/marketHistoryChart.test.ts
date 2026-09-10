@@ -14,6 +14,9 @@ import {
   chartTimeUnitForRange,
   clampMarketChartRange,
   clampCoinChartRange,
+  apiRangeForCoinChart,
+  apiRangeForMarketChart,
+  windowChartPoints,
   type MarketHistoryPoint,
 } from './marketHistoryChart.ts';
 
@@ -37,9 +40,9 @@ test('MARKET_CHART_RANGES is ≤12h only — no ALL/24H/7D/30D', () => {
   }
 });
 
-test('COIN_CHART_RANGES is ≤2H only (BE has no 12H)', () => {
-  assert.deepEqual([...COIN_CHART_RANGES], ['10M', '30M', '1H', '2H']);
-  for (const forbidden of ['5M', '12H', '24H', '7D', '30D', 'ALL']) {
+test('COIN_CHART_RANGES includes 5M and is ≤2H (no ALL/30D/12H)', () => {
+  assert.deepEqual([...COIN_CHART_RANGES], ['5M', '10M', '30M', '1H', '2H']);
+  for (const forbidden of ['12H', '24H', '7D', '30D', 'ALL']) {
     assert.equal((COIN_CHART_RANGES as readonly string[]).includes(forbidden), false);
   }
 });
@@ -160,13 +163,14 @@ test('clampMarketChartRange falls back for invalid / >12h persisted values', () 
   assert.equal(clampMarketChartRange(undefined, '1H'), '1H');
 });
 
-test('clampCoinChartRange falls back for invalid / >2H persisted values', () => {
+test('clampCoinChartRange accepts 5M and falls back for invalid / >2H', () => {
   assert.equal(clampCoinChartRange('10M'), '10M');
   assert.equal(clampCoinChartRange('2H'), '2H');
   assert.equal(clampCoinChartRange('24H'), '2H');
   assert.equal(clampCoinChartRange('ALL'), '2H');
   assert.equal(clampCoinChartRange('12H'), '2H');
-  assert.equal(clampCoinChartRange('5M'), '2H');
+  assert.equal(clampCoinChartRange('5M'), '5M');
+  assert.equal(clampCoinChartRange('30D'), '2H');
   assert.equal(clampCoinChartRange('garbage'), DEFAULT_COIN_CHART_RANGE);
 });
 
@@ -198,7 +202,32 @@ test('PriceChart defaults expose ≤2H only (no ALL/24H/7D/30D)', () => {
 
 test('GameCoinDetail secondary ranges are empty (no >12h / no unsupported 12H)', () => {
   const src = readFileSync(join(srcRoot, 'components/GameCoinDetail.tsx'), 'utf8');
-  assert.match(src, /DETAIL_PRIMARY_RANGES: readonly TimeRange\[\] = \['10M', '30M', '1H', '2H'\]/);
+  assert.match(src, /DETAIL_PRIMARY_RANGES: readonly TimeRange\[\] = \['5M', '10M', '30M', '1H', '2H'\]/);
   assert.match(src, /DETAIL_SECONDARY_RANGES: readonly TimeRange\[\] = \[\]/);
   assert.doesNotMatch(src, /DETAIL_SECONDARY_RANGES: readonly TimeRange\[\] = \['24H'/);
+});
+
+test('apiRangeForCoinChart maps 5M to 10M', () => {
+  assert.equal(apiRangeForCoinChart('5M'), '10M');
+  assert.equal(apiRangeForCoinChart('10M'), '10M');
+  assert.equal(apiRangeForMarketChart('5M'), '10M');
+  assert.equal(apiRangeForMarketChart('12H'), '12H');
+});
+
+test('windowChartPoints filters a 10M series down to 5M', () => {
+  const points = [];
+  for (let i = 12; i >= 0; i--) {
+    points.push({ x: NOW - i * 60_000, y: 10 + i });
+  }
+  const windowed = windowChartPoints(points, '5M', NOW);
+  const span = windowed[windowed.length - 1].x - windowed[0].x;
+  assert.ok(span <= 5 * 60 * 1000);
+  assert.ok(windowed.length <= 7);
+});
+
+test('GameCoinDetail primary ranges include 5M and no ALL/30D', () => {
+  const src = readFileSync(join(srcRoot, 'components/GameCoinDetail.tsx'), 'utf8');
+  assert.match(src, /DETAIL_PRIMARY_RANGES[\s\S]*5M/);
+  assert.doesNotMatch(src, /DETAIL_SECONDARY_RANGES:[^=]*=\s*\[[^\]]*ALL/);
+  assert.doesNotMatch(src, /DETAIL_SECONDARY_RANGES:[^=]*=\s*\[[^\]]*30D/);
 });

@@ -5,8 +5,8 @@
 /** Market aggregate chart ranges offered in the UI (≤12h). */
 export type MarketChartRange = '5M' | '10M' | '30M' | '1H' | '2H' | '12H';
 
-/** Coin price-history ranges offered in the UI (BE-supported ∩ ≤12h → max 2H). */
-export type CoinChartRange = '10M' | '30M' | '1H' | '2H';
+/** Coin price-history ranges offered in the UI (≤12h; 5M via client window on 10M API). */
+export type CoinChartRange = '5M' | '10M' | '30M' | '1H' | '2H';
 
 export const MARKET_CHART_RANGES: readonly MarketChartRange[] = [
   '5M',
@@ -18,6 +18,7 @@ export const MARKET_CHART_RANGES: readonly MarketChartRange[] = [
 ] as const;
 
 export const COIN_CHART_RANGES: readonly CoinChartRange[] = [
+  '5M',
   '10M',
   '30M',
   '1H',
@@ -83,8 +84,7 @@ export function clampCoinChartRange(
     value === 'ALL' ||
     value === '7D' ||
     value === '30D' ||
-    value === '12H' ||
-    value === '5M'
+    value === '12H'
   ) {
     return '2H';
   }
@@ -144,6 +144,53 @@ export function sanitizeMarketHistoryPoints(
   const cutoff = anchorMs - windowMs;
 
   return deduped.filter((p) => p.t >= cutoff);
+}
+
+
+/** BE coin price-history has no 5M — request nearest supported range. */
+export function apiRangeForCoinChart(range: CoinChartRange): '10M' | '30M' | '1H' | '2H' {
+  return range === '5M' ? '10M' : range;
+}
+
+/** BE market price-history has no 5M — request nearest supported range. */
+export function apiRangeForMarketChart(range: MarketChartRange): Exclude<MarketChartRange, '5M'> | '10M' {
+  return range === '5M' ? '10M' : range;
+}
+
+/**
+ * Window chart series points `{x: epochMs, y}` to the selected coin range.
+ * Used after fetch so 5M (requested as 10M) never shows a 10-minute series.
+ */
+export function windowChartPoints<T extends { x: number; y: number }>(
+  points: T[] | null | undefined,
+  range: CoinChartRange | MarketChartRange,
+  nowMs: number = Date.now()
+): T[] {
+  if (!Array.isArray(points) || points.length === 0) return [];
+  const sorted = [...points]
+    .filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))
+    .sort((a, b) => a.x - b.x);
+  if (sorted.length === 0) return [];
+  const deduped: T[] = [];
+  for (const point of sorted) {
+    const prev = deduped[deduped.length - 1];
+    if (prev && prev.x === point.x) {
+      deduped[deduped.length - 1] = point;
+    } else {
+      deduped.push(point);
+    }
+  }
+  const windowMs =
+    range in RANGE_MS
+      ? RANGE_MS[range as MarketChartRange]
+      : range === '5M'
+        ? 5 * 60 * 1000
+        : null;
+  if (windowMs == null || !Number.isFinite(windowMs) || windowMs <= 0) return deduped;
+  const maxT = deduped[deduped.length - 1].x;
+  const anchorMs = Number.isFinite(maxT) ? maxT : nowMs;
+  const cutoff = anchorMs - windowMs;
+  return deduped.filter((p) => p.x >= cutoff);
 }
 
 /** Chart.js TimeScale unit: minute for ≤2H, hour for 12H. */

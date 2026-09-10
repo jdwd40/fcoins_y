@@ -91,7 +91,7 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         // BE market timeRanges: 10M,30M,1H,2H,12H,24H,ALL — no 5M. Unknown
         // keys return unfiltered ALL history. Request 10M for 5M (nearest
         // supported), then always sanitize/window-filter client-side.
-        const apiRange = timeRange === '5M' ? '10M' : timeRange;
+        const apiRange = apiRangeForMarketChart(timeRange);
         const url = `${API_BASE_URL}/market/price-history?timeRange=${apiRange}`;
         const response = await fetch(url);
         const data = await response.json();
