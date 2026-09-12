@@ -94,11 +94,11 @@ coins + market stats/history → secondary chart and asset-detail surfaces
 - Data is sanitised and windowed before rendering; stale requests are aborted.
 - `ALL` and ranges longer than 12H are intentionally absent from the player UI.
 
-## Legacy boundary
+## Historical monitor boundary
 
-The repository retains the internal `/coins/internal/apocalypse-monitor` and several old cycle-era modules/tests. Normal player routes do not mount `GameContext`; new gameplay work must use `PersistentContext` and `/api/persistent/*`.
+The player application uses `PersistentContext` and `/api/persistent/*` exclusively. The old cycle context, API client, trade/results components, and their tests have been removed.
 
-Do not delete legacy modules opportunistically. Remove them only after proving they are unreachable or intentionally retiring the internal monitor, with contract/test updates in the same change.
+The internal `/coins/internal/apocalypse-monitor` remains isolated, read-only historical tooling. It uses `monitorService` and is not mounted inside player providers.
 
 ## Documentation
 

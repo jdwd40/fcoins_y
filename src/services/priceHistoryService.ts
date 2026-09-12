@@ -1,7 +1,7 @@
 // Issue #12: central per-coin price-history service for the compact card
 // sparklines. One module-level store feeds EVERY card so a full market grid
 // never creates independent per-card polling loops coupled to the normal
-// GameContext poll:
+// Persistent player poll:
 //
 //   - dedupe: one in-flight request per coin/range, shared by all subscribers;
 //   - cache: successful responses are kept for HISTORY_CACHE_TTL_MS (matching

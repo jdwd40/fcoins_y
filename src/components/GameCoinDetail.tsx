@@ -12,7 +12,7 @@ import {
   formatSignedGbp,
   formatSignedPct,
   momentumArrow
-} from '../utils/gameLogic.ts';
+} from '../utils/persistentGameLogic.ts';
 import { sparklineRangeForCoin } from '../utils/sparkline.ts';
 import { formatRemaining, remainingMs } from '../utils/persistentCountdown.ts';
 import { usePersistentCountdownTick } from '../hooks/usePersistentCountdown.ts';

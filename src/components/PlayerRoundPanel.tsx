@@ -10,7 +10,7 @@ import {
   formatAbsoluteTimestamp,
   formatActivityTimestamp,
   GAME_STARTING_CASH_LABEL
-} from '../utils/gameLogic.ts';
+} from '../utils/persistentGameLogic.ts';
 
 // How many recent ledger rows the activity list keeps (the backend read is
 // bounded; pinned explicitly so the list depth is a UI decision).

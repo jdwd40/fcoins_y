@@ -2,7 +2,7 @@ import type { Coin, MarketEvent } from '../types';
 import { PriceChart } from './PriceChart';
 import { PersistentTradePanel } from './PersistentTradePanel.tsx';
 import { formatCurrency, parsePrice } from '../services/transactionService.ts';
-import { isCoinCollapsed } from '../utils/gameLogic.ts';
+import { isCoinCollapsed } from '../utils/persistentGameLogic.ts';
 import { Skull } from 'lucide-react';
 
 interface CoinDetailProps {

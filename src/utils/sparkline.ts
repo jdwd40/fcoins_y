@@ -92,11 +92,8 @@ export interface SparklineSample {
 // (a £0 close is meaningless shape on a LIVE card; dead cards use
 // the deterministic flatline instead of a fetch).
 //
-// `sinceMs` (optional): the LIVE apocalypse's authoritative start. Prices are
-// reset to a persisted baseline at every cycle boundary, so older points are
-// the previous round's dead regime — the same "previous round never renders
-// as current" rule the GameContext applies to signals. When the round start
-// is not known yet the endpoint data is rendered as-is.
+// `sinceMs` remains available for bounded historical views. The persistent
+// player surface leaves it unset and uses the provenance-filtered range.
 export function toSparklineSeries(points: PricePoint[], sinceMs?: number | null): SparklineSample[] {
   if (!Array.isArray(points)) return [];
   return points

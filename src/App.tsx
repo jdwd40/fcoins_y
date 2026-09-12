@@ -203,10 +203,7 @@ function PlayerShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
       <ToastProvider>
-        {/* Persistent Stage 11: the persistent context is the sole runtime
-            provider for normal player routes. Legacy GameContext and its
-            Apocalypse polling remain available on disk for internal and
-            compatibility surfaces, but are not mounted here. */}
+        {/* PersistentContext is the sole player-game runtime provider. */}
         <PersistentProvider>
           {children}
         </PersistentProvider>

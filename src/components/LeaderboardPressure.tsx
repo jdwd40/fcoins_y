@@ -2,7 +2,7 @@ import { Bot, Crown } from 'lucide-react';
 import { usePersistent } from '../context/PersistentContext.tsx';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../services/transactionService.ts';
-import { personalityLabel } from '../utils/gameLogic.ts';
+import { personalityLabel } from '../utils/persistentGameLogic.ts';
 
 // Stage 10B leaderboard pressure: the player's live persistent rank plus the
 // leaders, visible in the main status area without overwhelming trading. The

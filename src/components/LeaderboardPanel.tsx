@@ -2,7 +2,7 @@ import { Bot, Crown } from 'lucide-react';
 import { usePersistent } from '../context/PersistentContext.tsx';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../services/transactionService.ts';
-import { personalityLabel, PERSISTENT_LEADERBOARD_RULE_COPY } from '../utils/gameLogic.ts';
+import { personalityLabel, PERSISTENT_LEADERBOARD_RULE_COPY } from '../utils/persistentGameLogic.ts';
 
 // Stage 10B persistent leaderboard: humans and bots ranked together by
 // server-owned net worth. Backend rank is authoritative — never re-sort or

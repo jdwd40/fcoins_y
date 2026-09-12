@@ -39,7 +39,7 @@ import type {
   PersistentLeaderboard,
   PersistentTransaction
 } from './persistentService.ts';
-import { GameApiError } from './gameService.ts';
+import { ApiError } from './apiError.ts';
 import { SessionExpiredError } from './transactionService.ts';
 
 const TOKEN = 'test-token';
@@ -392,9 +392,9 @@ test('domain rejections surface the backend message and HTTP status verbatim', a
     await assert.rejects(
       buyPersistentTrade(TOKEN, { coinId: 1, quantity: 5 }),
       (err: unknown) => {
-        assert.ok(err instanceof GameApiError);
-        assert.equal((err as GameApiError).status, 400);
-        assert.equal((err as GameApiError).message, 'Insufficient persistent cash. You need £50.00 but have £10.00.');
+        assert.ok(err instanceof ApiError);
+        assert.equal((err as ApiError).status, 400);
+        assert.equal((err as ApiError).message, 'Insufficient persistent cash. You need £50.00 but have £10.00.');
         return true;
       }
     );

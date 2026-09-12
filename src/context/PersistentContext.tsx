@@ -23,9 +23,9 @@ import type {
   PersistentRuntime,
   PersistentTradeSide
 } from '../services/persistentService.ts';
-import { GameApiError } from '../services/gameService.ts';
+import { ApiError } from '../services/apiError.ts';
 import { SessionExpiredError } from '../services/transactionService.ts';
-import { findMyEntry } from '../utils/gameLogic.ts';
+import { findMyEntry } from '../utils/persistentGameLogic.ts';
 import { createPersistentSyncGate } from '../utils/persistentSyncGate.ts';
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
@@ -287,7 +287,7 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
         // A domain rejection happened BEFORE any mutation server-side;
         // reconcile local state immediately rather than leaving a stale
         // balance behind. syncNow is already identity-gated.
-        if (err instanceof GameApiError) await syncNow();
+        if (err instanceof ApiError) await syncNow();
         throw err;
       }
     },
