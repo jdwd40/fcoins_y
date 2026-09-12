@@ -2,7 +2,7 @@ import { Wallet, TrendingUp, Trophy, Package } from 'lucide-react';
 import { usePersistent } from '../context/PersistentContext.tsx';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../services/transactionService.ts';
-import { GAME_STARTING_CASH_LABEL } from '../utils/gameLogic.ts';
+import { GAME_STARTING_CASH_LABEL } from '../utils/persistentGameLogic.ts';
 
 // Persistent-market Stage 6/10B player status strip: the money truth of the
 // player's PERSISTENT account at a glance. Cash and Wealth are the

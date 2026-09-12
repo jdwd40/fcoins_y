@@ -6,7 +6,7 @@ import { usePersistent } from '../context/PersistentContext.tsx';
 import { PersistentTradePanel } from './PersistentTradePanel.tsx';
 import { CoinSparkline, DeadCoinSparkline } from './CoinSparkline.tsx';
 import { SessionExpiredError, formatCurrency } from '../services/transactionService.ts';
-import { GameApiError } from '../services/gameService.ts';
+import { ApiError } from '../services/apiError.ts';
 import type { PersistentCoinSignal } from '../services/persistentService.ts';
 import type { PersistentHolding } from '../services/persistentService.ts';
 import {
@@ -23,7 +23,7 @@ import {
   quantityForNotional,
   quickBuyLabel,
   QUICK_BUY_NOTIONALS
-} from '../utils/gameLogic.ts';
+} from '../utils/persistentGameLogic.ts';
 import type { Coin } from '../types';
 
 interface CoinSignalCardProps {
@@ -104,7 +104,7 @@ export function CoinSignalCard({ coin, holding, onOpenDetail }: CoinSignalCardPr
     if (err instanceof SessionExpiredError) {
       handleSessionExpired();
       showToast('Your session has expired. Please log in again.', 'error');
-    } else if (err instanceof GameApiError) {
+    } else if (err instanceof ApiError) {
       // Server rejection BEFORE any mutation (dead coin mid-flight,
       // insufficient cash/holdings, minimum notional): the exact backend
       // message, verbatim.

@@ -4,11 +4,11 @@ import {
   HOW_TO_PLAY_STEPS,
   HOW_TO_PLAY_TAGLINE,
   HOW_TO_PLAY_TITLE
-} from '../utils/gameLogic.ts';
+} from '../utils/persistentGameLogic.ts';
 
 // HOW TO PLAY: a compact, dismissible dialog hanging off the persistent
 // market header. It never blocks play — no forced tutorial, no onboarding
-// state machine, no navigation away from the game. Copy lives in gameLogic
+// state machine, no navigation away from the game. Copy lives in persistentGameLogic
 // (HOW_TO_PLAY_STEPS) so the accuracy rules are unit-testable without a DOM.
 //
 // Accessibility contract:

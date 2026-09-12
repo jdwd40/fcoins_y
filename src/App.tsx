@@ -14,7 +14,7 @@ import { AuthForms } from './components/AuthForms';
 import { Profile } from './components/Profile';
 import { MarketValueChart } from './components/MarketValueChart';
 import { PersistentMarketHeader } from './components/PersistentMarketHeader.tsx';
-import { PlayerRoundPanel } from './components/PlayerRoundPanel.tsx';
+import { PlayerActivityPanel } from './components/PlayerActivityPanel.tsx';
 import { LeaderboardPanel } from './components/LeaderboardPanel.tsx';
 import { GameTopBar } from './components/GameTopBar.tsx';
 import { PlayerStatusStrip } from './components/PlayerStatusStrip.tsx';
@@ -117,7 +117,7 @@ function Market({ refreshTrigger }: { refreshTrigger: number }) {
           </h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             <LeaderboardPanel />
-            <PlayerRoundPanel onAuthRequest={() => setShowAuthModal(true)} />
+            <PlayerActivityPanel onAuthRequest={() => setShowAuthModal(true)} />
           </div>
         </section>
 
@@ -203,10 +203,7 @@ function PlayerShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
       <ToastProvider>
-        {/* Persistent Stage 11: the persistent context is the sole runtime
-            provider for normal player routes. Legacy GameContext and its
-            Apocalypse polling remain available on disk for internal and
-            compatibility surfaces, but are not mounted here. */}
+        {/* PersistentContext is the sole player-game runtime provider. */}
         <PersistentProvider>
           {children}
         </PersistentProvider>

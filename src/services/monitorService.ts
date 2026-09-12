@@ -3,8 +3,8 @@ import { API_BASE_URL } from './apiConfig.ts';
 // Apocalypse Monitor Phase 3 Plan 1: typed REST client for the read-only
 // operator diagnostics monitor (backend issue #21, Apocalypse Monitor
 // Phase 2/2.5). This module is the ONLY frontend boundary that touches
-// /game/diagnostics/*; the player-facing gameService is contractually barred
-// from those routes (see scripts/ui-contract.mjs).
+// /game/diagnostics/* — player /api/game/* routes are retired; only these
+// diagnostics endpoints remain for the internal monitor (see scripts/ui-contract.mjs).
 //
 // Token handling rules (hard requirements):
 //   * The operator token is supplied by the caller (entered manually on the

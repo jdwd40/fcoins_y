@@ -3,13 +3,13 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { usePersistent } from '../context/PersistentContext.tsx';
 import { SessionExpiredError, formatCurrency, parsePrice } from '../services/transactionService.ts';
-import { GameApiError } from '../services/gameService.ts';
+import { ApiError } from '../services/apiError.ts';
 import {
   isCoinCollapsed,
   formatQuantity,
   parseTradeQuantity,
   minTradeValueError
-} from '../utils/gameLogic.ts';
+} from '../utils/persistentGameLogic.ts';
 import type { Coin } from '../types';
 import { Check, X } from 'lucide-react';
 
@@ -151,7 +151,7 @@ export function PersistentTradePanel({ coin }: PersistentTradePanelProps) {
       if (err instanceof SessionExpiredError) {
         handleSessionExpired();
         showToast('Your session has expired. Please log in again.', 'error');
-      } else if (err instanceof GameApiError) {
+      } else if (err instanceof ApiError) {
         // Backend rejection before mutation (dead coin mid-flight,
         // insufficient cash/oversell): the exact server message, verbatim;
         // the context already forced an account resync.

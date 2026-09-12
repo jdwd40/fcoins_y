@@ -1,6 +1,6 @@
 import { API_BASE_URL } from './apiConfig.ts';
 import { SessionExpiredError } from './transactionService.ts';
-import { GameApiError } from './gameService.ts';
+import { ApiError } from './apiError.ts';
 
 // Persistent-market Stage 6: typed REST client for the additive persistent
 // backend surface (/api/persistent/*). This is the ONLY client the new
@@ -16,9 +16,8 @@ import { GameApiError } from './gameService.ts';
 //   * every wire payload is validated at this boundary before it reaches UI
 //     state — a malformed or non-conforming response fails loudly here.
 //
-// The old cycle-shaped client (gameService.ts) is untouched: it still serves
-// the retained compatibility surfaces (results/round panels and the legacy
-// cycle leaderboard) until their post-deploy retirement (Stage 13 debt).
+// This module is the sole player-game API client. The separate monitor client
+// serves only the retained token-gated historical diagnostics route.
 // Stage 10B moves the player-facing live board onto GET /persistent/leaderboard.
 
 export type PersistentTradeSide = 'BUY' | 'SELL';
@@ -496,8 +495,8 @@ async function parseJsonSafe(response: Response): Promise<unknown> {
   }
 }
 
-// Same error-envelope convention as gameService: domain rejections carry
-// { status:'error', message }; legacy/auth failures carry { msg }.
+// Domain rejections carry { status:'error', message }; authentication
+// failures carry { msg }.
 function errorMessageFrom(body: unknown, fallback: string): string {
   if (isRecord(body)) {
     if (typeof body.message === 'string' && body.message.length > 0) return body.message;
@@ -536,7 +535,7 @@ async function persistentFetch<T>(
     throw new SessionExpiredError();
   }
   if (!response.ok) {
-    throw new GameApiError(errorMessageFrom(payload, `Request failed (HTTP ${response.status})`), response.status);
+    throw new ApiError(errorMessageFrom(payload, `Request failed (HTTP ${response.status})`), response.status, payload);
   }
   // The persistent API wraps payloads in { status:'success', data }.
   const unwrapped = isRecord(payload) && payload.status === 'success' && 'data' in payload
@@ -590,7 +589,7 @@ export async function sellPersistentTrade(
 }
 
 // Stage 10B: public persistent leaderboard for THE active world. No auth —
-// matches the legacy GET /game/leaderboard convention. worldId may be null
+// preserves the established leaderboard ordering. worldId may be null
 // with entries: [] when no world is provisioned; never fabricate rows.
 export async function getPersistentLeaderboard(signal?: AbortSignal): Promise<PersistentLeaderboard> {
   return persistentFetch('/persistent/leaderboard', { signal }, parsePersistentLeaderboard);
