@@ -278,75 +278,17 @@
 }
 
 /* --- Crypto Chaos game surface -------------------------------------------
-   Apocalyptic escalation lives here: the meter darkens and the header edge
-   warms as apocalypsePercent climbs. Motion is limited to slow pulses and
-   respects prefers-reduced-motion; trading controls never shake or flash. */
+   Persistent market chrome. Motion respects prefers-reduced-motion;
+   trading controls never shake or flash. */
 @layer components {
-  .apocalypse-header {
-    border-bottom: 1px solid var(--card-edge);
-    background: var(--card);
-    transition: background 600ms ease;
-  }
-  .apocalypse-phase-calm { background: var(--card); }
-  .apocalypse-phase-unstable {
-    background: linear-gradient(to bottom, color-mix(in srgb, var(--accent) 5%, var(--card)), var(--card));
-  }
-  .apocalypse-phase-dangerous {
-    background: linear-gradient(to bottom, color-mix(in srgb, var(--oxblood) 7%, var(--card)), var(--card));
-    border-bottom-color: color-mix(in srgb, var(--oxblood) 40%, var(--card-edge));
-  }
-  .apocalypse-phase-extreme {
-    background: linear-gradient(to bottom, color-mix(in srgb, var(--oxblood) 14%, var(--card)), var(--card));
-    border-bottom: 2px solid var(--oxblood);
-  }
-  .apocalypse-settling {
-    background: color-mix(in srgb, var(--oxblood) 10%, var(--card));
-    border-bottom: 2px solid var(--oxblood);
-  }
-
-  .apocalypse-mark {
-    display: grid;
-    place-items: center;
-    width: 2.25rem;
-    height: 2.25rem;
-    flex: none;
-    border-radius: 0.75rem;
-    background: var(--accent);
-    color: #fff;
-    box-shadow: 0 8px 24px -12px color-mix(in srgb, var(--accent) 80%, transparent);
-  }
-  .apocalypse-phase-dangerous .apocalypse-mark,
-  .apocalypse-phase-extreme .apocalypse-mark,
-  .apocalypse-settling .apocalypse-mark {
-    background: var(--oxblood);
-  }
-
-  .apocalypse-meter {
-    height: 10px;
-    border-radius: 999px;
-    background: var(--bg-alt);
-    border: 1px solid var(--card-edge);
-    overflow: hidden;
-  }
-  .apocalypse-meter-fill {
-    height: 100%;
-    border-radius: 999px;
-    background: linear-gradient(to right, var(--verdigris), var(--accent) 55%, var(--oxblood));
-    transition: width 900ms ease;
-  }
-  .apocalypse-phase-extreme .apocalypse-meter-fill,
-  .apocalypse-settling .apocalypse-meter-fill {
-    animation: apocalypse-pulse 1.8s ease-in-out infinite;
-  }
-
   .coin-dead { opacity: 0.72; }
   .asset-mark-dead {
     background: linear-gradient(145deg, var(--oxblood), #7a1f2b);
     box-shadow: inset 0 1px rgba(255,255,255,0.25), 0 8px 20px -12px var(--oxblood);
   }
 
-  /* HOW TO PLAY: discoverable accent-outlined control in the apocalypse
-     header; must read as interactive on every phase background. */
+  /* HOW TO PLAY: discoverable accent-outlined control in the persistent
+     market header; must read as interactive on card backgrounds. */
   .how-to-play-trigger {
     display: inline-flex;
     align-items: center;
@@ -394,18 +336,11 @@
     box-shadow: inset 3px 0 0 var(--accent);
   }
 
-  @keyframes apocalypse-pulse {
-    0%, 100% { filter: brightness(1); }
-    50% { filter: brightness(1.35); }
-  }
-
   @media (prefers-reduced-motion: reduce) {
-    .apocalypse-meter-fill { animation: none !important; transition: none; }
-    .apocalypse-header { transition: none; }
-    /* The restraint is surface-wide, not just the meter: the continuously
-       scrolling ticker, reveal entrances, flicker pulses, spinner rotation
-       and smooth-scroll all stand down. Content stays fully visible — every
-       reveal uses a 'both' fill only for the entrance, never to hide. */
+    /* Surface-wide restraint: continuously scrolling ticker, reveal
+       entrances, flicker pulses, spinner rotation and smooth-scroll all
+       stand down. Content stays fully visible — every reveal uses a 'both'
+       fill only for the entrance, never to hide. */
     .animate-ticker, .animate-ticker-slow, .animate-flicker,
     .animate-reveal, .animate-reveal-fast, .animate-fade-in-down,
     .animate-fade-out-up, .animate-draw-line, .animate-spin,
@@ -568,17 +503,6 @@
     text-transform: uppercase;
     color: var(--fg-dim);
   }
-  .phase-dip { color: var(--verdigris); border-color: color-mix(in srgb, var(--verdigris) 45%, var(--card-edge)); }
-  .phase-rise { color: var(--verdigris); border-color: color-mix(in srgb, var(--verdigris) 45%, var(--card-edge)); }
-  .phase-boom { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--card-edge)); }
-  .phase-fall { color: var(--oxblood); border-color: color-mix(in srgb, var(--oxblood) 45%, var(--card-edge)); }
-  .phase-dead { color: var(--oxblood); border-color: var(--oxblood); }
-  .risk-stable { color: var(--verdigris); }
-  .risk-shaky { color: var(--fg-dim); }
-  .risk-danger { color: var(--oxblood); border-color: color-mix(in srgb, var(--oxblood) 45%, var(--card-edge)); }
-  .risk-critical { color: var(--oxblood); border-color: var(--oxblood); background: color-mix(in srgb, var(--oxblood) 10%, var(--bg-alt)); }
-  .risk-dead { color: var(--oxblood); border-color: var(--oxblood); }
-
   /* Quick-buy ladder: 2×2 on a phone, 4 across when wide; every button is a
      comfortable 44px+ tap target with the notional AND the estimated Power
      cost visible before committing. */

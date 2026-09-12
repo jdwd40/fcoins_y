@@ -12,6 +12,8 @@ const tradePanel = read('src/components/PersistentTradePanel.tsx');
 const monitor = read('src/components/ApocalypseMonitor.tsx');
 
 assert.match(app, /<PersistentProvider>/);
+assert.match(app, /PlayerActivityPanel/);
+assert.doesNotMatch(app, /PlayerRoundPanel/);
 assert.doesNotMatch(app, /GameProvider|GameContext|ApocalypseHeader|ResultsOverlay|RoundTradePanel/);
 assert.match(app, /path="\/internal\/apocalypse-monitor"/);
 
@@ -42,7 +44,9 @@ for (const retiredPath of [
   'src/components/ResultsPanel.tsx',
   'src/components/RoundTradePanel.tsx',
   'src/components/BuyForm.tsx',
-  'src/components/SellForm.tsx'
+  'src/components/SellForm.tsx',
+  'src/components/DebugUserInfo.tsx',
+  'src/components/PlayerRoundPanel.tsx'
 ]) {
   assert.equal(existsSync(new URL(`../${retiredPath}`, import.meta.url)), false, `${retiredPath} must stay retired`);
 }

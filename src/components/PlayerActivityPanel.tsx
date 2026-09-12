@@ -28,7 +28,7 @@ const ACTIVITY_LIMIT = 20;
 // legacy account funds (users.funds) never appear here. The account is
 // automatic: there is no JOIN control, and while it syncs the panel says
 // so instead of fabricating the £10,000 start.
-export function PlayerRoundPanel({ onAuthRequest }: { onAuthRequest: () => void }) {
+export function PlayerActivityPanel({ onAuthRequest }: { onAuthRequest: () => void }) {
   const { user, getAuthToken, handleSessionExpired } = useAuth();
   const { account, synced, provisioned, lastSyncAt, myEntry } = usePersistent();
 
