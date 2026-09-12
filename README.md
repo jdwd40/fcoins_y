@@ -2,8 +2,8 @@
 
 Vite, React, and TypeScript frontend for **Coins / Crypto Chaos**, the continuous fantasy cryptocurrency market served at [jdwd40.com/coins](https://jdwd40.com/coins/).
 
-Repository: `jdwd40/fcoins_y`  
-Production branch: `master`  
+Repository: `jdwd40/fcoins_y`
+Production branch: `master`
 Backend: [`jdwd40/back_coins_x`](https://github.com/jdwd40/back_coins_x)
 
 ## Current player experience
@@ -115,4 +115,3 @@ Project-wide documentation is maintained in the backend repository to avoid drif
 ## Scope
 
 Virtual currency only. No real cryptocurrency, payments, deposits, withdrawals, blockchain, wallets, gambling, or financial advice.
-
