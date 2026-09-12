@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "test:ui": "node scripts/ui-contract.mjs",
-    "test:unit": "node --import tsx --test src/utils/priceSummary.test.ts src/utils/persistentGameLogic.test.ts src/utils/sparkline.test.ts src/utils/marketHistoryChart.test.ts src/utils/apocalypseMonitor.test.ts src/utils/persistentTrading.test.ts src/utils/persistentSyncGate.test.ts src/utils/persistentCountdown.test.ts src/utils/persistentRuntimeCopy.test.ts src/services/persistentService.test.ts src/services/priceHistoryService.test.ts src/services/monitorService.test.ts",
+    "test:unit": "node --import tsx --test src/utils/priceSummary.test.ts src/utils/persistentGameLogic.test.ts src/utils/sparkline.test.ts src/utils/marketHistoryChart.test.ts src/utils/apocalypseMonitor.test.ts src/utils/persistentTrading.test.ts src/utils/persistentSyncGate.test.ts src/utils/persistentCountdown.test.ts src/utils/persistentRuntimeCopy.test.ts src/services/apiError.test.ts src/services/persistentService.test.ts src/services/priceHistoryService.test.ts src/services/monitorService.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {
