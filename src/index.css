@@ -488,24 +488,9 @@
     color: var(--fg-mute);
   }
 
-  /* Phase/risk chips: the WORD carries the meaning; colour only reinforces. */
-  .signal-chip {
-    display: inline-flex;
-    align-items: center;
-    border-radius: 7px;
-    border: 1px solid var(--card-edge);
-    background: var(--bg-alt);
-    padding: 0.2rem 0.5rem;
-    font-family: 'Inter', system-ui, sans-serif;
-    font-size: 0.66rem;
-    font-weight: 800;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--fg-dim);
-  }
   /* Quick-buy ladder: 2×2 on a phone, 4 across when wide; every button is a
-     comfortable 44px+ tap target with the notional AND the estimated Power
-     cost visible before committing. */
+     comfortable 44px+ tap target with the requested notional visible before
+     committing. */
   .quick-buy-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -532,50 +517,6 @@
   .quick-buy-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .quick-buy-btn:disabled { opacity: 0.45; cursor: not-allowed; }
   .quick-buy-amount { font-family: 'Inter', system-ui, sans-serif; font-size: 0.85rem; font-weight: 800; }
-  .quick-buy-power { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.62rem; color: var(--fg-mute); }
-
-  /* SIM-16/17: the public market-phase banner and per-coin event list. The
-     WORD carries the meaning (phase name, tailwind/headwind, ▲/▼ direction
-     with the direction word); colour only reinforces. Wraps cleanly on
-     narrow phones; long event names break instead of overflowing. No
-     animation — the surface-wide reduced-motion restraint stands. */
-  .market-phase-banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 0.35rem 0.75rem;
-    border: 1px solid var(--card-edge);
-    border-radius: 10px;
-    background: var(--card);
-    padding: 0.55rem 0.75rem;
-  }
-  .market-phase-positive { border-color: color-mix(in srgb, var(--verdigris) 45%, var(--card-edge)); }
-  .market-phase-negative { border-color: color-mix(in srgb, var(--oxblood) 45%, var(--card-edge)); }
-  .market-phase-neutral { border-style: dashed; }
-  .coin-event-list {
-    display: grid;
-    gap: 0.35rem;
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-  .coin-event {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.2rem 0.5rem;
-  }
-  .coin-event-name {
-    min-width: 0;
-    flex: 1 1 8rem;
-    overflow-wrap: anywhere;
-    font-size: 0.75rem;
-    color: var(--fg);
-  }
-  .coin-event-time { margin-left: auto; }
-  .event-positive { color: var(--verdigris); border-color: color-mix(in srgb, var(--verdigris) 45%, var(--card-edge)); }
-  .event-negative { color: var(--oxblood); border-color: color-mix(in srgb, var(--oxblood) 45%, var(--card-edge)); }
 
   /* Comfortable primary-action tap targets (>=44px). */
   .tap-target { min-height: 44px; }
@@ -589,15 +530,13 @@
     /* Metadata labels: 11px -> 12px, with slightly looser tracking so the
        uppercase text stays legible on a phone. */
     .label, .label-ink { font-size: 0.75rem; letter-spacing: 0.08em; }
-    /* Phase/risk/bot chips carry the trading signal in words — readable. */
+    /* Status/bot chips carry the trading signal in words — readable. */
     .chip { font-size: 0.72rem; }
-    .signal-chip { font-size: 0.72rem; padding: 0.28rem 0.55rem; }
-    /* Stat cells breathe so the Power/rank/positions hints wrap cleanly. */
+    /* Stat cells breathe so the rank/positions hints wrap cleanly. */
     .stat-cell { padding: 0.65rem 0.6rem; }
-    /* Quick-buy ladder: notional louder, Power estimate readable (was
-       9.9px), and the whole button a more forgiving tap target. */
+    /* Quick-buy ladder: notional louder and the whole button a more
+       forgiving tap target. */
     .quick-buy-amount { font-size: 0.95rem; }
-    .quick-buy-power { font-size: 0.72rem; }
     .quick-buy-btn { min-height: 56px; }
     /* Every action button is a comfortable >=44px target with readable text,
        including the custom-trade panel that reuses the shared btn classes. */
