@@ -642,7 +642,7 @@ export const LEADERBOARD_BREAKEVEN_COPY = `Exactly ${GAME_STARTING_CASH_LABEL} i
 
 // Stage 10B persistent board: continuous net-worth ranking, no profitable-only filter.
 export const PERSISTENT_LEADERBOARD_RULE_COPY =
-  'Ranked by net worth (cash + holdings − debt). Backend rank is authoritative.';
+  'Ranked by net worth — cash plus holdings, minus any debt. Players and bots share one board.';
 
 export interface HowToPlayStep {
   id: string;

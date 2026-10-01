@@ -1,200 +1,38 @@
-import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Activity } from 'lucide-react';
-import { CoinsList } from './components/CoinsList';
-import { CoinDetail } from './components/CoinDetail';
-import { MarketStats } from './components/MarketStats';
-import { MarketStatus } from './components/MarketStatus';
-import { useFetch } from './hooks/useFetch';
-import { Modal } from './components/Modal';
+import { Suspense, lazy } from 'react';
+import { BrowserRouter as Router, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { PersistentProvider } from './context/PersistentContext.tsx';
-import { AuthForms } from './components/AuthForms';
-import { Profile } from './components/Profile';
-import { MarketValueChart } from './components/MarketValueChart';
-import { PersistentMarketHeader } from './components/PersistentMarketHeader.tsx';
-import { PlayerRoundPanel } from './components/PlayerRoundPanel.tsx';
-import { LeaderboardPanel } from './components/LeaderboardPanel.tsx';
-import { GameTopBar } from './components/GameTopBar.tsx';
-import { PlayerStatusStrip } from './components/PlayerStatusStrip.tsx';
-import { LeaderboardPressure } from './components/LeaderboardPressure.tsx';
-import { GameMarketGrid } from './components/GameMarketGrid.tsx';
-import { ApocalypseMonitor } from './components/ApocalypseMonitor.tsx';
-import { API_BASE_URL } from './services/apiConfig.ts';
-import type { Coin, MarketStatus as MarketStatusType, MarketStats as MarketStatsType } from './types';
+import { AppShell } from './components/shell/AppShell.tsx';
+import { MarketPage } from './pages/MarketPage.tsx';
+import { PortfolioPage } from './pages/PortfolioPage.tsx';
+import { LeaderboardPage } from './pages/LeaderboardPage.tsx';
+import { NotFoundPage } from './pages/NotFoundPage.tsx';
+import { Card } from './components/ui/Card.tsx';
+import { Skeleton } from './components/ui/Skeleton.tsx';
 
-const AUTO_REFRESH_INTERVAL = 30000;
+// After-Hours Exchange: all player routes live under ONE layout route so
+// AuthProvider / ToastProvider / PersistentProvider mount once and never
+// remount on navigation. The internal operator monitor stays OUTSIDE the
+// player providers (no player-API polling on the operator page) and every
+// chart-heavy route is lazy so chart.js leaves the main chunk.
 
-// V2-5 primary screen composition: the casual mobile game FIRST — compact
-// status header, player status strip, leaderboard pressure, then the
-// scannable market grid. The historical market drill-down (stats, charts,
-// asset table, profile/history) is preserved intact as the secondary
-// surface below the game.
-function Market({ refreshTrigger }: { refreshTrigger: number }) {
-  const [selectedCoinId, setSelectedCoinId] = useState<number | null>(null);
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [isDark, setIsDark] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    const stored = localStorage.getItem('theme');
-    if (stored) return stored === 'dark';
-    return true;
-  });
+const CoinPage = lazy(() =>
+  import('./pages/CoinPage.tsx').then((module) => ({ default: module.CoinPage }))
+);
+const WorldPage = lazy(() =>
+  import('./pages/WorldPage.tsx').then((module) => ({ default: module.WorldPage }))
+);
+const ApocalypseMonitor = lazy(() =>
+  import('./components/ApocalypseMonitor.tsx').then((module) => ({ default: module.ApocalypseMonitor }))
+);
 
-  // Historical market feeds. These serve the secondary drill-down surfaces
-  // only — the primary game surface reads the shared PersistentContext
-  // persistent contracts, so a historical-market outage never blocks gameplay.
-  const { data: coinsData, loading: coinsLoading, error: coinsError } =
-    useFetch<{ coins: Coin[] }>(`${API_BASE_URL}/coins`, 2000);
-
-  const { data: marketStats, loading: marketStatsLoading, error: marketStatsError } =
-    useFetch<MarketStatsType>(`${API_BASE_URL}/market/stats`, 2000);
-
-  const marketData = coinsData && marketStats ? {
-    coins: coinsData.coins,
-    market_stats: marketStats,
-  } : undefined;
-
-  const classicLoading = coinsLoading || marketStatsLoading;
-  const classicError = coinsError || marketStatsError;
-
-  const { data: marketStatus } = useFetch<MarketStatusType>(
-    `${API_BASE_URL}/market/status`,
-    2000
-  );
-
-  const { data: coinDetail, loading: coinLoading } = useFetch<{ coin: Coin }>(
-    selectedCoinId ? `${API_BASE_URL}/coins/${selectedCoinId}` : ''
-  );
-
-  useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  }, [isDark]);
-
-  const classicNotice = (() => {
-    if (marketStatus?.status === 'STOPPED') {
-      return 'The historical market detail is temporarily offline. Balances and holdings remain safe.';
-    }
-    if (classicError) {
-      return `Historical market data unavailable — ${classicError}`;
-    }
-    if (classicLoading && !marketData) {
-      return 'Loading historical market data…';
-    }
-    return null;
-  })();
-
+function RouteSkeleton() {
   return (
-    <div id="top" className="min-h-screen bg-paper text-ink">
-      <GameTopBar
-        onAuthClick={() => setShowAuthModal(true)}
-        isDark={isDark}
-        onThemeToggle={() => setIsDark(!isDark)}
-      />
-
-      {/* Stage 11: persistent-market header (no countdown / settlement chrome). */}
-      <PersistentMarketHeader />
-
-      <main className="game-shell py-4 sm:py-8">
-        {/* Primary mobile-first game surface */}
-        <div className="space-y-4 sm:space-y-5 mb-8 sm:mb-10">
-          <PlayerStatusStrip onAuthRequest={() => setShowAuthModal(true)} />
-          <LeaderboardPressure />
-          <GameMarketGrid />
-        </div>
-
-        {/* Drill-down: persistent leaderboard + account activity */}
-        <section id="leaderboard" className="mb-10 sm:mb-12" aria-label="Leaderboard & activity">
-          <div className="label mb-2">Leaderboard & activity</div>
-          <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-ink mb-4">
-            Board and account activity
-          </h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            <LeaderboardPanel />
-            <PlayerRoundPanel onAuthRequest={() => setShowAuthModal(true)} />
-          </div>
-        </section>
-
-        {/* Secondary: historical market drill-down surfaces (preserved Core 7 behaviour) */}
-        <section id="markets" className="animate-reveal" aria-label="Historical market drill-down">
-          <div className="label mb-2">Historical market drill-down</div>
-          <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-ink mb-1">
-            Charts and full asset detail
-          </h2>
-          <p className="text-ink-mute text-sm mb-5 max-w-2xl">
-            Longer-range statistics, charts and the full asset table live here as a secondary reference — live coin prices and portfolio moves drive the primary game.
-          </p>
-
-          {classicNotice !== null ? (
-            <div className="paper-card max-w-md w-full p-7 text-center mb-8">
-              <Activity className="w-8 h-8 text-oxblood mx-auto mb-4" aria-hidden="true" />
-              <p className="text-ink-dim text-sm leading-relaxed">{classicNotice}</p>
-            </div>
-          ) : (
-            <>
-              {marketData?.market_stats && (
-                <div className="mb-6">
-                  <MarketStats stats={marketData.market_stats} />
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
-                <div className="lg:col-span-2">
-                  <MarketValueChart refreshTrigger={refreshTrigger} />
-                </div>
-                <div>
-                  {marketStatus && <MarketStatus status={marketStatus} />}
-                </div>
-              </div>
-
-              {marketData?.coins && (
-                <>
-                  <div className="flex items-end justify-between mb-4">
-                    <div className="label">{marketData.coins.length} assets · sorted by price · dead coins sink</div>
-                  </div>
-                  <CoinsList
-                    coins={marketData.coins}
-                    onSelectCoin={setSelectedCoinId}
-                    selectedCoinId={selectedCoinId}
-                    events={marketStatus?.events || []}
-                  />
-                </>
-              )}
-            </>
-          )}
-        </section>
-
-        <footer id="about" className="mt-14 sm:mt-16 pt-7 border-t border-rule flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="font-display font-bold text-ink">Crypto Chaos · a CoinX persistent market</div>
-            <p className="text-ink-mute text-xs mt-1">A private fantasy market for friends and family — continuous trading, no reset clock.</p>
-          </div>
-          <p className="label max-w-xl md:text-right">Virtual GBP only · No real cryptocurrency, deposits, withdrawals or financial services</p>
-        </footer>
-
-        <Modal isOpen={selectedCoinId !== null} onClose={() => setSelectedCoinId(null)}>
-          {coinLoading ? (
-            <div className="flex items-center justify-center min-h-[400px]">
-              <div className="label animate-flicker">Loading asset market…</div>
-            </div>
-          ) : (
-            coinDetail?.coin && (
-              <CoinDetail coin={coinDetail.coin} events={marketStatus?.events || []} refreshTrigger={refreshTrigger} />
-            )
-          )}
-        </Modal>
-      </main>
-
-      <Modal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)}>
-        <AuthForms onClose={() => setShowAuthModal(false)} />
-      </Modal>
-
+    <div className="game-shell py-6">
+      <Card className="p-6" aria-label="Loading page">
+        <Skeleton lines={5} className="h-6" />
+      </Card>
     </div>
   );
 }
@@ -203,10 +41,9 @@ function PlayerShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
       <ToastProvider>
-        {/* Persistent Stage 11: the persistent context is the sole runtime
-            provider for normal player routes. Legacy GameContext and its
-            Apocalypse polling remain available on disk for internal and
-            compatibility surfaces, but are not mounted here. */}
+        {/* The persistent context is the sole runtime provider for player
+            routes. Legacy GameContext remains on disk for compatibility but
+            is never mounted here. */}
         <PersistentProvider>
           {children}
         </PersistentProvider>
@@ -216,22 +53,49 @@ function PlayerShell({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-
-  useEffect(() => {
-    const intervalId = setInterval(() => setRefreshTrigger((previous) => previous + 1), AUTO_REFRESH_INTERVAL);
-    return () => clearInterval(intervalId);
-  }, []);
-
   return (
     <Router basename="/coins">
       <Routes>
-        {/* Internal operator tooling (Apocalypse Monitor Phase 3 Plan 1):
-            unlinked from player navigation, and mounted WITHOUT the player
-            providers so no player-API polling runs on the operator page. */}
-        <Route path="/internal/apocalypse-monitor" element={<ApocalypseMonitor />} />
-        <Route path="/" element={<PlayerShell><Market refreshTrigger={refreshTrigger} /></PlayerShell>} />
-        <Route path="/profile" element={<PlayerShell><Profile /></PlayerShell>} />
+        {/* Internal operator tooling: unlinked from player navigation,
+            mounted WITHOUT the player providers, lazy-loaded. */}
+        <Route
+          path="/internal/apocalypse-monitor"
+          element={
+            <Suspense fallback={<RouteSkeleton />}>
+              <ApocalypseMonitor />
+            </Suspense>
+          }
+        />
+        <Route
+          element={
+            <PlayerShell>
+              <AppShell />
+            </PlayerShell>
+          }
+        >
+          <Route index element={<MarketPage />} />
+          <Route
+            path="/coin/:coinId"
+            element={
+              <Suspense fallback={<RouteSkeleton />}>
+                <CoinPage />
+              </Suspense>
+            }
+          />
+          <Route path="/portfolio" element={<PortfolioPage />} />
+          {/* Old profile links keep working. */}
+          <Route path="/profile" element={<Navigate to="/portfolio" replace />} />
+          <Route path="/leaderboard" element={<LeaderboardPage />} />
+          <Route
+            path="/world"
+            element={
+              <Suspense fallback={<RouteSkeleton />}>
+                <WorldPage />
+              </Suspense>
+            }
+          />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
       </Routes>
     </Router>
   );

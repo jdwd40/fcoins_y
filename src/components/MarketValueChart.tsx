@@ -14,6 +14,7 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
+import { readChartTheme, withAlpha } from '../utils/chartTheme.ts';
 import {
   MARKET_CHART_RANGES,
   DEFAULT_MARKET_CHART_RANGE,
@@ -123,11 +124,11 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
     };
   }, [timeRange, refreshTrigger]);
 
-  const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
-  const lineColor = isDark ? '#8b5cf6' : '#7132f5';
-  const fillColor = isDark ? 'rgba(139, 92, 246, 0.16)' : 'rgba(113, 50, 245, 0.10)';
-  const axisColor = isDark ? '#85899e' : '#686b82';
-  const gridColor = isDark ? 'rgba(148, 151, 169, 0.10)' : 'rgba(104, 107, 130, 0.12)';
+  const theme = readChartTheme();
+  const lineColor = theme.brand;
+  const fillColor = withAlpha(theme.brand, 0.12);
+  const axisColor = theme.textMuted;
+  const gridColor = theme.grid;
   const timeUnit = chartTimeUnitForRange(timeRange);
 
   const chartData = {
@@ -144,7 +145,7 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         pointRadius: priceHistory.length <= 2 ? 3 : 0,
         pointHoverRadius: 5,
         pointHoverBackgroundColor: lineColor,
-        pointHoverBorderColor: isDark ? '#08090d' : '#ffffff',
+        pointHoverBorderColor: theme.tooltipBg,
         pointHoverBorderWidth: 2,
         fill: true,
         tension: priceHistory.length >= 3 ? 0.35 : 0,
@@ -159,10 +160,10 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: isDark ? '#12141d' : '#ffffff',
-        titleColor: isDark ? '#f5f6fa' : '#101114',
-        bodyColor: isDark ? '#8b5cf6' : '#7132f5',
-        borderColor: isDark ? 'rgba(148,151,169,0.18)' : '#dedee5',
+        backgroundColor: theme.tooltipBg,
+        titleColor: theme.text,
+        bodyColor: theme.brand,
+        borderColor: theme.tooltipBorder,
         borderWidth: 1,
         padding: 14,
         cornerRadius: 10,
@@ -206,25 +207,20 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
   };
 
   return (
-    <div className={`paper-card p-6 sm:p-8 h-full ${className}`}>
-      <div className="flex items-start justify-between flex-wrap gap-4 mb-6">
-        <div>
-          <div className="label mb-1">Market analytics</div>
-          <h3 className="font-display text-3xl font-bold text-ink"
-              style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 40" }}>
-            Aggregate market value
-          </h3>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2 mb-6 pb-4 border-b border-rule">
+    <div className={className}>
+      <div
+        role="group"
+        aria-label="Select market chart time range"
+        className="flex flex-wrap gap-1 mb-4"
+      >
         {TIME_RANGES.map(({ value, label }) => (
           <button
             key={value}
             onClick={() => selectRange(value)}
-            className={`font-mono text-[0.7rem] tracking-caps uppercase px-3 py-1.5 border transition-all ${
+            aria-pressed={timeRange === value}
+            className={`font-mono text-xs tracking-caps uppercase px-3 min-h-[44px] rounded-lg border transition-colors ${
               timeRange === value
-                ? 'border-gold text-gold bg-paper-alt'
+                ? 'border-brand text-brand bg-accent-soft'
                 : 'border-transparent text-ink-mute hover:text-ink hover:border-rule'
             }`}
           >
@@ -236,14 +232,14 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
       <div className="relative">
         {loading && priceHistory.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-sm text-ink-mute animate-flicker">Loading market history…</div>
+            <div className="text-sm text-ink-mute">Loading market history…</div>
           </div>
         )}
         {!loading && priceHistory.length === 0 && (
           <div className="flex items-center justify-center h-64 label">No market history available</div>
         )}
         {priceHistory.length > 0 && (
-          <div className="h-[300px] sm:h-[360px]">
+          <div className="h-[260px] sm:h-[360px]">
             <Line key={`market-${timeRange}`} data={chartData} options={options} />
           </div>
         )}

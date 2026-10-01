@@ -19,6 +19,13 @@ export function useFetch<T>(url: string, pollInterval = 5000) {
   useEffect(() => {
     if (!url) return;
 
+    // The 500ms throttle below exists to dedupe INTERVAL ticks, not the
+    // effect's initial fetch. Reset it on effect start so the first fetch of
+    // every mount runs immediately — under StrictMode the first effect's
+    // fetch is aborted by cleanup and the remount must not be throttled away
+    // (otherwise the first data only lands at the next poll interval).
+    lastFetchTimeRef.current = 0;
+
     const fetchData = async () => {
       // Throttle requests to prevent too frequent updates
       const now = Date.now();

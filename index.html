@@ -1,15 +1,32 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#08090d" />
-    <meta name="description" content="Crypto Chaos is a private fantasy cryptocurrency apocalypse market using virtual GBP only." />
-    <title>Crypto Chaos · CoinX Apocalypse Exchange</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#090a10" />
+    <meta name="description" content="Crypto Chaos is a persistent fantasy coin market game played with virtual GBP only." />
+    <title>Crypto Chaos · Fantasy Coin Market</title>
     <base href="/coins/">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <script>
+      // Set the theme class before first paint to avoid a flash. Dark is the
+      // default; the shell toggle writes localStorage 'theme' = dark|light.
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme');
+          if (stored === 'light') {
+            document.documentElement.classList.remove('dark');
+          } else {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   </head>
   <body>
     <div id="root"></div>
