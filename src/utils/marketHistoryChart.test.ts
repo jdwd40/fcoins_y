@@ -200,11 +200,13 @@ test('PriceChart defaults expose ≤2H only (no ALL/24H/7D/30D)', () => {
   assert.doesNotMatch(block, /ALL/);
 });
 
-test('GameCoinDetail secondary ranges are empty (no >12h / no unsupported 12H)', () => {
-  const src = readFileSync(join(srcRoot, 'components/GameCoinDetail.tsx'), 'utf8');
-  assert.match(src, /DETAIL_PRIMARY_RANGES: readonly TimeRange\[\] = \['5M', '10M', '30M', '1H', '2H'\]/);
-  assert.match(src, /DETAIL_SECONDARY_RANGES: readonly TimeRange\[\] = \[\]/);
-  assert.doesNotMatch(src, /DETAIL_SECONDARY_RANGES: readonly TimeRange\[\] = \['24H'/);
+test('CoinPage chart ranges are capped at 2H with no secondary group', () => {
+  // The coin page (After-Hours Exchange) replaced the GameCoinDetail modal;
+  // it declares the same capped range contract via COIN_CHART_RANGES_UI.
+  const src = readFileSync(join(srcRoot, 'pages/CoinPage.tsx'), 'utf8');
+  assert.match(src, /COIN_CHART_RANGES_UI: readonly TimeRange\[\] = \['5M', '10M', '30M', '1H', '2H'\]/);
+  assert.match(src, /secondaryRanges=\{\[\]\}/);
+  assert.doesNotMatch(src, /COIN_CHART_RANGES_UI[\s\S]*?24H/);
 });
 
 test('apiRangeForCoinChart maps 5M to 10M', () => {
@@ -225,9 +227,9 @@ test('windowChartPoints filters a 10M series down to 5M', () => {
   assert.ok(windowed.length <= 7);
 });
 
-test('GameCoinDetail primary ranges include 5M and no ALL/30D', () => {
-  const src = readFileSync(join(srcRoot, 'components/GameCoinDetail.tsx'), 'utf8');
-  assert.match(src, /DETAIL_PRIMARY_RANGES[\s\S]*5M/);
-  assert.doesNotMatch(src, /DETAIL_SECONDARY_RANGES:[^=]*=\s*\[[^\]]*ALL/);
-  assert.doesNotMatch(src, /DETAIL_SECONDARY_RANGES:[^=]*=\s*\[[^\]]*30D/);
+test('CoinPage primary ranges include 5M and no ALL/30D', () => {
+  const src = readFileSync(join(srcRoot, 'pages/CoinPage.tsx'), 'utf8');
+  assert.match(src, /COIN_CHART_RANGES_UI[\s\S]*5M/);
+  assert.doesNotMatch(src, /COIN_CHART_RANGES_UI:[^=]*=\s*\[[^\]]*ALL/);
+  assert.doesNotMatch(src, /COIN_CHART_RANGES_UI:[^=]*=\s*\[[^\]]*30D/);
 });

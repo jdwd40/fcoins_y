@@ -21,6 +21,7 @@ import type {
   PersistentLeaderboardEntry,
   PersistentMarketSignals,
   PersistentRuntime,
+  PersistentTradeResult,
   PersistentTradeSide
 } from '../services/persistentService.ts';
 import { GameApiError } from '../services/gameService.ts';
@@ -79,6 +80,9 @@ interface PersistentContextValue {
   signals: PersistentMarketSignals | null;
   /** Last signals-sync failure; the last good signals are kept on transient error. */
   signalsError: string | null;
+  /** Local timestamp of the last successful signals sync (null = never).
+   *  Additive freshness signal for the "Live · updated Ns ago" pill. */
+  signalsSyncedAt: number | null;
   /** Public persistent runtime (Director + coin events). Identity-independent. */
   runtime: PersistentRuntime | null;
   /** Last runtime-sync failure; the last good runtime is kept on transient error. */
@@ -93,8 +97,10 @@ interface PersistentContextValue {
   directorUnavailable: boolean;
   /** The signed-in human's row matched by authenticated userId, if present. */
   myEntry: PersistentLeaderboardEntry | null;
-  /** Execute a persistent trade at the server-locked live price. */
-  trade: (side: PersistentTradeSide, coinId: number, quantity: number) => Promise<void>;
+  /** Execute a persistent trade at the server-locked live price. Resolves
+   *  with the parsed server result (transaction + post-trade account) so
+   *  callers can render a verbatim receipt. */
+  trade: (side: PersistentTradeSide, coinId: number, quantity: number) => Promise<PersistentTradeResult>;
   /** Force an immediate resync (post-trade/error recovery/focus). */
   syncNow: () => Promise<void>;
 }
@@ -114,6 +120,7 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
   const [signals, setSignals] = useState<PersistentMarketSignals | null>(null);
   const [signalsError, setSignalsError] = useState<string | null>(null);
+  const [signalsSyncedAt, setSignalsSyncedAt] = useState<number | null>(null);
   const [runtime, setRuntime] = useState<PersistentRuntime | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [runtimeSyncedAt, setRuntimeSyncedAt] = useState<number | null>(null);
@@ -157,6 +164,7 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
       if (signalsResult.status === 'fulfilled') {
         setSignals(signalsResult.value);
         setSignalsError(null);
+        setSignalsSyncedAt(Date.now());
       } else {
         setSignalsError(
           signalsResult.reason instanceof Error
@@ -283,6 +291,7 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
         }
         // Always resync so the current identity gets board (+ account if authed).
         await syncNow();
+        return result;
       } catch (err) {
         // A domain rejection happened BEFORE any mutation server-side;
         // reconcile local state immediately rather than leaving a stale
@@ -326,6 +335,7 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
     leaderboardError,
     signals,
     signalsError,
+    signalsSyncedAt,
     runtime,
     runtimeError,
     runtimeSyncedAt,

@@ -17,6 +17,8 @@ import 'chartjs-adapter-date-fns';
 import { PricePoint, PriceHistoryResponse, TimeRange } from '../types';
 import { computePeriodSummary, PeriodSummary } from '../utils/priceSummary';
 import { clipPointsSince, entryMarkerVisible } from '../utils/sparkline.ts';
+import { formatPrice } from '../utils/formatPrice.ts';
+import { readChartTheme, withAlpha } from '../utils/chartTheme.ts';
 import {
   COIN_CHART_RANGES,
   DEFAULT_COIN_CHART_RANGE,
@@ -55,18 +57,15 @@ interface PriceChartProps {
   averageEntryPrice?: number | null;
   /** Chart area height utility classes (default matches the classic modal). */
   heightClass?: string;
+  /** Show the big current-price figure in the header (default true). The
+   *  Coin page hero already shows the live price, so it passes false and
+   *  keeps only the range change + range high/low. */
+  showCurrentPrice?: boolean;
 }
 
-function formatAdaptivePrice(value: number): string {
-  if (value < 0.01) return `£${value.toFixed(6)}`;
-  if (value < 1) return `£${value.toFixed(4)}`;
-  return value.toLocaleString('en-GB', {
-    style: 'currency',
-    currency: 'GBP',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
+// Unit prices use the shared formatPrice rule (4dp under £1) so cheap coins
+// show their movement on axes, tooltips and headers alike.
+const formatAdaptivePrice = formatPrice;
 
 const TIME_RANGES: { value: TimeRange; label: string }[] = COIN_CHART_RANGES.map(
   (value) => ({ value, label: value })
@@ -129,7 +128,8 @@ export function PriceChart({
   initialRange,
   cycleStartTime = null,
   averageEntryPrice = null,
-  heightClass = 'h-[240px] sm:h-[380px]'
+  heightClass = 'h-[240px] sm:h-[380px]',
+  showCurrentPrice = true
 }: PriceChartProps) {
   const primaryRanges = (ranges ?? TIME_RANGES.map(({ value }) => value)).map((r) =>
     clampCoinChartRange(r)
@@ -236,22 +236,24 @@ export function PriceChart({
 
   // movement state for colors (neutral when no summary or flat)
   const direction = summary?.direction || 'flat';
-  const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+  // Theme-aware: colours come from the live CSS variables (After-Hours
+  // Exchange tokens) so the chart follows the theme toggle.
+  const theme = readChartTheme();
 
   const lineColor = direction === 'up'
-    ? (isDark ? '#2ed58a' : '#149e61')
+    ? theme.up
     : direction === 'down'
-      ? (isDark ? '#ff5d68' : '#dc3545')
-      : (isDark ? '#85899e' : '#686b82');
+      ? theme.down
+      : theme.flat;
 
   const fillColor = direction === 'up'
-    ? (isDark ? 'rgba(46, 213, 138, 0.12)' : 'rgba(20, 158, 97, 0.10)')
+    ? withAlpha(theme.up, 0.12)
     : direction === 'down'
-      ? (isDark ? 'rgba(255, 93, 104, 0.12)' : 'rgba(220, 53, 69, 0.10)')
-      : (isDark ? 'rgba(133, 137, 158, 0.12)' : 'rgba(104, 107, 130, 0.10)');
+      ? withAlpha(theme.down, 0.12)
+      : withAlpha(theme.flat, 0.12);
 
-  const axisColor = isDark ? '#85899e' : '#686b82';
-  const gridColor = isDark ? 'rgba(148, 151, 169, 0.10)' : 'rgba(104, 107, 130, 0.12)';
+  const axisColor = theme.textMuted;
+  const gridColor = theme.grid;
 
   // change pill text
   let changeText = '● £0.00 (0.00%)';
@@ -322,7 +324,7 @@ export function PriceChart({
         pointRadius: 0,
         pointHoverRadius: 5,
         pointHoverBackgroundColor: lineColor,
-        pointHoverBorderColor: isDark ? '#08090d' : '#ffffff',
+        pointHoverBorderColor: theme.tooltipBg,
         pointHoverBorderWidth: 2,
         fill: true,
         tension: 0.35,
@@ -333,7 +335,7 @@ export function PriceChart({
               { x: entryMarker.firstX, y: entryMarker.entry },
               { x: entryMarker.lastX, y: entryMarker.entry }
             ],
-            borderColor: isDark ? '#d4a017' : '#b8860b',
+            borderColor: theme.golden,
             borderWidth: 1.25,
             borderDash: [6, 4],
             pointRadius: 0,
@@ -352,10 +354,10 @@ export function PriceChart({
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: isDark ? '#12141d' : '#ffffff',
-        titleColor: isDark ? '#f5f6fa' : '#101114',
+        backgroundColor: theme.tooltipBg,
+        titleColor: theme.text,
         bodyColor: lineColor,
-        borderColor: isDark ? 'rgba(148,151,169,0.18)' : '#dedee5',
+        borderColor: theme.tooltipBorder,
         borderWidth: 1,
         padding: 14,
         cornerRadius: 10,
@@ -446,9 +448,11 @@ export function PriceChart({
       {/* Header: current price + range-relative change + high/low */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between border-b border-rule pb-3">
         <div>
-          <div className="numeral text-2xl sm:text-3xl font-semibold tracking-tight break-all">
-            {formatAdaptivePrice(latestValue)}
-          </div>
+          {showCurrentPrice && (
+            <div className="numeral text-2xl sm:text-3xl font-semibold tracking-tight break-all">
+              {formatAdaptivePrice(latestValue)}
+            </div>
+          )}
           {summary && (
             <div className={`mt-1 text-sm sm:text-lg font-semibold ${changeClass}`}>
               {changeText}

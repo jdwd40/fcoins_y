@@ -594,7 +594,7 @@ test('primary board has no end-of-round settlement; virtual GBP only', () => {
 test('legacy cycle leaderboard copy remains single-sourced for Stage 13 surfaces', () => {
   assert.equal(LEADERBOARD_RULE_COPY, 'Finish above £10,000 to make the leaderboard.');
   assert.match(PERSISTENT_LEADERBOARD_RULE_COPY, /net worth/i);
-  assert.match(PERSISTENT_LEADERBOARD_RULE_COPY, /Backend rank/);
+  assert.match(PERSISTENT_LEADERBOARD_RULE_COPY, /Players and bots share one board/);
   assert.equal(LEADERBOARD_BREAKEVEN_COPY, 'Exactly £10,000 is break-even and does not qualify.');
 });
 

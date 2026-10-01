@@ -9,12 +9,12 @@ Backend: [`jdwd40/back_coins_x`](https://github.com/jdwd40/back_coins_x)
 ## Current player experience
 
 - Public persistent market, Director state, events, coin roles, and leaderboard.
-- JWT registration/login.
+- JWT registration/login via the shared auth dialog.
 - £10,000 virtual persistent account with cash, holdings, wealth, and trade history.
-- Fractional buy/sell flow using the backend's server-locked live price.
-- Live coin grid, detail modals, event modifiers/durations, momentum, and sparklines.
-- Aggregate market and coin charts with short-range stabilisation.
-- Responsive dark/light game interface.
+- Fractional buy/sell flow using the backend's server-locked live price, with a review step before every trade.
+- Routed pages: market board, coin detail pages, portfolio ledger, leaderboard, and the world/Director page.
+- Sparklines on the board, short-range charts on coin and world pages.
+- Responsive dark/light After-Hours Exchange interface (dark default).
 
 The normal UI has no Apocalypse countdown or round settlement. It runs continuously.
 
@@ -59,17 +59,33 @@ The deploy workflow runs UI contract checks, TypeScript, and the production buil
 
 | Path | Responsibility |
 |---|---|
-| `src/App.tsx` | Routes and main page composition |
+| `src/App.tsx` | Route table; one player layout route under shared providers; lazy Coin/World/monitor routes |
+| `src/pages/` | Routed pages: MarketPage, CoinPage, PortfolioPage, LeaderboardPage, WorldPage, NotFoundPage |
+| `src/components/shell/` | App shell: top bar, world strip, bottom tab bar, auth/trade/how-to-play dialogs |
+| `src/components/ui/` | Presentation primitives (Button, Card, Badge, Delta, Price, CoinAvatar, Dialog, …) |
+| `src/components/TradeTicket.tsx` | The single shared buy/sell ticket (inline on Coin page, in the trade sheet elsewhere) |
 | `src/context/AuthContext.tsx` | Login, registration, token/user lifecycle |
 | `src/context/PersistentContext.tsx` | Shared persistent signals, runtime, account, leaderboard, and sync state |
+| `src/context/ToastContext.tsx` | aria-live toast region |
 | `src/services/persistentService.ts` | Strict typed `/api/persistent/*` client and response validation |
 | `src/services/apiConfig.ts` | Single API base URL authority |
-| `src/components/Persistent*` | Current persistent header/trading/Director surfaces |
-| `src/components/GameMarketGrid.tsx` | Primary live market grid |
-| `src/components/MarketValueChart.tsx` | Aggregate market chart |
-| `src/components/PriceChart.tsx` | Per-coin history chart |
+| `src/components/MarketValueChart.tsx` | Aggregate market chart (World page) |
+| `src/components/PriceChart.tsx` | Per-coin history chart (Coin page) |
 | `src/utils/marketHistoryChart.ts` | Range mapping, sanitising, clipping, and chart time units |
+| `src/utils/` | Pure presentation helpers (formatPrice, delta, marketBoard, worldEvents, …), each unit-tested |
 | `scripts/ui-contract.mjs` | Source-level UI/API regression contract |
+
+## Routes
+
+| Route | Page |
+|---|---|
+| `/` | Market (board, top movers, account summary, right rail) |
+| `/coin/:coinId` | Coin detail (hero, chart, events, position, trade ticket) |
+| `/portfolio` | Account, holdings, full transaction ledger |
+| `/profile` | Redirects to `/portfolio` |
+| `/leaderboard` | Podium + full ranked board (backend order) |
+| `/world` | Director, climate, Golden/Demon, live events, market pulse |
+| `/internal/apocalypse-monitor` | Internal operator tool (no player providers) |
 
 ## Data flow
 

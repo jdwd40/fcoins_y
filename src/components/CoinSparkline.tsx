@@ -29,9 +29,12 @@ interface CoinSparklineProps {
   averageEntryPrice?: number | null;
   /** (cycleStartTime kept for compatibility with chart; persistent uses null) */
   cycleStartTime?: string | null;
+  /** Slim rendering for tight phone cards: shorter SVG, caption hidden (the
+   *  role="img" aria-label still describes the line to assistive tech). */
+  compact?: boolean;
 }
 
-export function CoinSparkline({ coin, averageEntryPrice = null, cycleStartTime = null }: CoinSparklineProps) {
+export function CoinSparkline({ coin, averageEntryPrice = null, cycleStartTime = null, compact = false }: CoinSparklineProps) {
   const { range, status, points, latestValue } = useCoinSparkline(coin);
 
   const sinceMs = useMemo(() => {
@@ -73,7 +76,7 @@ export function CoinSparkline({ coin, averageEntryPrice = null, cycleStartTime =
   } else {
     body = (
       <svg
-        className={`sparkline-svg sparkline-${direction}`}
+        className={`sparkline-svg ${compact ? 'sparkline-svg-compact ' : ''}sparkline-${direction}`}
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
         preserveAspectRatio="none"
         aria-hidden="true"
@@ -88,18 +91,20 @@ export function CoinSparkline({ coin, averageEntryPrice = null, cycleStartTime =
   }
 
   return (
-    <div className="coin-sparkline" role="img" aria-label={ariaLabel}>
+    <div className={`coin-sparkline${compact ? ' coin-sparkline-compact' : ''}`} role="img" aria-label={ariaLabel}>
       {body}
-      <div className="sparkline-caption">
-        <span>{SPARKLINE_RANGE_LABEL[range]} history</span>
-        {summary && (
-          <span className={`sparkline-change sparkline-change-${summary.direction}`}>
-            {summary.direction === 'up' ? '▲' : summary.direction === 'down' ? '▼' : '●'}{' '}
-            {summary.changePct >= 0 ? '+' : ''}
-            {summary.changePct.toFixed(2)}%
-          </span>
-        )}
-      </div>
+      {!compact && (
+        <div className="sparkline-caption">
+          <span>{SPARKLINE_RANGE_LABEL[range]} history</span>
+          {summary && (
+            <span className={`sparkline-change sparkline-change-${summary.direction}`}>
+              {summary.direction === 'up' ? '▲' : summary.direction === 'down' ? '▼' : '●'}{' '}
+              {summary.changePct >= 0 ? '+' : ''}
+              {summary.changePct.toFixed(2)}%
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
