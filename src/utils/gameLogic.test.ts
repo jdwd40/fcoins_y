@@ -315,9 +315,14 @@ const PARTICIPANT: RoundParticipant = {
   participantId: 7, cycleId: 1, apocalypseId: 'APOC-0001', userId: 1, isBot: false,
   joinedAt: '2026-08-20T10:01:00.000Z', startingCash: 10000, currentCash: 9500,
   holdingsValue: 500, wealth: 10000, peakWealth: 10000, status: 'ACTIVE', finalCash: null,
+  power: {
+    current: 87, max: 100, regenMsPerPoint: 30000, secondsPerPoint: 30,
+    nextPointAt: '2026-08-20T10:15:12.000Z', storedPower: 86,
+    powerUpdatedAt: '2026-08-20T10:14:42.000Z', asOf: '2026-08-20T10:15:00.000Z'
+  },
   holdings: [
-    { coinId: 2, symbol: 'DOGE', quantity: 10, currentPrice: 50, currentValue: 500 },
-    { coinId: 3, symbol: 'DEAD', quantity: 4, currentPrice: 0, currentValue: 0 }
+    { coinId: 2, symbol: 'DOGE', quantity: 10, costBasis: 400, averageEntryPrice: 40, currentPrice: 50, currentValue: 500, unrealizedPnl: 100, unrealizedPnlPct: 25 },
+    { coinId: 3, symbol: 'DEAD', quantity: 4, costBasis: 40, averageEntryPrice: 10, currentPrice: 0, currentValue: 0, unrealizedPnl: -40, unrealizedPnlPct: -100 }
   ]
 };
 
@@ -463,8 +468,12 @@ test('parseTradeQuantity rejects precision beyond the ledger contract instead of
 
 test('minTradeValueError mirrors the backend £0.01 minimum-notional rule', () => {
   // Sub-penny live-priced trades are blocked early with the backend message.
-  assert.match(minTradeValueError(0, 1), /Trade value must be at least £0\.01/); // 0.004 @ £1 -> £0.00
-  assert.match(minTradeValueError(0, 0.4), /Trade value must be at least £0\.01/);
+  const subPennyAtOne = minTradeValueError(0, 1);
+  assert.ok(subPennyAtOne);
+  assert.match(subPennyAtOne, /Trade value must be at least £0\.01/); // 0.004 @ £1 -> £0.00
+  const subPennyAtFortyP = minTradeValueError(0, 0.4);
+  assert.ok(subPennyAtFortyP);
+  assert.match(subPennyAtFortyP, /Trade value must be at least £0\.01/);
   // The rounded consideration is what is judged: £0.01 exactly is allowed.
   assert.equal(minTradeValueError(0.01, 1), null); // 0.01 @ £1, 0.004 @ £2.50
   assert.equal(minTradeValueError(10, 2500), null); // 0.004 @ £2,500

@@ -363,7 +363,7 @@ export function PriceChart({
         cornerRadius: 10,
         displayColors: false,
         titleFont: { family: 'JetBrains Mono', size: 10, weight: 'normal' as const },
-        bodyFont: { family: 'Inter', size: 16, weight: '600' as const },
+        bodyFont: { family: 'Inter', size: 16, weight: 600 },
         // The dashed average-entry marker never appears as a tooltip value.
         filter: (tooltipItem: { datasetIndex: number }) => tooltipItem.datasetIndex === 0,
         callbacks: {

@@ -126,8 +126,8 @@ export function PersistentProvider({ children }: { children: React.ReactNode }) 
   const [runtimeSyncedAt, setRuntimeSyncedAt] = useState<number | null>(null);
 
   const gateRef = useRef(createPersistentSyncGate());
-  const userIdRef = useRef<string | undefined>(user?.id);
-  userIdRef.current = user?.id;
+  const userIdRef = useRef<string | undefined>(user?.id != null ? String(user.id) : undefined);
+  userIdRef.current = user?.id != null ? String(user.id) : undefined;
 
   const syncNow = useCallback(async () => {
     const gate = gateRef.current;

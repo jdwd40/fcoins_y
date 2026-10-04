@@ -69,3 +69,72 @@ export interface MarketStats {
     timeRemaining: string;
   };
 }
+
+// ============================================================================
+// Auth — verified against back_coins_x (models/users.model.js,
+// controllers/users.controller.js)
+// ============================================================================
+
+// The user as the app holds it after login. The backend row is snake_case
+// with a `user_id` primary key; the app normalises that to `id` (consumers
+// read `user.id`). No field here is ever invented client-side.
+export interface User {
+  id: number;         // normalised from the backend's `user_id`
+  email: string;
+  username?: string;
+  funds?: number;     // parsed from the backend NUMERIC string when present
+}
+
+// The raw user row the backend sends (snake_case). `funds` is a pg NUMERIC
+// and therefore arrives as a STRING (e.g. "1000.00"), not a number.
+// Login returns the full row minus password_hash; register returns the
+// INSERT ... RETURNING subset (user_id, username, email, funds, created_at).
+export interface AuthUser {
+  user_id: number;
+  username: string;
+  email: string;
+  funds: string;
+  is_bot?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// POST /users/login → 200 { success, msg, user, token }.
+// (POST /users/register → 201 { success, msg, user } with NO token; the app
+// logs in immediately after registering and only ever persists via the
+// login envelope.)
+export interface AuthResponse {
+  success: boolean;
+  msg: string;
+  user: AuthUser;
+  token: string;
+}
+
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface RegisterCredentials {
+  username: string;
+  email: string;
+  password: string;
+}
+
+// POST /transactions/buy|sell → 201 { status, message, data } where data is
+// the inserted transactions row (RETURNING *). NUMERIC columns arrive as
+// strings.
+export interface TransactionResponse {
+  status: 'success' | 'error';
+  message: string;
+  data: {
+    transaction_id: number;
+    user_id: number;
+    coin_id: number;
+    type: 'BUY' | 'SELL';
+    quantity: string;       // pg NUMERIC string
+    price: string;          // pg NUMERIC string
+    total_amount: string;   // pg NUMERIC string
+    created_at: string;     // actual transactions table / RETURNING * field
+  };
+}
