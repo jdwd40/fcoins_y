@@ -5,8 +5,9 @@
 /** Market aggregate chart ranges offered in the UI (≤12h). */
 export type MarketChartRange = '5M' | '10M' | '30M' | '1H' | '2H' | '12H';
 
-/** Coin price-history ranges offered in the UI (≤12h; 5M via client window on 10M API). */
-export type CoinChartRange = '5M' | '10M' | '30M' | '1H' | '2H';
+/** Coin price-history ranges offered in the UI (≤12h; 5M via client window on
+ *  the 10M API, 12H via client window on the 24H API). */
+export type CoinChartRange = '5M' | '10M' | '30M' | '1H' | '2H' | '12H';
 
 export const MARKET_CHART_RANGES: readonly MarketChartRange[] = [
   '5M',
@@ -23,6 +24,7 @@ export const COIN_CHART_RANGES: readonly CoinChartRange[] = [
   '30M',
   '1H',
   '2H',
+  '12H',
 ] as const;
 
 export const DEFAULT_MARKET_CHART_RANGE: MarketChartRange = '30M';
@@ -73,20 +75,15 @@ export function clampMarketChartRange(
   return fallback;
 }
 
-/** Clamp a persisted/unknown coin range to ≤2H (BE has no 12H). */
+/** Clamp a persisted/unknown coin range to ≤12H (longer keys fall back to the
+ *  12H maximum; 12H itself is served from the 24H API + a client window). */
 export function clampCoinChartRange(
   value: unknown,
   fallback: CoinChartRange = DEFAULT_COIN_CHART_RANGE
 ): CoinChartRange {
   if (typeof value === 'string' && isCoinChartRange(value)) return value;
-  if (
-    value === '24H' ||
-    value === 'ALL' ||
-    value === '7D' ||
-    value === '30D' ||
-    value === '12H'
-  ) {
-    return '2H';
+  if (value === '24H' || value === 'ALL' || value === '7D' || value === '30D') {
+    return '12H';
   }
   return fallback;
 }
@@ -147,50 +144,17 @@ export function sanitizeMarketHistoryPoints(
 }
 
 
-/** BE coin price-history has no 5M — request nearest supported range. */
-export function apiRangeForCoinChart(range: CoinChartRange): '10M' | '30M' | '1H' | '2H' {
-  return range === '5M' ? '10M' : range;
+/** BE coin price-history has no 5M or 12H — request the nearest wider
+ *  supported range (10M / 24H) and client-window it down to the selection. */
+export function apiRangeForCoinChart(range: CoinChartRange): '10M' | '30M' | '1H' | '2H' | '24H' {
+  if (range === '5M') return '10M';
+  if (range === '12H') return '24H';
+  return range;
 }
 
 /** BE market price-history has no 5M — request nearest supported range. */
 export function apiRangeForMarketChart(range: MarketChartRange): Exclude<MarketChartRange, '5M'> | '10M' {
   return range === '5M' ? '10M' : range;
-}
-
-/**
- * Window chart series points `{x: epochMs, y}` to the selected coin range.
- * Used after fetch so 5M (requested as 10M) never shows a 10-minute series.
- */
-export function windowChartPoints<T extends { x: number; y: number }>(
-  points: T[] | null | undefined,
-  range: CoinChartRange | MarketChartRange,
-  nowMs: number = Date.now()
-): T[] {
-  if (!Array.isArray(points) || points.length === 0) return [];
-  const sorted = [...points]
-    .filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))
-    .sort((a, b) => a.x - b.x);
-  if (sorted.length === 0) return [];
-  const deduped: T[] = [];
-  for (const point of sorted) {
-    const prev = deduped[deduped.length - 1];
-    if (prev && prev.x === point.x) {
-      deduped[deduped.length - 1] = point;
-    } else {
-      deduped.push(point);
-    }
-  }
-  const windowMs =
-    range in RANGE_MS
-      ? RANGE_MS[range as MarketChartRange]
-      : range === '5M'
-        ? 5 * 60 * 1000
-        : null;
-  if (windowMs == null || !Number.isFinite(windowMs) || windowMs <= 0) return deduped;
-  const maxT = deduped[deduped.length - 1].x;
-  const anchorMs = Number.isFinite(maxT) ? maxT : nowMs;
-  const cutoff = anchorMs - windowMs;
-  return deduped.filter((p) => p.x >= cutoff);
 }
 
 /** Chart.js TimeScale unit: minute for ≤2H, hour for 12H. */

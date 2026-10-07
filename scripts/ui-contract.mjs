@@ -61,7 +61,12 @@ const worldPage = read('src/pages/WorldPage.tsx');
 const notFoundPage = read('src/pages/NotFoundPage.tsx');
 
 // Charts / sparklines (kept logic, restyled)
-const chart = read('src/components/PriceChart.tsx');
+// Issue #28: the coin page candlestick chart replaced the Chart.js line
+// PriceChart (deleted); every behavioural pin was migrated onto these files.
+const chart = read('src/components/CandlestickChart.tsx');
+const candlestickUtil = read('src/utils/candlestick.ts');
+const coinEventTimeline = read('src/components/CoinEventTimeline.tsx');
+const coinEventsUtil = read('src/utils/coinEvents.ts');
 const marketValueChart = read('src/components/MarketValueChart.tsx');
 const marketHistoryChartUtil = read('src/utils/marketHistoryChart.ts');
 const sparklineUtil = read('src/utils/sparkline.ts');
@@ -638,8 +643,11 @@ assert.match(coinPage, /momentumArrow\(coin\.momentum\)/);
 // Dead tombstone: permanent, £0.00, no trade controls.
 assert.match(coinPage, /Dead · trading stopped permanently · holdings worth £0\.00/);
 assert.match(coinPage, /!coin\.dead && \(/, 'trade controls gated on alive');
-// Chart: existing ranges/clamp/abort/sanitise + avg entry marker.
-assert.match(coinPage, /COIN_CHART_RANGES_UI: readonly TimeRange\[\] = \['5M', '10M', '30M', '1H', '2H'\]/);
+// Chart: candlestick chart, 5M → 12H ranges/clamp/abort/sanitise + avg entry marker.
+assert.match(coinPage, /COIN_CHART_RANGES_UI: readonly CoinChartRange\[\] = \['5M', '10M', '30M', '1H', '2H', '12H'\]/);
+assert.match(coinPage, /<CandlestickChart\s*\n\s*key=\{coin\.coinId\}/, 'chart is keyed by coin');
+assert.doesNotMatch(coinPage, /PriceChart/);
+assert.doesNotMatch(coinPage, /secondaryRanges/, 'one range group — 12H is a primary range');
 assert.match(coinPage, /averageEntryPrice=\{owned && holding \? holding\.averageEntryPrice : null\}/);
 assert.match(coinPage, /cycleStartTime=\{null\}/);
 assert.match(coinPage, /sparklineRangeForCoin\(coin\)/);
@@ -647,6 +655,19 @@ assert.match(coinPage, /sparklineRangeForCoin\(coin\)/);
 assert.match(coinPage, /Events nudge this coin's price while active/);
 assert.match(coinPage, /eventProgress\(event, serverNowMs\)/);
 assert.match(coinPage, /activeNetModifierPct|netPct/);
+// Event history (issue #28): the historical feed sits below the chart next
+// to the Active events card (kept), keyed by coin, and renders for dead coins.
+assert.match(coinPage, /aria-label="Active events"/);
+assert.match(coinPage, /<CoinEventTimeline key=\{coin\.coinId\} coinId=\{coin\.coinId\} serverNowMs=\{serverNowMs\} \/>/);
+assert.ok(
+  coinPage.indexOf('<CandlestickChart') < coinPage.indexOf('<CoinEventTimeline'),
+  'timeline sits below the chart'
+);
+assert.doesNotMatch(
+  coinPage.slice(coinPage.indexOf('<CoinEventTimeline') - 120, coinPage.indexOf('<CoinEventTimeline')),
+  /coin\.dead &&/,
+  'timeline is not gated on alive — dead coins keep their history'
+);
 // Position card: server holding fields verbatim.
 assert.match(coinPage, /holding\.quantity/);
 assert.match(coinPage, /holding\.averageEntryPrice/);
@@ -750,36 +771,131 @@ assert.match(persistentCountdown, /Ended — updating/);
 
 // ============================================================================
 // Charts: range caps, clamping, sanitise, abort, a11y — unchanged behaviour
+// (coin chart = CandlestickChart since issue #28; pins migrated 1:1 or to
+// the stated replacement)
 // ============================================================================
 assert.match(chart, /COIN_CHART_RANGES/);
 assert.match(chart, /clampCoinChartRange/);
 assert.match(chart, /clampCoinChartRange\(initialRange \?\? primaryRanges\[0\]/);
-assert.doesNotMatch(chart, /value: '24H'/);
-assert.doesNotMatch(chart, /value: '7D'/);
-assert.doesNotMatch(chart, /value: '30D'/);
-assert.doesNotMatch(chart, /value: 'ALL'/);
+assert.match(chart, /\(ranges \?\? COIN_CHART_RANGES\)\.map\(\(r\) => clampCoinChartRange\(r\)\)/);
+for (const long of ['24H', '7D', '30D', 'ALL']) {
+  assert.doesNotMatch(chart, new RegExp(`'${long}'`), `coin chart must not offer ${long}`);
+}
 assert.match(chart, /aria-pressed/);
+assert.match(chart, /min-h-\[44px\]/, '44px range targets');
 assert.match(chart, /role="group"/);
-assert.match(chart, /aria-label="Select a longer chart time range"/);
+assert.match(chart, /aria-label="Select chart time range"/);
+assert.doesNotMatch(chart, /secondaryRanges/, 'no secondary range group (12H is primary)');
 assert.match(chart, /clipPointsSince\(result\.points \|\| \[\], sinceMs\)/);
 assert.match(chart, /cycleStartTime\?: string \| null/);
-assert.match(chart, /entryMarkerVisible/);
-assert.match(chart, /secondaryRanges/);
-assert.match(chart, /filter: \(tooltipItem/, 'the entry marker is never a tooltip value');
+assert.match(chart, /entryMarkerVisible\(averageEntryPrice, domain\.min, domain\.max\)/, 'entry marker only inside the visible domain');
+// The entry marker is its own dashed line, never a candle / price value.
+assert.match(chart, /className="candle-entry"/);
 assert.match(chart, /Your average entry/);
 assert.match(chart, /apiRangeForCoinChart/);
-assert.match(chart, /windowChartPoints/);
+assert.match(chart, /windowCandles\(sanitizeOhlcPoints\(livePoints\), range\)/, 'clip to range window, sort, dedupe keep-last');
 assert.match(chart, /\$\{API_BASE\}\/coins\/\$\{coinId\}\/price-history\?range=\$\{apiRange\}/);
 assert.doesNotMatch(chart, /market\/price-history/);
 assert.match(chart, /abort\(\)/, 'stale chart requests are aborted');
+// Range switches never draw another range's candles under the new label.
+assert.match(chart, /const requestKey = `\$\{coinId\}:\$\{selectedRange\}`/);
+assert.match(chart, /loaded\.key === requestKey/);
+// Live refresh: page-mounted only, ≥ the endpoint's 10s cache, cleaned up.
+assert.match(chart, /setInterval\([\s\S]*?CANDLE_REFRESH_MS\)/);
+assert.match(chart, /clearInterval\(id\)/);
+assert.match(candlestickUtil, /CANDLE_REFRESH_MS = 12_000/);
 // Unit-price formatting moved to the shared 4dp rule.
 assert.match(chart, /formatPrice/);
-// Theme-aware colours from CSS variables.
-assert.match(chart, /readChartTheme/);
+// Theme-aware colours from CSS variables (unlayered: built from a template
+// literal, like the sparkline). Up hollow / down solid = never colour-only.
+assert.match(chart, /candle-\$\{s\.direction\}/);
+assert.ok(styles.indexOf('.candle-up .candle-body') > styles.lastIndexOf('@layer'), 'candle CSS stays outside @layer');
+assert.match(styles, /\.candle-up \.candle-body \{ fill: color-mix\(in srgb, var\(--up\)/);
+assert.match(styles, /\.candle-down \.candle-body \{ fill: var\(--down\); \}/);
+assert.match(styles, /\.candle-current line \{/);
 // Additive prop hides the duplicated big price when a hero already shows it.
 assert.match(chart, /showCurrentPrice\?: boolean/);
 assert.match(chart, /showCurrentPrice = true/);
 assert.match(coinPage, /showCurrentPrice=\{false\}/, 'coin hero owns the big live price');
+// Custom SVG renderer, accessible, purely presentational (no trade path).
+assert.doesNotMatch(chart, /chart\.js|react-chartjs-2/);
+assert.match(chart, /<svg/);
+assert.match(chart, /role="img" aria-label=\{ariaLabel\}/);
+assert.match(chart, /describeCandles\(/);
+assert.equal((chart.match(/onClick=/g) || []).length, 2, 'only the range buttons and Retry are clickable');
+assert.doesNotMatch(chart, /openTrade|TradeTicket|trade\(|usePersistent/, 'chart can never trigger a trade');
+assert.match(chart, /Loading price history…/);
+assert.match(chart, /Price history unavailable/);
+assert.match(chart, /No price history available for this period yet/);
+assert.match(chart, /Retry/);
+// Candle maths lives in the pure, tested helper module.
+for (const fn of [
+  'sanitizeOhlcPoints',
+  'windowCandles',
+  'aggregateCandles',
+  'visiblePriceDomain',
+  'layoutCandles',
+  'priceTicks',
+  'timeTicks',
+  'formatTimeTicks',
+  'candleTargetFor',
+  'describeCandles'
+]) {
+  assert.match(candlestickUtil, new RegExp(`export function ${fn}\\b`), `candlestick.ts exports ${fn}`);
+}
+assert.match(candlestickUtil, /MIN_SLOT_PX = 4\.5/, 'phone candle cap keeps bodies ≥ ~3px');
+assert.match(candlestickUtil, /Math\.max\(0, lo - pad\)/, 'domain floors at £0, never below');
+assert.doesNotMatch(candlestickUtil, /\bfetch\(|setInterval|document\./, 'candle helpers are pure');
+// ============================================================================
+// Coin event history (issue #28): strict public feed, coarse source vocabulary
+// ============================================================================
+assert.match(persistentService, /\/persistent\/coins\/\$\{encodeURIComponent\(String\(coinId\)\)\}\/events\$\{query\}/);
+assert.match(persistentService, /export function parsePersistentCoinEventHistory/);
+assert.match(persistentService, /export async function getPersistentCoinEventHistory/);
+assert.match(persistentService, /\['eventId', 'name', 'direction', 'source', 'modifierPct', 'startsAt', 'endsAt'\]/);
+assert.match(persistentService, /\['serverTime', 'worldId', 'coinId', 'events'\]/);
+assert.match(persistentService, /PERSISTENT_COIN_EVENT_SOURCES: readonly PersistentCoinEventSource\[\] = \['MARKET', 'DIRECTOR'\]/);
+assert.match(persistentService, /PERSISTENT_COIN_EVENT_DIRECTIONS: readonly PersistentCoinEventDirection\[\] = \['POSITIVE', 'NEGATIVE'\]/);
+assert.match(persistentService, /does not match/, 'a response for another coin is rejected');
+{
+  const eventsSection = persistentService.slice(persistentService.indexOf('// --- Coin event history (issue #28)'));
+  assert.match(eventsSection, /forbidUnknownFields\(payload, known, contract, pathPrefix\)/);
+  assert.match(eventsSection, /forbidCycleFields\(payload, contract\)/);
+  assert.match(eventsSection, /\{ signal \},\s*\n\s*parsePersistentCoinEventHistory/, 'public feed: no auth token');
+  assert.doesNotMatch(eventsSection, /\{ token/, 'public feed: no auth token');
+  assert.doesNotMatch(eventsSection, /'(NORMAL|GOLDEN|DEMON|RESCUE)'/, 'raw stored roles never become client vocabulary');
+}
+// Timeline: one read on mount + a light page-mounted refresh; hides on failure.
+assert.match(coinEventTimeline, /getPersistentCoinEventHistory\(coinId, \{ limit: COIN_EVENT_TIMELINE_LIMIT, signal: controller\.signal \}\)/);
+assert.match(coinEventTimeline, /COIN_EVENT_REFRESH_MS = 30_000/);
+assert.match(coinEventTimeline, /window\.clearInterval\(id\)/);
+assert.match(coinEventTimeline, /if \(status === 'hidden'\) return null;/, 'feed failure hides the card, never the page');
+assert.match(coinEventTimeline, /if \(!hasData\) setStatus\('hidden'\)/, 'a failed refresh keeps the last good feed');
+assert.match(coinEventTimeline, /No events have moved this coin yet\./);
+assert.match(coinEventTimeline, /orderCoinEventsNewestFirst\(history\.events\)/);
+assert.match(coinEventTimeline, /describeCoinEvent\(event\)/);
+assert.match(coinEventTimeline, /coinEventSourceLabel\(event\.source\)/);
+assert.match(coinEventTimeline, /formatModifierPct\(event\.modifierPct, kind\)/);
+assert.match(coinEventTimeline, /formatCoinEventTime\(event\.startsAt, serverNowMs\)/);
+assert.match(coinEventTimeline, /aria-expanded=\{showAll\}/);
+assert.doesNotMatch(coinEventTimeline, /\bfetch\(/, 'timeline reads ride the service');
+assert.doesNotMatch(coinEventTimeline, /openTrade|TradeTicket|trade\(/);
+// Exactly two game-term source labels.
+assert.match(coinEventsUtil, /MARKET: 'Market',\s*\n\s*DIRECTOR: 'Director'/);
+assert.match(coinEventsUtil, /export function describeCoinEvent/);
+assert.match(coinEventsUtil, /export function orderCoinEventsNewestFirst/);
+assert.match(coinEventsUtil, /formatModifierPct\(/, 'effects use the shared 1dp formatter');
+for (const [name, text] of Object.entries({ coinEventTimeline, coinEventsUtil })) {
+  assert.doesNotMatch(text, /\b(NORMAL|GOLDEN|DEMON|RESCUE)\b/, `${name} never names stored event roles`);
+}
+// Player copy reads like a game: no telemetry words outside code comments.
+{
+  const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/ .*$/gm, '');
+  for (const [name, text] of Object.entries({ chart, coinEventTimeline, coinEventsUtil, coinPage })) {
+    assert.doesNotMatch(stripComments(text), /authoritative|backend|\bAPI\b/i, `${name} player copy must not read like telemetry`);
+  }
+}
+
 assert.match(marketValueChart, /readChartTheme/);
 assert.match(marketValueChart, /MARKET_CHART_RANGES/);
 assert.match(marketValueChart, /sanitizeMarketHistoryPoints/);
@@ -1075,6 +1191,7 @@ for (const gone of [
   'src/components/ResultsPanel.tsx',
   'src/components/RoundTradePanel.tsx',
   'src/components/HowToPlay.tsx',
+  'src/components/PriceChart.tsx',
   'src/types/index.ts'
 ]) {
   assert.ok(!existsSync(new URL(`../${gone}`, import.meta.url)), `${gone} must stay deleted`);

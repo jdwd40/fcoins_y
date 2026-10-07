@@ -467,6 +467,51 @@
 }
 .coin-sparkline-compact .sparkline-state { min-height: 28px; }
 
+/* ============================================================================
+   Candlestick chart (coin page, issue #28) — UNLAYERED ON PURPOSE for the
+   same reason as the sparkline: CandlestickChart builds `candle-${direction}`
+   via a template literal. Colours come from the live theme variables so the
+   chart follows the theme toggle. Up candles are hollow and down candles are
+   solid, so direction never relies on colour alone.
+   ============================================================================ */
+.candle-chart { overflow: visible; }
+.candle-grid { stroke: var(--border); stroke-width: 1; shape-rendering: crispEdges; }
+.candle-axis-text {
+  fill: var(--text-3);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.candle-wick { stroke-width: 1; shape-rendering: crispEdges; }
+.candle-body { stroke-width: 1; shape-rendering: crispEdges; }
+.candle-up .candle-wick,
+.candle-up .candle-body { stroke: var(--up); }
+.candle-up .candle-body { fill: color-mix(in srgb, var(--up) 18%, var(--surface)); }
+.candle-down .candle-wick,
+.candle-down .candle-body { stroke: var(--down); }
+.candle-down .candle-body { fill: var(--down); }
+.candle-flat .candle-wick,
+.candle-flat .candle-body { stroke: var(--flat); fill: var(--flat); }
+.candle-forming { opacity: 0.72; }
+.candle-entry {
+  stroke: var(--golden);
+  stroke-width: 1.25;
+  stroke-dasharray: 6 4;
+}
+.candle-current line {
+  stroke: var(--brand);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+.candle-current rect { fill: var(--brand); }
+.candle-current text {
+  fill: var(--on-brand);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Reduced motion: every flash, pulse, shimmer and transition stands down.
    Content stays fully visible — motion never carries meaning on its own. */
 @media (prefers-reduced-motion: reduce) {
