@@ -18,6 +18,7 @@ import {
   candleTargetFor,
   describeCandles,
   formatTimeTicks,
+  isRawHistory,
   layoutCandles,
   priceTicks,
   sanitizeOhlcPoints,
@@ -33,8 +34,9 @@ import {
 // (Chart.js core has no candlestick series; CoinSparkline is the precedent)
 // driven entirely by the pure helpers in utils/candlestick.ts:
 //
-//   - data: the coin's own public price history only — raw ticks and
-//     pre-bucketed OHLC both become candles, nothing is invented;
+//   - data: the coin's own public price history only — raw observations
+//     (resolution "raw") are always merged into ≥1-minute OHLC candles,
+//     pre-bucketed OHLC keeps its envelopes; nothing is invented;
 //   - scale: a dynamic y-domain around the visible candles AND the current
 //     price (never zero-anchored), so the live price is always on screen;
 //   - ranges: 5M (10M + client window) … 12H (24H + client window); every
@@ -74,6 +76,8 @@ const CHAR_PX = 6.4; // 10px JetBrains Mono advance, rounded up
 interface LoadedHistory {
   key: string;
   candles: Candle[];
+  /** Raw observations (not OHLC buckets): always aggregated into candles. */
+  raw: boolean;
   latestValue: number | null;
   symbol: string | null;
 }
@@ -131,7 +135,13 @@ export function CandlestickChart({
       const latest = typeof result.latestValue === 'number' && Number.isFinite(result.latestValue)
         ? result.latestValue
         : null;
-      setLoaded({ key, candles, latestValue: latest, symbol: result.coin?.symbol ?? null });
+      setLoaded({
+        key,
+        candles,
+        raw: isRawHistory(result.resolution, candles),
+        latestValue: latest,
+        symbol: result.coin?.symbol ?? null,
+      });
       setError(null);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return;
@@ -190,6 +200,7 @@ export function CandlestickChart({
   const currentError = !current && error && error.key === requestKey ? error : null;
   const candles = useMemo(() => current?.candles ?? [], [current]);
   const latestValue = current?.latestValue ?? null;
+  const raw = current?.raw ?? false;
 
   const summary = useMemo(
     () => (candles.length > 0 && latestValue !== null ? computePeriodSummary(candles, latestValue) : null),
@@ -206,7 +217,7 @@ export function CandlestickChart({
     const plotWidth = Math.max(40, size.width - axisWidth);
     const plotHeight = Math.max(40, size.height - MARGIN_TOP - MARGIN_BOTTOM);
 
-    const series = aggregateSanitized(candles, candleTargetFor(selectedRange, plotWidth));
+    const series = aggregateSanitized(candles, candleTargetFor(selectedRange, plotWidth), { raw });
     const domain = visiblePriceDomain(series.candles, latestValue);
     if (!domain) return null;
     const layout = layoutCandles(series, domain, { width: plotWidth, height: plotHeight });
@@ -227,7 +238,7 @@ export function CandlestickChart({
       latestY: latestValue !== null ? yForPrice(latestValue, domain, plotHeight) : null,
       entryY: entryVisible ? yForPrice(averageEntryPrice as number, domain, plotHeight) : null,
     };
-  }, [candles, latestValue, size.width, size.height, selectedRange, averageEntryPrice]);
+  }, [candles, raw, latestValue, size.width, size.height, selectedRange, averageEntryPrice]);
 
   const symbol = current?.symbol || 'COIN';
   const rangeLabel = selectedRange;

@@ -3,9 +3,11 @@
 // CandlestickChart.tsx only measures its box and draws what these return.
 //
 // Data rule: every candle comes from the coin's own public price history
-// (GET /coins/:id/price-history). Raw ticks (10M) and pre-bucketed OHLC
-// (30M/1H/2H/24H) go through the same path — nothing is interpolated,
-// smoothed or invented. Re-bucketing only merges consecutive real points.
+// (GET /coins/:id/price-history). Raw observations (10M, resolution "raw":
+// one flat point per sample, ~30s apart in production) are always merged
+// into time-aligned OHLC candles; pre-bucketed OHLC (30M/1H/2H/24H) passes
+// through or is re-bucketed only to fit the screen. Nothing is interpolated,
+// smoothed or invented — bucketing only merges consecutive real points.
 
 import type { CoinChartRange } from './marketHistoryChart.ts';
 import { RANGE_MS } from './marketHistoryChart.ts';
@@ -34,8 +36,9 @@ export interface CandleSeries {
 // for 10s, so refetching any faster could only return the same payload.
 export const CANDLE_REFRESH_MS = 12_000;
 
-// Ideal candle counts per range on a wide screen. Raw-tick ranges (5M/10M)
-// are re-bucketed to ~10–15s candles; bucketed ranges mostly pass through.
+// Ideal (maximum) candle counts per range on a wide screen. Raw ranges
+// (5M/10M) are additionally held to the raw bucket floor below, so they
+// draw fewer, real candles; bucketed ranges mostly pass through.
 export const CANDLE_TARGETS: Readonly<Record<CoinChartRange, number>> = {
   '5M': 36,
   '10M': 48,
@@ -150,6 +153,52 @@ function bucketCount(firstT: number, lastT: number, bucketMs: number): number {
   return Math.floor(lastT / bucketMs) - Math.floor(firstT / bucketMs) + 1;
 }
 
+// Raw history policy: a candle covers at least one clock minute AND at
+// least RAW_MIN_SAMPLES_PER_CANDLE sample intervals, so every complete
+// candle holds several real observations (30s feed → 1m candles; a 60s
+// feed → 2m candles). One flat point per candle would only draw dojis.
+export const RAW_MIN_BUCKET_MS = 60_000;
+export const RAW_MIN_SAMPLES_PER_CANDLE = 2;
+
+/**
+ * True when the payload is raw observations rather than authoritative OHLC
+ * buckets. The server's `resolution` decides ("raw" vs "1m"/"5m"/…); only
+ * when it is missing does the shape decide (every point flat, ≤1 sample).
+ */
+export function isRawHistory(resolution: unknown, clean: Candle[]): boolean {
+  if (typeof resolution === 'string' && resolution.trim().length > 0) {
+    return resolution.trim().toLowerCase() === 'raw';
+  }
+  return (
+    Array.isArray(clean) &&
+    clean.length > 0 &&
+    clean.every((c) => c.samples <= 1 && c.open === c.close && c.high === c.close && c.low === c.close)
+  );
+}
+
+/** Smallest bucket raw observations may use (see RAW_MIN_BUCKET_MS). */
+export function rawBucketFloorMs(clean: Candle[]): number {
+  // Whole seconds, so ms jitter (30_000 vs 30_001) never flips the bucket.
+  const cadence = Math.round(rawCadenceMs(clean) / 1_000) * 1_000;
+  return Math.max(RAW_MIN_BUCKET_MS, cadence * RAW_MIN_SAMPLES_PER_CANDLE);
+}
+
+/**
+ * Sampling cadence of raw observations: the lower median gap, so a feed
+ * interruption can never outvote the regular interval ([30s, 300s] → 30s).
+ * A single gap is no evidence of a cadence, so it sets no floor.
+ */
+function rawCadenceMs(clean: Candle[]): number {
+  const gaps: number[] = [];
+  for (let i = 1; i < clean.length; i++) {
+    const gap = clean[i].t - clean[i - 1].t;
+    if (gap > 0) gaps.push(gap);
+  }
+  if (gaps.length < 2) return 0;
+  gaps.sort((a, b) => a - b);
+  return gaps[Math.floor((gaps.length - 1) / 2)];
+}
+
 /** Median gap between consecutive candles (robust to a missing tick or two). */
 export function inferSlotMs(candles: Candle[], fallbackMs = 60_000): number {
   if (!Array.isArray(candles) || candles.length < 2) return fallbackMs;
@@ -166,8 +215,9 @@ export function inferSlotMs(candles: Candle[], fallbackMs = 60_000): number {
 /**
  * Turn price-history points into at most `targetCandles` OHLC candles.
  *
- *  - n ≤ target: points pass through as candles (pre-bucketed OHLC, or raw
- *    ticks where open==high==low==close per point) — nothing is merged.
+ *  - pre-bucketed OHLC, n ≤ target: points pass through as candles.
+ *  - `raw: true` (raw observations): always merged, into the smallest clean
+ *    bucket ≥ rawBucketFloorMs that yields ≤ target candles.
  *  - n > target: consecutive points are merged into time-aligned buckets
  *    (the smallest clean bucket size that yields ≤ target candles):
  *    open = first open, high = max high, low = min low, close = last close,
@@ -176,26 +226,41 @@ export function inferSlotMs(candles: Candle[], fallbackMs = 60_000): number {
  *
  * Empty buckets are never filled in — a gap in the data stays a gap.
  */
-export function aggregateCandles(points: unknown, targetCandles: number): CandleSeries {
+export function aggregateCandles(
+  points: unknown,
+  targetCandles: number,
+  options: AggregateOptions = {}
+): CandleSeries {
   const clean = sanitizeOhlcPoints(points);
-  return aggregateSanitized(clean, targetCandles);
+  return aggregateSanitized(clean, targetCandles, options);
+}
+
+export interface AggregateOptions {
+  /** Input is raw observations (see isRawHistory), not OHLC buckets. */
+  raw?: boolean;
 }
 
 /** aggregateCandles for input that has already been through sanitizeOhlcPoints. */
-export function aggregateSanitized(clean: Candle[], targetCandles: number): CandleSeries {
+export function aggregateSanitized(
+  clean: Candle[],
+  targetCandles: number,
+  options: AggregateOptions = {}
+): CandleSeries {
   const target = Number.isFinite(targetCandles) && targetCandles >= 1 ? Math.floor(targetCandles) : 1;
   if (clean.length === 0) return { candles: [], slotMs: 60_000 };
-  if (clean.length <= target) {
+  const floorMs = options.raw ? rawBucketFloorMs(clean) : 0;
+  if (floorMs === 0 && clean.length <= target) {
     return { candles: clean.map((c) => ({ ...c })), slotMs: inferSlotMs(clean) };
   }
 
   const firstT = clean[0].t;
   const lastT = clean[clean.length - 1].t;
-  let bucketMs = NICE_BUCKETS_MS.find((ms) => bucketCount(firstT, lastT, ms) <= target) ?? null;
+  let bucketMs =
+    NICE_BUCKETS_MS.find((ms) => ms >= floorMs && bucketCount(firstT, lastT, ms) <= target) ?? null;
   if (bucketMs === null) {
     // Spans beyond the nice table: an exact size that still honours the cap.
     const span = Math.max(1, lastT - firstT);
-    bucketMs = target > 1 ? Math.ceil(span / (target - 1)) : span + 1;
+    bucketMs = Math.max(floorMs, target > 1 ? Math.ceil(span / (target - 1)) : span + 1);
   }
 
   const candles: Candle[] = [];

@@ -844,6 +844,12 @@ for (const fn of [
   assert.match(candlestickUtil, new RegExp(`export function ${fn}\\b`), `candlestick.ts exports ${fn}`);
 }
 assert.match(candlestickUtil, /MIN_SLOT_PX = 4\.5/, 'phone candle cap keeps bodies ≥ ~3px');
+// Live 10M is raw ~30s observations: the server resolution marks them raw and
+// they are always merged into ≥1-minute OHLC candles (never 1 doji per tick).
+assert.match(chart, /raw: isRawHistory\(result\.resolution, candles\)/, 'raw vs bucketed comes from the server resolution');
+assert.match(chart, /aggregateSanitized\(candles, candleTargetFor\(selectedRange, plotWidth\), \{ raw \}\)/);
+assert.match(candlestickUtil, /RAW_MIN_BUCKET_MS = 60_000/, 'raw candles span at least one minute');
+assert.match(candlestickUtil, /export function isRawHistory\b/);
 assert.match(candlestickUtil, /Math\.max\(0, lo - pad\)/, 'domain floors at £0, never below');
 assert.doesNotMatch(candlestickUtil, /\bfetch\(|setInterval|document\./, 'candle helpers are pure');
 // ============================================================================
