@@ -922,3 +922,121 @@ export function parsePersistentRuntime(payload: unknown): PersistentRuntime {
 export async function getPersistentRuntime(signal?: AbortSignal): Promise<PersistentRuntime> {
   return persistentFetch('/persistent/runtime', { signal }, parsePersistentRuntime);
 }
+
+// --- Coin event history (issue #28) -------------------------------------------
+// GET /persistent/coins/:coin_id/events?limit=N — public, no token, read-only
+// ledger of the events that have ALREADY STARTED on one coin in THE active
+// world (active and expired alike; never future/scheduled rows). Envelope
+// { status:'success', data:{ serverTime, worldId, coinId, events[] } };
+// events arrive newest first (startsAt DESC, eventId DESC). No active world:
+// worldId null + events []. `source` is the coarse public vocabulary only:
+// MARKET (an everyday market event) or DIRECTOR (anything the Director drove,
+// including market-wide swings delivered to this coin as its own row).
+
+export type PersistentCoinEventDirection = 'POSITIVE' | 'NEGATIVE';
+export type PersistentCoinEventSource = 'MARKET' | 'DIRECTOR';
+
+export const PERSISTENT_COIN_EVENT_DIRECTIONS: readonly PersistentCoinEventDirection[] = ['POSITIVE', 'NEGATIVE'];
+export const PERSISTENT_COIN_EVENT_SOURCES: readonly PersistentCoinEventSource[] = ['MARKET', 'DIRECTOR'];
+
+export interface PersistentCoinHistoryEvent {
+  eventId: number;
+  name: string;
+  direction: PersistentCoinEventDirection;
+  source: PersistentCoinEventSource;
+  /** Signed percent (modifier × 100, 4dp). */
+  modifierPct: number;
+  /** ISO 8601. */
+  startsAt: string;
+  /** ISO 8601. */
+  endsAt: string;
+}
+
+export interface PersistentCoinEventHistory {
+  serverTime: string;
+  /** Null when no active world exists (events will be []). */
+  worldId: number | null;
+  coinId: number;
+  /** Newest first, as published. */
+  events: PersistentCoinHistoryEvent[];
+}
+
+function requireIsoTimestamp(payload: Record<string, unknown>, field: string, contract: string, pathPrefix = ''): void {
+  requireString(payload, field, contract);
+  if (!Number.isFinite(Date.parse(payload[field] as string))) {
+    throw new Error(`Invalid ${contract} response: ${pathPrefix}${field} must be an ISO timestamp`);
+  }
+}
+
+function parsePersistentCoinHistoryEvent(payload: unknown, contract: string, pathPrefix: string): PersistentCoinHistoryEvent {
+  if (!isRecord(payload)) {
+    throw new Error(`Invalid ${contract} response: ${pathPrefix}event must be an object`);
+  }
+  const known = ['eventId', 'name', 'direction', 'source', 'modifierPct', 'startsAt', 'endsAt'] as const;
+  forbidUnknownFields(payload, known, contract, pathPrefix);
+  forbidCycleFields(payload, contract);
+  requireFiniteInteger(payload, 'eventId', contract);
+  requireString(payload, 'name', contract);
+  if (!PERSISTENT_COIN_EVENT_DIRECTIONS.includes(payload.direction as PersistentCoinEventDirection)) {
+    throw new Error(`Invalid ${contract} response: unknown ${pathPrefix}direction ${JSON.stringify(payload.direction)}`);
+  }
+  if (!PERSISTENT_COIN_EVENT_SOURCES.includes(payload.source as PersistentCoinEventSource)) {
+    throw new Error(`Invalid ${contract} response: unknown ${pathPrefix}source ${JSON.stringify(payload.source)}`);
+  }
+  requireFiniteNumber(payload, 'modifierPct', contract);
+  requireIsoTimestamp(payload, 'startsAt', contract, pathPrefix);
+  requireIsoTimestamp(payload, 'endsAt', contract, pathPrefix);
+  return {
+    eventId: payload.eventId as number,
+    name: payload.name as string,
+    direction: payload.direction as PersistentCoinEventDirection,
+    source: payload.source as PersistentCoinEventSource,
+    modifierPct: payload.modifierPct as number,
+    startsAt: payload.startsAt as string,
+    endsAt: payload.endsAt as string
+  };
+}
+
+export function parsePersistentCoinEventHistory(payload: unknown): PersistentCoinEventHistory {
+  const contract = 'persistent coin events';
+  if (!isRecord(payload)) throw new Error(`Invalid ${contract} response: expected a JSON object`);
+  const known = ['serverTime', 'worldId', 'coinId', 'events'] as const;
+  forbidUnknownFields(payload, known, contract);
+  forbidCycleFields(payload, contract);
+  requireIsoTimestamp(payload, 'serverTime', contract);
+  requireNullableFiniteInteger(payload, 'worldId', contract);
+  requireFiniteInteger(payload, 'coinId', contract);
+  if (!Array.isArray(payload.events)) {
+    throw new Error(`Invalid ${contract} response: events must be an array`);
+  }
+  if (payload.worldId === null && payload.events.length > 0) {
+    throw new Error(`Invalid ${contract} response: no active world must carry no events`);
+  }
+  const events = (payload.events as unknown[]).map((row, i) =>
+    parsePersistentCoinHistoryEvent(row, contract, `events[${i}].`)
+  );
+  return {
+    serverTime: payload.serverTime as string,
+    worldId: payload.worldId as number | null,
+    coinId: payload.coinId as number,
+    events
+  };
+}
+
+// Public per-coin event history. The response must describe the coin that
+// was asked for — a mismatched coinId is a contract breach, never rendered.
+export async function getPersistentCoinEventHistory(
+  coinId: number,
+  { limit, signal }: { limit?: number; signal?: AbortSignal } = {}
+): Promise<PersistentCoinEventHistory> {
+  const query = typeof limit === 'number' ? `?limit=${encodeURIComponent(String(limit))}` : '';
+  const history = await persistentFetch(
+    `/persistent/coins/${encodeURIComponent(String(coinId))}/events${query}`,
+    { signal },
+    parsePersistentCoinEventHistory
+  );
+  if (history.coinId !== coinId) {
+    throw new Error(`Invalid persistent coin events response: coinId ${history.coinId} does not match ${coinId}`);
+  }
+  return history;
+}

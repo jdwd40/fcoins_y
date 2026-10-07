@@ -16,7 +16,6 @@ import {
   clampCoinChartRange,
   apiRangeForCoinChart,
   apiRangeForMarketChart,
-  windowChartPoints,
   type MarketHistoryPoint,
 } from './marketHistoryChart.ts';
 
@@ -40,9 +39,10 @@ test('MARKET_CHART_RANGES is ≤12h only — no ALL/24H/7D/30D', () => {
   }
 });
 
-test('COIN_CHART_RANGES includes 5M and is ≤2H (no ALL/30D/12H)', () => {
-  assert.deepEqual([...COIN_CHART_RANGES], ['5M', '10M', '30M', '1H', '2H']);
-  for (const forbidden of ['12H', '24H', '7D', '30D', 'ALL']) {
+test('COIN_CHART_RANGES runs 5M → 12H and is ≤12H (no 24H/7D/30D/ALL)', () => {
+  // Issue #28: 12H joins the coin chart (24H API + client window).
+  assert.deepEqual([...COIN_CHART_RANGES], ['5M', '10M', '30M', '1H', '2H', '12H']);
+  for (const forbidden of ['24H', '7D', '30D', 'ALL']) {
     assert.equal((COIN_CHART_RANGES as readonly string[]).includes(forbidden), false);
   }
 });
@@ -163,15 +163,17 @@ test('clampMarketChartRange falls back for invalid / >12h persisted values', () 
   assert.equal(clampMarketChartRange(undefined, '1H'), '1H');
 });
 
-test('clampCoinChartRange accepts 5M and falls back for invalid / >2H', () => {
+test('clampCoinChartRange accepts 5M…12H and clamps longer keys to the 12H maximum', () => {
   assert.equal(clampCoinChartRange('10M'), '10M');
   assert.equal(clampCoinChartRange('2H'), '2H');
-  assert.equal(clampCoinChartRange('24H'), '2H');
-  assert.equal(clampCoinChartRange('ALL'), '2H');
-  assert.equal(clampCoinChartRange('12H'), '2H');
+  assert.equal(clampCoinChartRange('12H'), '12H');
+  assert.equal(clampCoinChartRange('24H'), '12H');
+  assert.equal(clampCoinChartRange('ALL'), '12H');
+  assert.equal(clampCoinChartRange('7D'), '12H');
   assert.equal(clampCoinChartRange('5M'), '5M');
-  assert.equal(clampCoinChartRange('30D'), '2H');
+  assert.equal(clampCoinChartRange('30D'), '12H');
   assert.equal(clampCoinChartRange('garbage'), DEFAULT_COIN_CHART_RANGE);
+  assert.equal(clampCoinChartRange(undefined, '1H'), '1H');
 });
 
 test('MarketValueChart defaults expose ≤12h only (no ALL/24H)', () => {
@@ -185,46 +187,38 @@ test('MarketValueChart defaults expose ≤12h only (no ALL/24H)', () => {
   assert.match(src, /chartTimeUnitForRange/);
 });
 
-test('PriceChart defaults expose ≤2H only (no ALL/24H/7D/30D)', () => {
-  const src = readFileSync(join(srcRoot, 'components/PriceChart.tsx'), 'utf8');
-  assert.match(src, /COIN_CHART_RANGES\.map/);
-  assert.match(src, /clampCoinChartRange/);
-  // Default TIME_RANGES is derived from COIN_CHART_RANGES — no long literals in the decl.
-  const match = src.match(/const TIME_RANGES[\s\S]*?;\n/);
-  assert.ok(match, 'TIME_RANGES constant missing');
-  const block = match![0];
-  assert.match(block, /COIN_CHART_RANGES/);
-  assert.doesNotMatch(block, /24H/);
-  assert.doesNotMatch(block, /7D/);
-  assert.doesNotMatch(block, /30D/);
-  assert.doesNotMatch(block, /ALL/);
+test('CandlestickChart defaults expose ≤12H only (no ALL/24H/7D/30D options)', () => {
+  const src = readFileSync(join(srcRoot, 'components/CandlestickChart.tsx'), 'utf8');
+  // Default ranges derive from COIN_CHART_RANGES and every option is clamped.
+  assert.match(src, /\(ranges \?\? COIN_CHART_RANGES\)\.map\(\(r\) => clampCoinChartRange\(r\)\)/);
+  assert.match(src, /clampCoinChartRange\(initialRange \?\? primaryRanges\[0\]/);
+  for (const long of ['24H', '7D', '30D', 'ALL']) {
+    assert.doesNotMatch(src, new RegExp(`'${long}'`), `no ${long} literal in the chart`);
+  }
 });
 
-test('CoinPage chart ranges are capped at 2H with no secondary group', () => {
-  // The coin page (After-Hours Exchange) replaced the GameCoinDetail modal;
-  // it declares the same capped range contract via COIN_CHART_RANGES_UI.
+test('CoinPage chart ranges run 5M → 12H in one group (issue #28)', () => {
   const src = readFileSync(join(srcRoot, 'pages/CoinPage.tsx'), 'utf8');
-  assert.match(src, /COIN_CHART_RANGES_UI: readonly TimeRange\[\] = \['5M', '10M', '30M', '1H', '2H'\]/);
-  assert.match(src, /secondaryRanges=\{\[\]\}/);
+  assert.match(
+    src,
+    /COIN_CHART_RANGES_UI: readonly CoinChartRange\[\] = \['5M', '10M', '30M', '1H', '2H', '12H'\]/
+  );
+  assert.doesNotMatch(src, /secondaryRanges/);
   assert.doesNotMatch(src, /COIN_CHART_RANGES_UI[\s\S]*?24H/);
+  assert.match(src, /<CandlestickChart/);
+  assert.doesNotMatch(src, /PriceChart/);
 });
 
-test('apiRangeForCoinChart maps 5M to 10M', () => {
+test('apiRangeForCoinChart maps 5M to 10M and 12H to 24H', () => {
   assert.equal(apiRangeForCoinChart('5M'), '10M');
   assert.equal(apiRangeForCoinChart('10M'), '10M');
+  assert.equal(apiRangeForCoinChart('2H'), '2H');
+  assert.equal(apiRangeForCoinChart('12H'), '24H');
+  for (const range of COIN_CHART_RANGES) {
+    assert.ok(['10M', '30M', '1H', '2H', '24H'].includes(apiRangeForCoinChart(range)), `${range} maps to a BE key`);
+  }
   assert.equal(apiRangeForMarketChart('5M'), '10M');
   assert.equal(apiRangeForMarketChart('12H'), '12H');
-});
-
-test('windowChartPoints filters a 10M series down to 5M', () => {
-  const points = [];
-  for (let i = 12; i >= 0; i--) {
-    points.push({ x: NOW - i * 60_000, y: 10 + i });
-  }
-  const windowed = windowChartPoints(points, '5M', NOW);
-  const span = windowed[windowed.length - 1].x - windowed[0].x;
-  assert.ok(span <= 5 * 60 * 1000);
-  assert.ok(windowed.length <= 7);
 });
 
 test('CoinPage primary ranges include 5M and no ALL/30D', () => {

@@ -5,7 +5,8 @@ import { usePageTitle } from '../hooks/usePageTitle.ts';
 import { useCoinCatalogue } from '../hooks/useCoinCatalogue.ts';
 import { usePersistentCountdownTick } from '../hooks/usePersistentCountdown.ts';
 import { useShellServices } from '../components/shell/shellServices.ts';
-import { PriceChart } from '../components/PriceChart.tsx';
+import { CandlestickChart } from '../components/CandlestickChart.tsx';
+import { CoinEventTimeline } from '../components/CoinEventTimeline.tsx';
 import { TradeTicket } from '../components/TradeTicket.tsx';
 import { Card } from '../components/ui/Card.tsx';
 import { Badge } from '../components/ui/Badge.tsx';
@@ -30,13 +31,15 @@ import { formatPrice } from '../utils/formatPrice.ts';
 import { eventProgress } from '../utils/worldEvents.ts';
 import { formatModifierPct } from '../utils/formatModifierPct.ts';
 import { sparklineRangeForCoin } from '../utils/sparkline.ts';
-import type { TimeRange } from '../types';
+import type { CoinChartRange } from '../utils/marketHistoryChart.ts';
 
-// Coin page: identity hero, live chart, stats, active events, position and
-// the shared TradeTicket. Everything resolves from the shared persistent
-// signals/runtime — one extra one-shot /coins/:id read for catalogue stats.
+// Coin page: identity hero, candlestick chart, stats, active events, event
+// history, position and the shared TradeTicket. Current coin data resolves
+// from the shared persistent signals/runtime; the chart (price history), the
+// event history (events feed) and catalogue stats each own their read and
+// are never blended into each other's figures.
 
-const COIN_CHART_RANGES_UI: readonly TimeRange[] = ['5M', '10M', '30M', '1H', '2H'];
+const COIN_CHART_RANGES_UI: readonly CoinChartRange[] = ['5M', '10M', '30M', '1H', '2H', '12H'];
 
 const ARCHETYPE_ICON: Record<PersistentArchetype, typeof Zap> = {
   ZIP: Zap,
@@ -163,11 +166,10 @@ export function CoinPage() {
         <div className="lg:col-span-2 min-w-0 space-y-4">
           {/* Chart */}
           <Card className="p-4 sm:p-5">
-            <PriceChart
+            <CandlestickChart
               key={coin.coinId}
               coinId={coin.coinId}
               ranges={COIN_CHART_RANGES_UI}
-              secondaryRanges={[]}
               initialRange={sparklineRangeForCoin(coin)}
               cycleStartTime={null}
               averageEntryPrice={owned && holding ? holding.averageEntryPrice : null}
@@ -198,6 +200,9 @@ export function CoinPage() {
               </ul>
             )}
           </Card>
+
+          {/* Event history (historical feed; hides itself if unavailable) */}
+          <CoinEventTimeline key={coin.coinId} coinId={coin.coinId} serverNowMs={serverNowMs} />
         </div>
 
         {/* Right column: position + trade ticket (sticky on desktop) */}
