@@ -839,3 +839,64 @@ test('parsePersistentMarketSignals still rejects unknown fields (runtime must no
     /unknown field director.mode/
   );
 });
+
+// --- Backend issue #56: additive runtime bot heartbeat ---------------------------
+
+const VALID_RUNTIME_BOTS = {
+  tickIntervalMs: 60000,
+  staleAfterMs: 180000,
+  stale: false,
+  lastAttemptAt: '2026-09-10T11:59:30.000Z',
+  lastClaimedTickAt: '2026-09-10T11:59:30.100Z',
+  lastSuccessfulTickAt: '2026-09-10T11:59:31.000Z',
+  lastActionAt: '2026-09-10T11:58:31.000Z',
+  lastFailureAt: null,
+  lastOutcome: 'SUCCESS',
+  consecutiveFailures: 0,
+  lastTickSummary: { trades: 1, holds: 2, skips: 1 }
+};
+
+test('runtime parser stays compatible with a backend that adds the bots heartbeat (and one that omits it)', () => {
+  const withBots = parsePersistentRuntime({ ...VALID_RUNTIME, bots: VALID_RUNTIME_BOTS });
+  assert.equal(withBots.bots?.stale, false);
+  assert.equal(withBots.bots?.lastOutcome, 'SUCCESS');
+  assert.deepEqual(withBots.bots?.lastTickSummary, { trades: 1, holds: 2, skips: 1 });
+  assert.equal(withBots.director?.mode, 'BOOM'); // the rest of the contract is unchanged
+
+  const neverRan = parsePersistentRuntime({
+    ...VALID_RUNTIME,
+    bots: { ...VALID_RUNTIME_BOTS, stale: true, lastAttemptAt: null, lastClaimedTickAt: null, lastSuccessfulTickAt: null, lastActionAt: null, lastOutcome: null, lastTickSummary: null }
+  });
+  assert.equal(neverRan.bots?.stale, true);
+  assert.equal(neverRan.bots?.lastTickSummary, null);
+
+  assert.equal(parsePersistentRuntime(VALID_RUNTIME).bots, null); // older backend
+  assert.equal(parsePersistentRuntime({ ...NO_WORLD_RUNTIME, bots: null }).bots, null);
+});
+
+test('runtime bots heartbeat is strict: unknown keys, raw outcomes and malformed values reject', () => {
+  assert.throws(
+    () => parsePersistentRuntime({ ...VALID_RUNTIME, bots: { ...VALID_RUNTIME_BOTS, workerRunning: true } }),
+    /unknown field bots\.workerRunning/
+  );
+  assert.throws(
+    () => parsePersistentRuntime({ ...VALID_RUNTIME, bots: { ...VALID_RUNTIME_BOTS, lastOutcome: 'Error: ECONNRESET' } }),
+    /unknown bots\.lastOutcome/
+  );
+  assert.throws(
+    () => parsePersistentRuntime({ ...VALID_RUNTIME, bots: { ...VALID_RUNTIME_BOTS, stale: 'no' } }),
+    /bots\.stale must be a boolean/
+  );
+  assert.throws(
+    () => parsePersistentRuntime({ ...VALID_RUNTIME, bots: { ...VALID_RUNTIME_BOTS, consecutiveFailures: -1 } }),
+    /bots\.consecutiveFailures must be a non-negative integer/
+  );
+  assert.throws(
+    () => parsePersistentRuntime({ ...VALID_RUNTIME, bots: { ...VALID_RUNTIME_BOTS, lastTickSummary: { trades: 1, holds: 0, skips: 0, seed: 'x' } } }),
+    /unknown field bots\.lastTickSummary\.seed/
+  );
+  assert.throws(
+    () => parsePersistentRuntime({ ...NO_WORLD_RUNTIME, bots: VALID_RUNTIME_BOTS }),
+    /bots must be null without an active world/
+  );
+});

@@ -15,11 +15,11 @@ import { EmptyState } from '../components/ui/EmptyState.tsx';
 import { InlineAlert } from '../components/ui/InlineAlert.tsx';
 import { InfoTip } from '../components/ui/InfoTip.tsx';
 import { Stat } from '../components/ui/Stat.tsx';
+import { QuantityText } from '../components/ui/QuantityText.tsx';
 import { formatCurrency } from '../services/transactionService.ts';
 import type { PersistentHolding } from '../services/persistentService.ts';
 import {
   formatAbsoluteTimestamp,
-  formatQuantity,
   formatSignedGbp,
   formatSignedPct
 } from '../utils/gameLogic.ts';
@@ -200,7 +200,7 @@ export function PortfolioPage() {
                           {holding.symbol}
                         </Link>
                         <span className="text-xs text-ink-mute font-mono tnum">
-                          {formatQuantity(holding.quantity)} · cost basis {formatCurrency(holding.costBasis)}
+                          <QuantityText value={holding.quantity} /> · cost basis {formatCurrency(holding.costBasis)}
                         </span>
                       </div>
                       <Badge tone="down">Dead · £0.00</Badge>
@@ -269,7 +269,7 @@ export function PortfolioPage() {
                           {tx.symbol}
                         </Link>
                         <span className="block text-xs text-ink-mute font-mono tnum">
-                          {formatQuantity(tx.quantity)} @ {formatPrice(tx.price)}
+                          <QuantityText value={tx.quantity} /> @ {formatPrice(tx.price)}
                         </span>
                       </div>
                       <div className="text-right shrink-0">
@@ -311,7 +311,7 @@ function HoldingRow({ holding, onSell }: { holding: PersistentHolding; onSell: (
           {signal?.name ?? holding.symbol}
         </Link>
         <span className="text-xs text-ink-mute font-mono tnum">
-          {formatQuantity(holding.quantity)} {holding.symbol} · avg {holding.averageEntryPrice === null ? '—' : formatPrice(holding.averageEntryPrice)} · now {formatPrice(signal?.currentPrice ?? holding.currentPrice)}
+          <QuantityText value={holding.quantity} symbol={holding.symbol} /> · avg {holding.averageEntryPrice === null ? '—' : formatPrice(holding.averageEntryPrice)} · now {formatPrice(signal?.currentPrice ?? holding.currentPrice)}
         </span>
       </div>
       <div className="text-right">

@@ -17,12 +17,12 @@ import { Skeleton } from '../components/ui/Skeleton.tsx';
 import { EmptyState } from '../components/ui/EmptyState.tsx';
 import { Button, ButtonLink } from '../components/ui/Button.tsx';
 import { InfoTip } from '../components/ui/InfoTip.tsx';
+import { QuantityText } from '../components/ui/QuantityText.tsx';
 import { formatCurrency } from '../services/transactionService.ts';
 import type { PersistentArchetype, PersistentRuntimeEvent } from '../services/persistentService.ts';
 import {
   archetypePersonality,
   derivedServerNowMs,
-  formatQuantity,
   formatSignedGbp,
   formatSignedPct,
   momentumArrow
@@ -214,7 +214,7 @@ export function CoinPage() {
                 <dl className="grid grid-cols-2 gap-2 text-sm">
                   <div className="stat-cell">
                     <dt className="label mb-1">Quantity</dt>
-                    <dd className="font-mono text-ink tnum">{formatQuantity(holding.quantity)} {coin.symbol}</dd>
+                    <dd className="font-mono text-ink tnum"><QuantityText value={holding.quantity} symbol={coin.symbol} /></dd>
                   </div>
                   <div className="stat-cell">
                     <dt className="label mb-1">Avg entry</dt>

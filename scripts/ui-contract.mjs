@@ -43,6 +43,8 @@ const coinAvatar = read('src/components/ui/CoinAvatar.tsx');
 const badge = read('src/components/ui/Badge.tsx');
 const button = read('src/components/ui/Button.tsx');
 const tradeTicket = read('src/components/TradeTicket.tsx');
+const tradeTicketLogic = read('src/utils/tradeTicket.ts');
+const quantityText = read('src/components/ui/QuantityText.tsx');
 const appShell = read('src/components/shell/AppShell.tsx');
 const topBar = read('src/components/shell/TopBar.tsx');
 const worldStrip = read('src/components/shell/WorldStrip.tsx');
@@ -322,18 +324,75 @@ assert.match(persistentContext, /await syncNow\(\);\s*\n\s*return result;/);
 // TradeTicket: the consolidated trade surface
 // ============================================================================
 // Request carries no client price — only side/coinId/quantity through the
-// context trade() (which posts { coin_id, quantity }).
-assert.match(tradeTicket, /trade\(side, coinId, quantity\)/);
+// context trade() (which posts { coin_id, quantity }). Review R3: those
+// three values now come from the frozen review snapshot (replaces the former
+// /trade\(side, coinId, quantity\)/ render-state form).
+assert.match(tradeTicket, /trade\(snap\.side, snap\.coinId, snap\.quantity\)/);
+assert.doesNotMatch(tradeTicket, /trade\([^)]*price/i);
 assert.doesNotMatch(tradeTicket, /\bfetch\(|setInterval/);
 // Quantity contract: shared parser, 8dp, never rounded, decimal keypad.
-assert.match(tradeTicket, /parseTradeQuantity\(amount\)/);
+// Issue #32: parsing/validation moved to the pure tradeTicket util, which
+// still rides the shared parseTradeQuantity; the ticket validates the raw
+// field LIVE on every render.
+assert.match(tradeTicket, /validateTradeForm\(\{ side, raw: amount, price: currentPrice, cash, heldQuantity, symbol \}\)/);
+assert.match(tradeTicketLogic, /parseTradeQuantity\(text\)/);
 assert.match(tradeTicket, /inputMode="decimal"/);
 assert.doesNotMatch(tradeTicket, /step="1"/);
 assert.doesNotMatch(tradeTicket, /parseInt\(amount/);
-assert.match(tradeTicket, /formatQuantity\(quantity\)/);
+// The committed quantity is the parsed/frozen value verbatim.
+// Review R2/R3: Confirm submits the frozen snapshot (side, coin, quantity
+// verbatim) — never the ticket's current coin/side — after re-verifying the
+// reviewed identity and instrument.
+assert.match(tradeTicket, /commitTrade\(snap\)/);
+assert.match(tradeTicket, /await trade\(snap\.side, snap\.coinId, snap\.quantity\)/);
+assert.doesNotMatch(tradeTicket, /trade\(side, coinId/, 'the request must not be built from the current render');
+assert.match(tradeTicket, /reviewMatchesContext\(snap, \{ userId: currentUserId, coinId \}\)/);
+assert.match(tradeTicketLogic, /export function reviewMatchesContext/);
+// Review R2/R3: stages belong to one identity+coin binding generation; late
+// completions of an ended generation are suppressed (no receipt/toast/error).
+assert.match(tradeTicket, /const bindingKey = `\$\{currentUserId \?\? ''\}\|\$\{coinId\}`/);
+assert.match(tradeTicket, /if \(!isOwnIdentity\(\)\) return;/);
+assert.match(tradeTicket, /if \(isCurrent\(\)\) setStage\(\{ stage: 'receipt'/);
+assert.match(tradeTicket, /rawStage\.generation !== generation \? FORM_STAGE : rawStage/);
+assert.match(tradeTicket, /\{formatQuantity\(tx\.quantity\)\} \{receiptSymbol\}/);
+assert.match(tradeTicket, /startReview\(validation\.quantity\)/);
+// Exact quantities stay discoverable (receipt, review, held/sell-all titles).
+assert.match(tradeTicket, /formatQuantity\(tx\.quantity\)/);
+assert.match(tradeTicket, /formatQuantity\(snap\.quantity\)/);
 assert.match(tradeTicket, /formatQuantity\(heldQuantity\)/);
-// Minimum notional client mirror.
-assert.match(tradeTicket, /minTradeValueError\(estimatedTotal, currentPrice\)/);
+// Minimum notional client mirror (live).
+assert.match(tradeTicketLogic, /minTradeValueError\(estimatedTotal, input\.price\)/);
+// Issue #32: live inline validation, accessible, and Review disabled while invalid.
+assert.match(tradeTicket, /disabled=\{pending \|\| !validation\.canReview\}/);
+assert.doesNotMatch(tradeTicket, /disabled=\{pending \|\| !amount\}/, 'Review must not depend on non-empty input alone');
+assert.match(tradeTicket, /aria-invalid=\{inlineError !== null\}/);
+assert.match(tradeTicket, /aria-describedby=\{errorId\}/);
+// Desktop ticket + phone sheet coexist in the DOM: ids must be per instance.
+assert.match(tradeTicket, /useId\(\)/);
+assert.match(tradeTicket, /htmlFor=\{fieldId\}/);
+assert.doesNotMatch(tradeTicket, /id=\{`trade-quantity-\$\{coinId\}`\}/);
+assert.match(tradeTicket, /aria-live="polite"/);
+assert.match(tradeTicketLogic, /export function validateTradeForm/);
+assert.match(tradeTicketLogic, /Not enough cash: this trade needs/);
+assert.match(tradeTicketLogic, /negative amounts are not allowed/);
+// Issue #32: review figures come from a snapshot frozen at review entry —
+// never from live cash/holdings (the phantom second trade).
+assert.match(tradeTicket, /stage: 'review'; generation: number; snapshot: TradeReviewSnapshot/);
+assert.match(tradeTicket, /createReviewSnapshot\(\{ userId: currentUserId, side, coinId, symbol, quantity, price: currentPrice, cash, heldQuantity \}\)/);
+assert.match(tradeTicket, /formatCurrency\(snap\.cashAfter\)/);
+assert.match(tradeTicket, /value=\{snap\.holdingAfter\}/);
+assert.doesNotMatch(tradeTicket, /cash - total|heldQuantity \+ quantity/, 'review must not recompute from live account');
+assert.match(tradeTicket, /const drift = pending \? null : reviewDrift\(/, 'no drift/second-trade signal while committing');
+assert.match(tradeTicketLogic, /Object\.freeze\(/);
+// Issue #32: readable quantities with exact precision discoverable; the
+// placeholder follows the live price.
+assert.match(tradeTicket, /placeholder=\{quantityPlaceholder\(currentPrice\)\}/);
+assert.doesNotMatch(tradeTicket, /placeholder="0\.004"/);
+assert.match(quantityText, /formatQuantityCompact\(value\)/);
+assert.match(quantityText, /sr-only/);
+assert.match(quantityText, /title=\{`Exact: \$\{exact\}`\}/);
+assert.match(coinPage, /<QuantityText value=\{holding\.quantity\} symbol=\{coin\.symbol\} \/>/);
+assert.match(portfolioPage, /<QuantityText value=\{holding\.quantity\}/);
 // Quick-buy chips ride the shared ladder + notional→quantity conversion.
 assert.match(tradeTicket, /QUICK_BUY_NOTIONALS\.map/);
 assert.match(tradeTicket, /quantityForNotional\(notional, currentPrice\)/);
@@ -354,8 +413,8 @@ assert.doesNotMatch(tradeTicket, /!synced \|\| \(account === null/);
 assert.match(tradeTicket, /provisioned/);
 // Confirm-before-trade for every path (quick-buy and sell-all included).
 assert.match(tradeTicket, /stage: 'review'/);
-assert.match(tradeTicket, /Review \{side === 'BUY' \? 'buy' : 'sell'\} order/);
-assert.match(tradeTicket, /Confirm \{side === 'BUY' \? 'buy' : 'sell'\}/);
+assert.match(tradeTicket, /Review \{snap\.side === 'BUY' \? 'buy' : 'sell'\} \{snap\.symbol\} order/);
+assert.match(tradeTicket, /Confirm \{snap\.side === 'BUY' \? 'buy' : 'sell'\}/);
 assert.match(tradeTicket, /startReview\(heldQuantity\)/, 'sell-all goes through review');
 // Server rejection verbatim; session expiry path; pending blocks resubmit.
 assert.match(tradeTicket, /err\.message/);
