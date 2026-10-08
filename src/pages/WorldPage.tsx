@@ -256,12 +256,17 @@ export function WorldPage() {
             </div>
           </div>
         </div>
-        {statusData?.currentCycle && (
-          <p className="text-sm text-ink-dim mb-3" role="status">
-            Last tick: <strong className="text-ink">{TICK_TYPE_COPY[statusData.currentCycle.type] ?? statusData.currentCycle.type}</strong>
-            {' · '}next price tick in <span className="font-mono tnum">{statusData.currentCycle.timeRemaining}</span>
-          </p>
-        )}
+        {/* Issue #33: the status line is always mounted with its height
+            reserved (2 lines on phones, 1 from sm), so its arrival does not
+            push the chart down. */}
+        <p className="text-sm text-ink-dim mb-3 min-h-[2.5rem] sm:min-h-[1.25rem]" role="status">
+          {statusData?.currentCycle && (
+            <>
+              Last tick: <strong className="text-ink">{TICK_TYPE_COPY[statusData.currentCycle.type] ?? statusData.currentCycle.type}</strong>
+              {' · '}next price tick in <span className="font-mono tnum">{statusData.currentCycle.timeRemaining}</span>
+            </>
+          )}
+        </p>
         <MarketValueChart refreshTrigger={0} />
       </Card>
     </div>

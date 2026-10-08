@@ -14,6 +14,7 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
+import { formatCurrency } from '../services/transactionService.ts';
 import { readChartTheme, withAlpha } from '../utils/chartTheme.ts';
 import {
   MARKET_CHART_RANGES,
@@ -68,7 +69,9 @@ function readPersistedMarketRange(): MarketChartRange {
 export function MarketValueChart({ className = '', refreshTrigger }: MarketValueChartProps) {
   const [timeRange, setTimeRange] = useState<MarketChartRange>(() => readPersistedMarketRange());
   const [priceHistory, setPriceHistory] = useState<SanitizedMarketHistoryPoint[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Start in the loading state so the first paint shows the loading copy,
+  // not a flash of "No market history available".
+  const [loading, setLoading] = useState(true);
 
   const selectRange = (next: MarketChartRange) => {
     const clamped = clampMarketChartRange(next);
@@ -149,6 +152,9 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         pointHoverBorderWidth: 2,
         fill: true,
         tension: priceHistory.length >= 3 ? 0.35 : 0,
+        // Issue #33: monotone interpolation keeps the smoothed curve inside
+        // the plotted data (no overshoot above the high / below the low).
+        cubicInterpolationMode: 'monotone' as const,
       },
     ],
   };
@@ -171,7 +177,7 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         titleFont: { family: 'JetBrains Mono', size: 10, weight: 'normal' as const },
         bodyFont: { family: 'Inter', size: 16, weight: '600' as const },
         callbacks: {
-          label: (context: { parsed: { y: number } }) => `£${context.parsed.y.toFixed(2)}`,
+          label: (context: { parsed: { y: number } }) => formatCurrency(context.parsed.y),
           title: (tooltipItems: Array<{ raw: { x: Date } }>) => {
             const date = new Date(tooltipItems[0].raw.x);
             return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toUpperCase();
@@ -200,7 +206,14 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         ticks: {
           color: axisColor,
           font: { family: 'JetBrains Mono', size: 10 },
-          callback: (value: number | string) => `£${Number(value).toFixed(0)}`,
+          // Issue #33: grouped whole pounds, e.g. £128,000 (was £128000).
+          callback: (value: number | string) =>
+            Number(value).toLocaleString('en-GB', {
+              style: 'currency',
+              currency: 'GBP',
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }),
         },
       },
     },
@@ -229,17 +242,19 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         ))}
       </div>
 
-      <div className="relative">
+      {/* Issue #33: fixed height in every state (loading, empty, data) so
+          loading the page or switching ranges never shifts the layout. */}
+      <div className="relative h-[260px] sm:h-[360px]">
         {loading && priceHistory.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-sm text-ink-mute">Loading market history…</div>
           </div>
         )}
         {!loading && priceHistory.length === 0 && (
-          <div className="flex items-center justify-center h-64 label">No market history available</div>
+          <div className="flex items-center justify-center h-full label">No market history available</div>
         )}
         {priceHistory.length > 0 && (
-          <div className="h-[260px] sm:h-[360px]">
+          <div className="h-full">
             <Line key={`market-${timeRange}`} data={chartData} options={options} />
           </div>
         )}
