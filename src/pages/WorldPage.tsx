@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronDown, Crown, Flame, HelpCircle } from 'lucide-react';
 import { usePersistent } from '../context/PersistentContext.tsx';
 import { usePageTitle } from '../hooks/usePageTitle.ts';
@@ -19,6 +19,7 @@ import { decisionSummaryCopy, directorModeExplanation } from '../utils/persisten
 import { regimeCopy, regimeLabel, regimeSentiment } from '../utils/regimeCopy.ts';
 import { collectActiveEvents, eventProgress, soonestEndingEvents } from '../utils/worldEvents.ts';
 import { formatModifierPct } from '../utils/formatModifierPct.ts';
+import { marketHighLow } from '../utils/marketHistoryChart.ts';
 import { formatRemaining, remainingMs } from '../utils/persistentCountdown.ts';
 import { derivedServerNowMs, formatActivityTimestamp } from '../utils/gameLogic.ts';
 
@@ -50,6 +51,20 @@ export function WorldPage() {
   // Page-scoped feeds: mounted only here, 10s cadence.
   const { data: statsData } = useFetch<MarketStats>(`${API_BASE_URL}/market/stats`, 10000);
   const { data: statusData } = useFetch<MarketStatus>(`${API_BASE_URL}/market/status`, 10000);
+  // Issue #33: 24h high/low from the 24H market history (a whitelisted
+  // backend range, ~2.9k rows), refreshed once a minute. The backend
+  // all-time extremes include early-September values far above today's index.
+  const { data: dayHistory } = useFetch<{ history?: Array<{ total_value: string }> }>(
+    `${API_BASE_URL}/market/price-history?timeRange=24H`,
+    60000
+  );
+  // The latest index (10s poll) is folded in so "Index now" never sits
+  // outside the 24h high/low between minute refreshes.
+  const dayRange = useMemo(() => {
+    const rows = dayHistory?.history;
+    if (!rows?.length) return null;
+    return marketHighLow(statsData ? [...rows, { total_value: statsData.currentValue }] : rows);
+  }, [dayHistory, statsData]);
 
   const director = runtime?.director ?? null;
   const receivedAtLocal = runtimeSyncedAt ?? Date.now();
@@ -237,7 +252,7 @@ export function WorldPage() {
       <Card className="p-5" aria-label="Market pulse">
         <h2 className="font-display font-bold text-ink mb-3">Market pulse</h2>
         {/* Phone: one full-width row per stat (label left, value right) so long
-            values like £1,279,419.71 never overflow; three columns from sm. */}
+            values never overflow; three columns from sm. */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
           <div className="stat-cell flex flex-wrap items-baseline justify-between gap-x-3 sm:block">
             <div className="label sm:mb-1">Index now</div>
@@ -246,15 +261,15 @@ export function WorldPage() {
             </div>
           </div>
           <div className="stat-cell flex flex-wrap items-baseline justify-between gap-x-3 sm:block">
-            <div className="label sm:mb-1">All-time high</div>
+            <div className="label sm:mb-1">24h high</div>
             <div className="font-mono text-base sm:text-lg font-semibold text-ink tnum [overflow-wrap:anywhere]">
-              {statsData ? formatCurrency(statsData.allTimeHigh) : '—'}
+              {dayRange ? formatCurrency(dayRange.high) : '—'}
             </div>
           </div>
           <div className="stat-cell flex flex-wrap items-baseline justify-between gap-x-3 sm:block">
-            <div className="label sm:mb-1">All-time low</div>
+            <div className="label sm:mb-1">24h low</div>
             <div className="font-mono text-base sm:text-lg font-semibold text-ink tnum [overflow-wrap:anywhere]">
-              {statsData ? formatCurrency(statsData.allTimeLow) : '—'}
+              {dayRange ? formatCurrency(dayRange.low) : '—'}
             </div>
           </div>
         </div>
