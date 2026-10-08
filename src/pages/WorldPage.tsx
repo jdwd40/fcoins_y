@@ -236,22 +236,24 @@ export function WorldPage() {
       {/* Market pulse */}
       <Card className="p-5" aria-label="Market pulse">
         <h2 className="font-display font-bold text-ink mb-3">Market pulse</h2>
-        <div className="grid grid-cols-3 gap-2 mb-4">
-          <div className="stat-cell">
-            <div className="label mb-1">Index now</div>
-            <div className="font-mono text-base sm:text-lg font-semibold text-ink tnum">
+        {/* Phone: one full-width row per stat (label left, value right) so long
+            values like £1,279,419.71 never overflow; three columns from sm. */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+          <div className="stat-cell flex flex-wrap items-baseline justify-between gap-x-3 sm:block">
+            <div className="label sm:mb-1">Index now</div>
+            <div className="font-mono text-base sm:text-lg font-semibold text-ink tnum [overflow-wrap:anywhere]">
               {statsData ? formatCurrency(statsData.currentValue) : '—'}
             </div>
           </div>
-          <div className="stat-cell">
-            <div className="label mb-1">All-time high</div>
-            <div className="font-mono text-base sm:text-lg font-semibold text-ink tnum">
+          <div className="stat-cell flex flex-wrap items-baseline justify-between gap-x-3 sm:block">
+            <div className="label sm:mb-1">All-time high</div>
+            <div className="font-mono text-base sm:text-lg font-semibold text-ink tnum [overflow-wrap:anywhere]">
               {statsData ? formatCurrency(statsData.allTimeHigh) : '—'}
             </div>
           </div>
-          <div className="stat-cell">
-            <div className="label mb-1">All-time low</div>
-            <div className="font-mono text-base sm:text-lg font-semibold text-ink tnum">
+          <div className="stat-cell flex flex-wrap items-baseline justify-between gap-x-3 sm:block">
+            <div className="label sm:mb-1">All-time low</div>
+            <div className="font-mono text-base sm:text-lg font-semibold text-ink tnum [overflow-wrap:anywhere]">
               {statsData ? formatCurrency(statsData.allTimeLow) : '—'}
             </div>
           </div>
