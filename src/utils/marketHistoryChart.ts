@@ -161,3 +161,20 @@ export function apiRangeForMarketChart(range: MarketChartRange): Exclude<MarketC
 export function chartTimeUnitForRange(range: MarketChartRange): 'minute' | 'hour' {
   return range === '12H' ? 'hour' : 'minute';
 }
+
+/** Issue #33: high/low of the market index over a /market/price-history
+ *  payload (the World page passes the 24H window). Non-finite values are
+ *  ignored; null when nothing usable remains. */
+export function marketHighLow(
+  history: ReadonlyArray<{ total_value: string | number }> | null | undefined
+): { high: number; low: number } | null {
+  let high = -Infinity;
+  let low = Infinity;
+  for (const row of history ?? []) {
+    const value = parseFloat(String(row?.total_value));
+    if (!Number.isFinite(value)) continue;
+    if (value > high) high = value;
+    if (value < low) low = value;
+  }
+  return Number.isFinite(high) ? { high, low } : null;
+}

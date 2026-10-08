@@ -16,6 +16,7 @@ import {
   clampCoinChartRange,
   apiRangeForCoinChart,
   apiRangeForMarketChart,
+  marketHighLow,
   type MarketHistoryPoint,
 } from './marketHistoryChart.ts';
 
@@ -226,4 +227,19 @@ test('CoinPage primary ranges include 5M and no ALL/30D', () => {
   assert.match(src, /COIN_CHART_RANGES_UI[\s\S]*5M/);
   assert.doesNotMatch(src, /COIN_CHART_RANGES_UI:[^=]*=\s*\[[^\]]*ALL/);
   assert.doesNotMatch(src, /COIN_CHART_RANGES_UI:[^=]*=\s*\[[^\]]*30D/);
+});
+
+test('marketHighLow returns the max/min total_value and ignores junk (issue #33)', () => {
+  assert.deepEqual(
+    marketHighLow([
+      { total_value: '102606.7810' },
+      { total_value: '180183.6834' },
+      { total_value: 'not-a-number' },
+      { total_value: 78521.9178 },
+    ]),
+    { high: 180183.6834, low: 78521.9178 }
+  );
+  assert.equal(marketHighLow([]), null);
+  assert.equal(marketHighLow(undefined), null);
+  assert.equal(marketHighLow([{ total_value: '' }, { total_value: 'x' }]), null);
 });

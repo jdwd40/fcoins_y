@@ -811,9 +811,10 @@ assert.match(worldPage, /Expires in \{timeLeft\}/);
 assert.match(worldPage, /soonestEndingEvents\(collectActiveEvents\(runtime\)/);
 assert.match(worldPage, /decisionSummaryCopy\(decision\.summaryCode\)/);
 assert.match(worldPage, /<MarketValueChart refreshTrigger=\{0\} \/>/);
-// Live events: 8 soonest-ending by default with an aria-expanded toggle, and
-// a two-column grid on >=1024px so the list is not a wall of rows.
-assert.match(worldPage, /EVENTS_INITIAL_COUNT = 8/);
+// Live events: 4 soonest-ending by default (fixed-size card, issue #33) with
+// an aria-expanded toggle, and a two-column grid on >=1024px so the list is
+// not a wall of rows.
+assert.match(worldPage, /EVENTS_INITIAL_COUNT = 4/);
 assert.match(worldPage, /events\.slice\(0, EVENTS_INITIAL_COUNT\)/);
 assert.match(worldPage, /Show all \$\{events\.length\} events/);
 assert.match(worldPage, /aria-expanded=\{showAllEvents\}/);
