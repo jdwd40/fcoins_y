@@ -53,6 +53,9 @@ const RANGE_LABELS: Record<MarketChartRange, string> = {
   '12H': '12h',
 };
 
+// Quiet refresh cadence for the visible chart: the backend's 30s price tick.
+const MARKET_CHART_REFRESH_MS = 30_000;
+
 const TIME_RANGES: { value: MarketChartRange; label: string }[] = MARKET_CHART_RANGES.map(
   (value) => ({ value, label: RANGE_LABELS[value] })
 );
@@ -87,22 +90,32 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
 
   useEffect(() => {
     let cancelled = false;
-    const fetchMarketHistory = async () => {
+    let inFlight = false;
+    let controller: AbortController | null = null;
+
+    // initial=true (mount / range switch): clear and show the loading state so
+    // a previous (wrong) range never stays visible. initial=false (quiet
+    // refresh, issue #33): keep the current data on screen and only replace it
+    // on success, so the chart never blanks or flashes "Loading…".
+    const fetchMarketHistory = async (initial: boolean) => {
+      if (inFlight) return; // never overlap requests
+      inFlight = true;
+      controller = new AbortController();
       try {
-        setLoading(true);
-        // Clear immediately so a previous (wrong) range never stays visible
-        // while the next fetch/sanitize is in flight.
-        setPriceHistory([]);
+        if (initial) {
+          setLoading(true);
+          setPriceHistory([]);
+        }
         // BE market timeRanges: 10M,30M,1H,2H,12H,24H,ALL — no 5M. Unknown
         // keys return unfiltered ALL history. Request 10M for 5M (nearest
         // supported), then always sanitize/window-filter client-side.
         const apiRange = apiRangeForMarketChart(timeRange);
         const url = `${API_BASE_URL}/market/price-history?timeRange=${apiRange}`;
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: controller.signal });
         const data = await response.json();
         if (cancelled) return;
         if (!data.history || !Array.isArray(data.history)) {
-          setPriceHistory([]);
+          if (initial) setPriceHistory([]);
           return;
         }
         const transformed = data.history.map(
@@ -115,15 +128,30 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         // Atomic replace after sanitize so wrong-range data never stays visible.
         setPriceHistory(sanitizeMarketHistoryPoints(transformed, timeRange, Date.now()));
       } catch (error) {
+        if (cancelled || (error instanceof Error && error.name === 'AbortError')) return;
         console.error('Error fetching market history:', error);
-        if (!cancelled) setPriceHistory([]);
+        if (initial) setPriceHistory([]);
       } finally {
-        if (!cancelled) setLoading(false);
+        inFlight = false;
+        if (initial && !cancelled) setLoading(false);
       }
     };
-    fetchMarketHistory();
+
+    const isHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
+    const refreshIfVisible = () => {
+      if (!isHidden()) fetchMarketHistory(false);
+    };
+
+    fetchMarketHistory(true);
+    // Issue #33: refetch the current range every price tick while the tab is
+    // visible (and once on return), so the last point tracks "Index now".
+    const intervalId = setInterval(refreshIfVisible, MARKET_CHART_REFRESH_MS);
+    document.addEventListener('visibilitychange', refreshIfVisible);
     return () => {
       cancelled = true;
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+      controller?.abort();
     };
   }, [timeRange, refreshTrigger]);
 
