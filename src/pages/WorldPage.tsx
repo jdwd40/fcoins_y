@@ -37,9 +37,19 @@ const TICK_TYPE_COPY: Record<string, string> = {
   STRONG_BUST: 'Strong downward tick'
 };
 
-// The live-events card shows the 8 soonest-ending events by default, with a
+// The live-events card shows the 4 soonest-ending events by default, with a
 // toggle for the full list — a 22-row wall is not scannable.
-const EVENTS_INITIAL_COUNT = 8;
+// Issue #33: the collapsed live-events and Director-log cards are a fixed
+// size from first paint — N fixed-height, single-line rows, padded with
+// skeleton (loading) or blank rows, and a reserved toggle row — so live data
+// arriving or changing never shifts the page. Only a user "Show all" expands.
+const EVENTS_INITIAL_COUNT = 4;
+const DECISIONS_INITIAL_COUNT = 3;
+// Director / climate / Golden / Demon cards grow when the runtime arrives
+// (and with mode copy). Reserve their tallest loaded height per breakpoint:
+// phone ~221px (chip row + 2-line copy), sm single column ~185px, lg two
+// columns ~201px.
+const GRID_CARD_MIN_H = 'min-h-[224px] sm:min-h-[192px] lg:min-h-[208px]';
 
 export function WorldPage() {
   usePageTitle('World · Crypto Chaos');
@@ -47,6 +57,7 @@ export function WorldPage() {
   const { openHowToPlay } = useShellServices();
   const nowLocal = usePersistentCountdownTick(true);
   const [showAllEvents, setShowAllEvents] = useState(false);
+  const [showAllDecisions, setShowAllDecisions] = useState(false);
 
   // Page-scoped feeds: mounted only here, 10s cadence.
   const { data: statsData } = useFetch<MarketStats>(`${API_BASE_URL}/market/stats`, 10000);
@@ -80,6 +91,9 @@ export function WorldPage() {
 
   const events = soonestEndingEvents(collectActiveEvents(runtime), 50);
   const visibleEvents = showAllEvents ? events : events.slice(0, EVENTS_INITIAL_COUNT);
+  const decisions = director?.recentDecisions ?? [];
+  const visibleDecisions = showAllDecisions ? decisions : decisions.slice(0, DECISIONS_INITIAL_COUNT);
+  const runtimeLoading = runtime === null;
 
   const golden = director?.goldenCoinId != null ? coinById.get(director.goldenCoinId) : undefined;
   const demon = director?.demonCoinId != null ? coinById.get(director.demonCoinId) : undefined;
@@ -108,7 +122,7 @@ export function WorldPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Director */}
-        <Card className="p-5" aria-label="The Director">
+        <Card className={`p-5 ${GRID_CARD_MIN_H}`} aria-label="The Director">
           <h2 className="font-display font-bold text-ink mb-3">The Director</h2>
           {director === null ? (
             <p className="text-sm text-ink-mute" role="status">
@@ -146,7 +160,7 @@ export function WorldPage() {
         </Card>
 
         {/* Climate */}
-        <Card className="p-5" aria-label="Market climate">
+        <Card className={`p-5 ${GRID_CARD_MIN_H}`} aria-label="Market climate">
           <h2 className="font-display font-bold text-ink mb-3">Market climate</h2>
           {regime === null ? (
             <p className="text-sm text-ink-mute" role="status">Reading the climate…</p>
@@ -170,41 +184,42 @@ export function WorldPage() {
           coin={golden}
           timeLeft={goldenLeft}
           explanation="The Golden coin gets the Director's favour — a gentle upward nudge while the role lasts."
+          loading={runtimeLoading}
         />
         <RoleCard
           role="Demon"
           coin={demon}
           timeLeft={demonLeft}
           explanation="The Demon coin gets dragged down — extra downward pressure while the role lasts."
+          loading={runtimeLoading}
         />
       </div>
 
       {/* Live events feed */}
       <Card className="p-5" aria-label="Live coin events">
         <h2 className="font-display font-bold text-ink mb-3">Live events</h2>
-        {events.length === 0 ? (
-          <p className="text-sm text-ink-mute">No live coin events right now — the market is moving on its own.</p>
-        ) : (
-          <>
-            <ul className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-x-6 lg:gap-y-4">
-              {visibleEvents.map(({ coinId, kind, event }) => {
+        <div className="relative">
+          <ul className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-x-6 lg:gap-y-4">
+            {visibleEvents.map(({ coinId, kind, event }) => {
               const coin = coinById.get(coinId);
               const progress = eventProgress(event, serverNowMs);
               const left = formatRemaining(remainingMs(event.endsAt, serverTime, receivedAtLocal, nowLocal));
               return (
-                <li key={event.eventId}>
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                <li key={event.eventId} className={showAllEvents ? '' : 'h-12 flex flex-col justify-center'}>
+                  <div className={`flex items-center gap-2 mb-1 ${showAllEvents ? 'flex-wrap' : ''}`}>
                     {coin && (
-                      <Link to={`/coin/${coinId}`} className="flex items-center gap-2 hover:opacity-80">
+                      <Link to={`/coin/${coinId}`} className="flex items-center gap-2 hover:opacity-80 shrink-0">
                         <CoinAvatar symbol={coin.symbol} coinId={coin.coinId} size="sm" />
                         <span className="font-mono font-bold text-brand">{coin.symbol}</span>
                       </Link>
                     )}
-                    <span className="text-sm text-ink flex-1 min-w-0">{event.name}</span>
-                    <span className={`font-mono text-xs font-bold tnum ${kind === 'positive' ? 'text-up' : 'text-down'}`}>
+                    <span className={`text-sm text-ink flex-1 min-w-0 ${showAllEvents ? '' : 'truncate'}`} title={event.name}>
+                      {event.name}
+                    </span>
+                    <span className={`font-mono text-xs font-bold tnum shrink-0 ${kind === 'positive' ? 'text-up' : 'text-down'}`}>
                       {formatModifierPct(event.modifierPct, kind)}
                     </span>
-                    <span className="font-mono text-xs text-ink-mute tnum">{left}</span>
+                    <span className="font-mono text-xs text-ink-mute tnum shrink-0">{left}</span>
                   </div>
                   <div className="event-progress" role="progressbar" aria-valuenow={Math.round(progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`${event.name} elapsed`}>
                     <div className="event-progress-fill" style={{ width: `${progress * 100}%` }} />
@@ -212,41 +227,93 @@ export function WorldPage() {
                 </li>
               );
             })}
-            </ul>
-            {events.length > EVENTS_INITIAL_COUNT && (
-              <button
-                type="button"
-                onClick={() => setShowAllEvents((v) => !v)}
-                aria-expanded={showAllEvents}
-                className="mt-3 flex items-center gap-2 min-h-[44px] text-sm font-semibold text-ink-mute hover:text-ink transition-colors"
-              >
-                {showAllEvents ? 'Show fewer events' : `Show all ${events.length} events`}
-                <ChevronDown className={`w-4 h-4 transition-transform ${showAllEvents ? 'rotate-180' : ''}`} aria-hidden="true" />
-              </button>
-            )}
-          </>
-        )}
+            {Array.from({ length: Math.max(0, EVENTS_INITIAL_COUNT - visibleEvents.length) }, (_, i) => (
+              <li key={`event-slot-${i}`} aria-hidden="true" className="h-12 flex flex-col justify-center gap-2">
+                {runtimeLoading && (
+                  <>
+                    <div className="skeleton h-4 w-3/4" />
+                    <div className="skeleton h-1.5 w-full" />
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+          {!runtimeLoading && events.length === 0 && (
+            <p className="absolute inset-0 flex items-center justify-center text-center text-sm text-ink-mute px-4">
+              No live coin events right now — the market is moving on its own.
+            </p>
+          )}
+        </div>
+        <div className="mt-3 min-h-[44px]">
+          {events.length > EVENTS_INITIAL_COUNT && (
+            <button
+              type="button"
+              onClick={() => setShowAllEvents((v) => !v)}
+              aria-expanded={showAllEvents}
+              className="flex items-center gap-2 min-h-[44px] text-sm font-semibold text-ink-mute hover:text-ink transition-colors"
+            >
+              {showAllEvents ? 'Show fewer events' : `Show all ${events.length} events`}
+              <ChevronDown className={`w-4 h-4 transition-transform ${showAllEvents ? 'rotate-180' : ''}`} aria-hidden="true" />
+            </button>
+          )}
+        </div>
       </Card>
 
-      {/* Director log */}
-      {director && director.recentDecisions.length > 0 && (
-        <Card className="p-5" aria-label="Director log">
-          <h2 className="font-display font-bold text-ink mb-3">Director log</h2>
+      {/* Director log — rendered from first paint (never pops in). */}
+      <Card className="p-5" aria-label="Director log">
+        <h2 className="font-display font-bold text-ink mb-3">Director log</h2>
+        <div className="relative">
           <ol className="space-y-2">
-            {director.recentDecisions.map((decision, i) => (
-              <li key={`${decision.startedAt}-${decision.summaryCode}-${i}`} className="flex items-start gap-3 text-sm">
-                <DirectorModeChip mode={decision.mode} />
-                <div className="min-w-0">
-                  <p className="text-ink-dim">{decisionSummaryCopy(decision.summaryCode)}</p>
-                  <time dateTime={decision.startedAt} className="text-xs text-ink-mute font-mono">
+            {visibleDecisions.map((decision, i) => (
+              <li
+                key={`${decision.startedAt}-${decision.summaryCode}-${i}`}
+                className={`flex gap-3 text-sm ${showAllDecisions ? 'items-start' : 'items-center h-11'}`}
+              >
+                <span className="shrink-0"><DirectorModeChip mode={decision.mode} /></span>
+                <div className="min-w-0 flex-1">
+                  <p className={`text-ink-dim ${showAllDecisions ? '' : 'truncate'}`} title={decisionSummaryCopy(decision.summaryCode)}>
+                    {decisionSummaryCopy(decision.summaryCode)}
+                  </p>
+                  <time dateTime={decision.startedAt} className="block text-xs text-ink-mute font-mono truncate">
                     {formatActivityTimestamp(decision.startedAt, nowLocal)}
                   </time>
                 </div>
               </li>
             ))}
+            {Array.from({ length: Math.max(0, DECISIONS_INITIAL_COUNT - visibleDecisions.length) }, (_, i) => (
+              <li key={`decision-slot-${i}`} aria-hidden="true" className="h-11 flex items-center gap-3">
+                {runtimeLoading && (
+                  <>
+                    <div className="skeleton h-5 w-28 shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="skeleton h-3.5 w-4/5" />
+                      <div className="skeleton h-3 w-16" />
+                    </div>
+                  </>
+                )}
+              </li>
+            ))}
           </ol>
-        </Card>
-      )}
+          {!runtimeLoading && decisions.length === 0 && (
+            <p className="absolute inset-0 flex items-center justify-center text-center text-sm text-ink-mute px-4">
+              No Director decisions yet.
+            </p>
+          )}
+        </div>
+        <div className="mt-3 min-h-[44px]">
+          {decisions.length > DECISIONS_INITIAL_COUNT && (
+            <button
+              type="button"
+              onClick={() => setShowAllDecisions((v) => !v)}
+              aria-expanded={showAllDecisions}
+              className="flex items-center gap-2 min-h-[44px] text-sm font-semibold text-ink-mute hover:text-ink transition-colors"
+            >
+              {showAllDecisions ? 'Show fewer decisions' : `Show all ${decisions.length} decisions`}
+              <ChevronDown className={`w-4 h-4 transition-transform ${showAllDecisions ? 'rotate-180' : ''}`} aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      </Card>
 
       {/* Market pulse */}
       <Card className="p-5" aria-label="Market pulse">
@@ -294,22 +361,33 @@ function RoleCard({
   role,
   coin,
   timeLeft,
-  explanation
+  explanation,
+  loading
 }: {
   role: 'Golden' | 'Demon';
   coin: { coinId: number; name: string; symbol: string; currentPrice: number; dead: boolean } | undefined;
   timeLeft: string | null;
   explanation: string;
+  loading: boolean;
 }) {
   const tone = role === 'Golden' ? 'golden' : 'demon';
   const Icon = role === 'Golden' ? Crown : Flame;
   return (
-    <Card className="p-5" aria-label={`${role} coin`}>
+    <Card className={`p-5 ${GRID_CARD_MIN_H}`} aria-label={`${role} coin`}>
       <div className="flex items-center gap-2 mb-2">
         <Icon className={`w-4 h-4 ${role === 'Golden' ? 'text-golden' : 'text-demon'}`} aria-hidden="true" />
         <h2 className="font-display font-bold text-ink">{role} coin</h2>
       </div>
-      {coin ? (
+      {/* Fixed-height coin area (coin row + price + expiry = 88px) so the
+          explanation below never moves when the runtime arrives (#33). */}
+      <div className="min-h-[88px]">
+      {loading ? (
+        <div className="space-y-2" aria-hidden="true">
+          <div className="skeleton h-6 w-40" />
+          <div className="skeleton h-6 w-24" />
+          <div className="skeleton h-3.5 w-28" />
+        </div>
+      ) : coin ? (
         <div className="space-y-1.5">
           <Link to={`/coin/${coin.coinId}`} className="flex items-center gap-2 group">
             <CoinAvatar symbol={coin.symbol} coinId={coin.coinId} size="sm" dead={coin.dead} />
@@ -322,6 +400,7 @@ function RoleCard({
       ) : (
         <p className="text-sm text-ink-mute">{role === 'Golden' ? 'No golden coin right now.' : 'No demon coin right now.'}</p>
       )}
+      </div>
       <p className="text-xs text-ink-mute mt-2">{explanation}</p>
     </Card>
   );
