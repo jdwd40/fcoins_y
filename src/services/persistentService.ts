@@ -686,11 +686,31 @@ export interface PersistentRuntimeDirector {
   recentDecisions: PersistentDirectorDecision[];
 }
 
+// Backend issue #56: the durable bot-worker heartbeat (additive). Older
+// backends omit `bots` entirely; it parses to null. Every key is strict.
+export type PersistentBotTickOutcome = 'SUCCESS' | 'SIGNALS_FAILED' | 'TIMEOUT' | 'ERROR';
+
+export interface PersistentRuntimeBots {
+  tickIntervalMs: number;
+  staleAfterMs: number;
+  stale: boolean;
+  lastAttemptAt: string | null;
+  lastClaimedTickAt: string | null;
+  lastSuccessfulTickAt: string | null;
+  lastActionAt: string | null;
+  lastFailureAt: string | null;
+  lastOutcome: PersistentBotTickOutcome | null;
+  consecutiveFailures: number;
+  lastTickSummary: { trades: number; holds: number; skips: number } | null;
+}
+
 export interface PersistentRuntime {
   serverTime: string;
   worldId: number | null;
   director: PersistentRuntimeDirector | null;
   coins: PersistentRuntimeCoin[];
+  /** null with no active world, or when the backend predates the heartbeat. */
+  bots: PersistentRuntimeBots | null;
 }
 
 function requireNullableString(payload: Record<string, unknown>, field: string, contract: string): void {
@@ -894,10 +914,69 @@ function parsePersistentRuntimeDirector(payload: unknown, contract: string): Per
   };
 }
 
+const BOT_TICK_OUTCOMES: readonly PersistentBotTickOutcome[] = ['SUCCESS', 'SIGNALS_FAILED', 'TIMEOUT', 'ERROR'];
+
+function requireNonNegativeInteger(payload: Record<string, unknown>, field: string, contract: string, pathPrefix: string): void {
+  const value = payload[field];
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid ${contract} response: ${pathPrefix}${field} must be a non-negative integer`);
+  }
+}
+
+function parsePersistentRuntimeBots(payload: unknown, contract: string): PersistentRuntimeBots | null {
+  if (payload === undefined || payload === null) return null;
+  if (!isRecord(payload)) throw new Error(`Invalid ${contract} response: bots must be null or an object`);
+  const known = [
+    'tickIntervalMs', 'staleAfterMs', 'stale', 'lastAttemptAt', 'lastClaimedTickAt',
+    'lastSuccessfulTickAt', 'lastActionAt', 'lastFailureAt', 'lastOutcome',
+    'consecutiveFailures', 'lastTickSummary'
+  ] as const;
+  forbidUnknownFields(payload, known, contract, 'bots.');
+  requireNonNegativeInteger(payload, 'tickIntervalMs', contract, 'bots.');
+  requireNonNegativeInteger(payload, 'staleAfterMs', contract, 'bots.');
+  requireNonNegativeInteger(payload, 'consecutiveFailures', contract, 'bots.');
+  if (typeof payload.stale !== 'boolean') {
+    throw new Error(`Invalid ${contract} response: bots.stale must be a boolean`);
+  }
+  for (const field of ['lastAttemptAt', 'lastClaimedTickAt', 'lastSuccessfulTickAt', 'lastActionAt', 'lastFailureAt']) {
+    requireNullableString(payload, field, contract);
+  }
+  const outcome = payload.lastOutcome;
+  if (outcome !== null && !BOT_TICK_OUTCOMES.includes(outcome as PersistentBotTickOutcome)) {
+    throw new Error(`Invalid ${contract} response: unknown bots.lastOutcome ${JSON.stringify(outcome)}`);
+  }
+  let lastTickSummary: PersistentRuntimeBots['lastTickSummary'] = null;
+  if (payload.lastTickSummary !== null) {
+    if (!isRecord(payload.lastTickSummary)) {
+      throw new Error(`Invalid ${contract} response: bots.lastTickSummary must be null or an object`);
+    }
+    const summary = payload.lastTickSummary;
+    forbidUnknownFields(summary, ['trades', 'holds', 'skips'], contract, 'bots.lastTickSummary.');
+    for (const field of ['trades', 'holds', 'skips']) {
+      requireNonNegativeInteger(summary, field, contract, 'bots.lastTickSummary.');
+    }
+    lastTickSummary = { trades: summary.trades as number, holds: summary.holds as number, skips: summary.skips as number };
+  }
+  return {
+    tickIntervalMs: payload.tickIntervalMs as number,
+    staleAfterMs: payload.staleAfterMs as number,
+    stale: payload.stale,
+    lastAttemptAt: payload.lastAttemptAt as string | null,
+    lastClaimedTickAt: payload.lastClaimedTickAt as string | null,
+    lastSuccessfulTickAt: payload.lastSuccessfulTickAt as string | null,
+    lastActionAt: payload.lastActionAt as string | null,
+    lastFailureAt: payload.lastFailureAt as string | null,
+    lastOutcome: outcome as PersistentBotTickOutcome | null,
+    consecutiveFailures: payload.consecutiveFailures as number,
+    lastTickSummary
+  };
+}
+
 export function parsePersistentRuntime(payload: unknown): PersistentRuntime {
   const contract = 'persistent runtime';
   if (!isRecord(payload)) throw new Error(`Invalid ${contract} response: expected a JSON object`);
-  const known = ['serverTime', 'worldId', 'director', 'coins'] as const;
+  // `bots` (backend issue #56) is additive: accepted when present, null when absent.
+  const known = ['serverTime', 'worldId', 'director', 'coins', 'bots'] as const;
   forbidUnknownFields(payload, known, contract);
   forbidCycleFields(payload, contract);
   requireString(payload, 'serverTime', contract);
@@ -909,11 +988,16 @@ export function parsePersistentRuntime(payload: unknown): PersistentRuntime {
     throw new Error(`Invalid ${contract} response: coins must be an array`);
   }
   const coins = (payload.coins as unknown[]).map((c) => parsePersistentRuntimeCoin(c, contract));
+  const bots = parsePersistentRuntimeBots(payload.bots, contract);
+  if (payload.worldId === null && bots !== null) {
+    throw new Error(`Invalid ${contract} response: bots must be null without an active world`);
+  }
   return {
     serverTime: payload.serverTime as string,
     worldId: payload.worldId as number | null,
     director,
-    coins
+    coins,
+    bots
   };
 }
 

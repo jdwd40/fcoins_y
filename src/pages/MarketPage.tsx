@@ -18,10 +18,10 @@ import { Skeleton } from '../components/ui/Skeleton.tsx';
 import { EmptyState } from '../components/ui/EmptyState.tsx';
 import { InlineAlert } from '../components/ui/InlineAlert.tsx';
 import { InfoTip } from '../components/ui/InfoTip.tsx';
+import { QuantityText } from '../components/ui/QuantityText.tsx';
 import { formatCurrency } from '../services/transactionService.ts';
 import type { PersistentCoinSignal, PersistentHolding } from '../services/persistentService.ts';
 import {
-  formatQuantity,
   formatSignedGbp,
   formatSignedPct
 } from '../utils/gameLogic.ts';
@@ -575,7 +575,7 @@ function RecentActivityPeek() {
                 {tx.symbol}
               </Link>
               <span className="text-xs text-ink-mute truncate flex-1">
-                {formatQuantity(tx.quantity)} @ {formatCurrency(tx.price)}
+                <QuantityText value={tx.quantity} /> @ {formatCurrency(tx.price)}
               </span>
               <span className={`font-mono text-xs tnum ${tx.type === 'BUY' ? 'text-down' : 'text-up'}`}>
                 {tx.type === 'BUY' ? '−' : '+'}{formatCurrency(tx.totalAmount)}

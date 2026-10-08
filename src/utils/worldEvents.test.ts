@@ -17,6 +17,7 @@ const runtime: PersistentRuntime = {
   serverTime: '2026-10-01T13:30:00Z',
   worldId: 1,
   director: null,
+  bots: null,
   coins: [
     { coinId: 1, events: { positive: [ev(1, '2026-10-01T14:00:00Z')], negative: [ev(2, '2026-10-01T13:45:00Z', -2)] }, activeNetModifierPct: -1 },
     { coinId: 2, events: { positive: [], negative: [] }, activeNetModifierPct: 0 },
