@@ -14,6 +14,7 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
+import { formatCurrency } from '../services/transactionService.ts';
 import { readChartTheme, withAlpha } from '../utils/chartTheme.ts';
 import {
   MARKET_CHART_RANGES,
@@ -52,6 +53,9 @@ const RANGE_LABELS: Record<MarketChartRange, string> = {
   '12H': '12h',
 };
 
+// Quiet refresh cadence for the visible chart: the backend's 30s price tick.
+const MARKET_CHART_REFRESH_MS = 30_000;
+
 const TIME_RANGES: { value: MarketChartRange; label: string }[] = MARKET_CHART_RANGES.map(
   (value) => ({ value, label: RANGE_LABELS[value] })
 );
@@ -68,7 +72,9 @@ function readPersistedMarketRange(): MarketChartRange {
 export function MarketValueChart({ className = '', refreshTrigger }: MarketValueChartProps) {
   const [timeRange, setTimeRange] = useState<MarketChartRange>(() => readPersistedMarketRange());
   const [priceHistory, setPriceHistory] = useState<SanitizedMarketHistoryPoint[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Start in the loading state so the first paint shows the loading copy,
+  // not a flash of "No market history available".
+  const [loading, setLoading] = useState(true);
 
   const selectRange = (next: MarketChartRange) => {
     const clamped = clampMarketChartRange(next);
@@ -84,22 +90,32 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
 
   useEffect(() => {
     let cancelled = false;
-    const fetchMarketHistory = async () => {
+    let inFlight = false;
+    let controller: AbortController | null = null;
+
+    // initial=true (mount / range switch): clear and show the loading state so
+    // a previous (wrong) range never stays visible. initial=false (quiet
+    // refresh, issue #33): keep the current data on screen and only replace it
+    // on success, so the chart never blanks or flashes "Loading…".
+    const fetchMarketHistory = async (initial: boolean) => {
+      if (inFlight) return; // never overlap requests
+      inFlight = true;
+      controller = new AbortController();
       try {
-        setLoading(true);
-        // Clear immediately so a previous (wrong) range never stays visible
-        // while the next fetch/sanitize is in flight.
-        setPriceHistory([]);
+        if (initial) {
+          setLoading(true);
+          setPriceHistory([]);
+        }
         // BE market timeRanges: 10M,30M,1H,2H,12H,24H,ALL — no 5M. Unknown
         // keys return unfiltered ALL history. Request 10M for 5M (nearest
         // supported), then always sanitize/window-filter client-side.
         const apiRange = apiRangeForMarketChart(timeRange);
         const url = `${API_BASE_URL}/market/price-history?timeRange=${apiRange}`;
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: controller.signal });
         const data = await response.json();
         if (cancelled) return;
         if (!data.history || !Array.isArray(data.history)) {
-          setPriceHistory([]);
+          if (initial) setPriceHistory([]);
           return;
         }
         const transformed = data.history.map(
@@ -112,15 +128,30 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         // Atomic replace after sanitize so wrong-range data never stays visible.
         setPriceHistory(sanitizeMarketHistoryPoints(transformed, timeRange, Date.now()));
       } catch (error) {
+        if (cancelled || (error instanceof Error && error.name === 'AbortError')) return;
         console.error('Error fetching market history:', error);
-        if (!cancelled) setPriceHistory([]);
+        if (initial) setPriceHistory([]);
       } finally {
-        if (!cancelled) setLoading(false);
+        inFlight = false;
+        if (initial && !cancelled) setLoading(false);
       }
     };
-    fetchMarketHistory();
+
+    const isHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
+    const refreshIfVisible = () => {
+      if (!isHidden()) fetchMarketHistory(false);
+    };
+
+    fetchMarketHistory(true);
+    // Issue #33: refetch the current range every price tick while the tab is
+    // visible (and once on return), so the last point tracks "Index now".
+    const intervalId = setInterval(refreshIfVisible, MARKET_CHART_REFRESH_MS);
+    document.addEventListener('visibilitychange', refreshIfVisible);
     return () => {
       cancelled = true;
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+      controller?.abort();
     };
   }, [timeRange, refreshTrigger]);
 
@@ -149,6 +180,9 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         pointHoverBorderWidth: 2,
         fill: true,
         tension: priceHistory.length >= 3 ? 0.35 : 0,
+        // Issue #33: monotone interpolation keeps the smoothed curve inside
+        // the plotted data (no overshoot above the high / below the low).
+        cubicInterpolationMode: 'monotone' as const,
       },
     ],
   };
@@ -171,7 +205,7 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         titleFont: { family: 'JetBrains Mono', size: 10, weight: 'normal' as const },
         bodyFont: { family: 'Inter', size: 16, weight: '600' as const },
         callbacks: {
-          label: (context: { parsed: { y: number } }) => `£${context.parsed.y.toFixed(2)}`,
+          label: (context: { parsed: { y: number } }) => formatCurrency(context.parsed.y),
           title: (tooltipItems: Array<{ raw: { x: Date } }>) => {
             const date = new Date(tooltipItems[0].raw.x);
             return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toUpperCase();
@@ -200,7 +234,14 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         ticks: {
           color: axisColor,
           font: { family: 'JetBrains Mono', size: 10 },
-          callback: (value: number | string) => `£${Number(value).toFixed(0)}`,
+          // Issue #33: grouped whole pounds, e.g. £128,000 (was £128000).
+          callback: (value: number | string) =>
+            Number(value).toLocaleString('en-GB', {
+              style: 'currency',
+              currency: 'GBP',
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }),
         },
       },
     },
@@ -229,17 +270,19 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         ))}
       </div>
 
-      <div className="relative">
+      {/* Issue #33: fixed height in every state (loading, empty, data) so
+          loading the page or switching ranges never shifts the layout. */}
+      <div className="relative h-[260px] sm:h-[360px]">
         {loading && priceHistory.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-sm text-ink-mute">Loading market history…</div>
           </div>
         )}
         {!loading && priceHistory.length === 0 && (
-          <div className="flex items-center justify-center h-64 label">No market history available</div>
+          <div className="flex items-center justify-center h-full label">No market history available</div>
         )}
         {priceHistory.length > 0 && (
-          <div className="h-[260px] sm:h-[360px]">
+          <div className="h-full">
             <Line key={`market-${timeRange}`} data={chartData} options={options} />
           </div>
         )}
