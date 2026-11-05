@@ -20,5 +20,7 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  /* Unit tests run under node --test via tsx and need Node's types. */
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

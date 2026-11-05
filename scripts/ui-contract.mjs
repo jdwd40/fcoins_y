@@ -1268,6 +1268,20 @@ for (const gone of [
 // ============================================================================
 const authContext = read('src/context/AuthContext.tsx');
 assert.doesNotMatch(authContext, /console\.(log|error|warn|info|debug)/, 'AuthContext must not log');
+const authService = read('src/services/authService.ts');
+assert.doesNotMatch(authService, /console\.(log|error|warn|info|debug)/, 'authService must not log');
+for (const [name, text] of Object.entries({ authContext, authService })) {
+  assert.doesNotMatch(text, /default@example\.com|1000\.00/, `${name} must not fabricate identity or funds`);
+}
+assert.ok(pkg.includes('src/services/authService.test.ts'), 'test:unit must include authService.test.ts');
+
+// Deploy gate: a bare `tsc --noEmit` hits the references-only root tsconfig and
+// checks nothing, so the workflow must name the application project.
+assert.match(
+  read('.github/workflows/deploy.yml'),
+  /^\s*npx tsc -p tsconfig\.app\.json --noEmit$/mu,
+  'deploy must typecheck the application project'
+);
 
 // ============================================================================
 // Correction pass (2026-10-01) — controller review findings

@@ -1,4 +1,4 @@
-import type { TransactionResponse } from '../types';
+import type { TransactionRecord, TransactionRequest, TransactionResponse } from '../types';
 import { API_BASE_URL } from './apiConfig.ts';
 
 // Custom error class for session expired errors
@@ -61,7 +61,7 @@ export async function buyCoins(
   const numericAmount = Number(amount);
   
   // Format the request payload exactly as the API expects it
-  const requestPayload = {
+  const requestPayload: TransactionRequest = {
     user_id: numericUserId,
     coin_id: numericCoinId,
     amount: numericAmount
@@ -113,7 +113,13 @@ export async function sellCoins(
   const numericCoinId = Number(coinId);
   const numericAmount = Number(amount);
 
-  console.log('Sell request payload:', { user_id: numericUserId, coin_id: numericCoinId, amount: numericAmount });
+  const requestPayload: TransactionRequest = {
+    user_id: numericUserId,
+    coin_id: numericCoinId,
+    amount: numericAmount
+  };
+
+  console.log('Sell request payload:', requestPayload);
 
   try {
     const response = await fetch(`${API_BASE_URL}/transactions/sell`, {
@@ -122,11 +128,7 @@ export async function sellCoins(
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify({
-        user_id: numericUserId,
-        coin_id: numericCoinId,
-        amount: numericAmount
-      })
+      body: JSON.stringify(requestPayload)
     });
 
     console.log('Sell response status:', response.status, response.statusText);
@@ -235,17 +237,9 @@ export async function getUserPortfolio(userId: number, token: string): Promise<P
   }
 }
 
-export interface TransactionHistoryItem {
-  transaction_id: number;
-  user_id: number;
-  coin_id: number;
+export interface TransactionHistoryItem extends TransactionRecord {
   coin_name: string;
-  coin_symbol: string;
-  type: 'BUY' | 'SELL';
-  quantity: number;
-  price_at_transaction: number;
-  total_amount: number;
-  created_at: string;
+  symbol: string;
 }
 
 export interface TransactionsResponse {

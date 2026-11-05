@@ -203,11 +203,11 @@ export function MarketValueChart({ className = '', refreshTrigger }: MarketValue
         cornerRadius: 10,
         displayColors: false,
         titleFont: { family: 'JetBrains Mono', size: 10, weight: 'normal' as const },
-        bodyFont: { family: 'Inter', size: 16, weight: '600' as const },
+        bodyFont: { family: 'Inter', size: 16, weight: 600 },
         callbacks: {
           label: (context: { parsed: { y: number } }) => formatCurrency(context.parsed.y),
-          title: (tooltipItems: Array<{ raw: { x: Date } }>) => {
-            const date = new Date(tooltipItems[0].raw.x);
+          title: (tooltipItems: Array<{ raw: unknown }>) => {
+            const date = new Date((tooltipItems[0].raw as { x: Date }).x);
             return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toUpperCase();
           },
         },
