@@ -47,11 +47,13 @@ The router basename is `/coins`.
 ```bash
 npm run test:unit
 npm run test:ui
-npx tsc --noEmit
+npx tsc -p tsconfig.app.json --noEmit
 npm run lint
 npm run build
 npm run preview
 ```
+
+The root `tsconfig.json` only holds project references, so a plain `tsc --noEmit` checks nothing; always name the project. Unit tests are excluded from `tsconfig.app.json`.
 
 The deploy workflow runs UI contract checks, TypeScript, and the production build before rsyncing `dist/` to the VPS.
 
@@ -64,7 +66,8 @@ The deploy workflow runs UI contract checks, TypeScript, and the production buil
 | `src/components/shell/` | App shell: top bar, world strip, bottom tab bar, auth/trade/how-to-play dialogs |
 | `src/components/ui/` | Presentation primitives (Button, Card, Badge, Delta, Price, CoinAvatar, Dialog, …) |
 | `src/components/TradeTicket.tsx` | The single shared buy/sell ticket (inline on Coin page, in the trade sheet elsewhere) |
-| `src/context/AuthContext.tsx` | Login, registration, token/user lifecycle |
+| `src/context/AuthContext.tsx` | React auth state: current user, loading, error |
+| `src/services/authService.ts` | Login/registration requests, JWT decoding, auth payload validation, session persistence |
 | `src/context/PersistentContext.tsx` | Shared persistent signals, runtime, account, leaderboard, and sync state |
 | `src/context/ToastContext.tsx` | aria-live toast region |
 | `src/services/persistentService.ts` | Strict typed `/api/persistent/*` client and response validation |

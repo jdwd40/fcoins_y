@@ -34,7 +34,7 @@ jobs:
       - name: Verify UI contract and types
         run: |
           npm run test:ui
-          npx tsc --noEmit
+          npx tsc -p tsconfig.app.json --noEmit
 
       - name: Build production bundle
         run: npm run build

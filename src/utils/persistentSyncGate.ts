@@ -26,8 +26,8 @@ export interface PersistentSyncGate {
    */
   shouldApplyAccount(
     startedGen: number,
-    startedUserId: string | null | undefined,
-    currentUserId: string | null | undefined
+    startedUserId: number | string | null | undefined,
+    currentUserId: number | string | null | undefined
   ): boolean;
 }
 
